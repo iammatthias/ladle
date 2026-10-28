@@ -18,7 +18,7 @@ struct ShotsApp: App {
 }
 
 enum Screen: String, CaseIterable {
-    case firstRun = "first-run", servers, connect, rooms, timeline, mention, members, reaction, attachments, media, viewer, ipad
+    case firstRun = "first-run", servers, connect, connectScanned = "connect-scanned", rooms, timeline, mention, members, reaction, attachments, media, viewer, ipad
 }
 
 @MainActor
@@ -78,7 +78,10 @@ enum Renderer {
         case .servers:
             AnyView(NavigationStack { ServerListView(store: store, open: { _ in }, connecting: .constant(nil)) })
         case .connect:
-            AnyView(ConnectView(store: store))
+            AnyView(ConnectView(store: store, canScan: true))
+        case .connectScanned:
+            AnyView(ConnectView(store: store, prefill: TokenPayload(token: "inv_Qm7x", server: URL(string: "wss://chat.example/ws")),
+                                canScan: true))
         case .rooms:
             AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
         case .timeline:

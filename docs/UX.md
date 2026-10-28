@@ -224,7 +224,7 @@ Leave asks for confirmation only for a private room. You cannot rejoin a private
 **Layout.** A sheet at the large detent with a `NavigationStack`, so the sign-in step is pushed inside it, not stacked as a second sheet ([sheets], [modality]: "avoid creating a modal experience that feels like an app within your app"). Cancel is at the leading edge, and **Connect** at the trailing edge.
 
 - **Official server.** One row for the Apron project's public demo server, `wss://server.apron.chat/`, the default server of the Apron web client. Tapping it fills in the address, which sets the origin to its default, and picks Guest, the one sign-in that needs nothing else there. The row says the Apron project runs it. Under the address field, **Host Your Own Server** links to apron-chat/apron-server-go.
-- **Body top.** Two large buttons in one row, **Scan QR Code** (`qrcode.viewfinder`) and a `PasteButton`. `PasteButton` reads the pasteboard without the paste prompt.
+- **Body top.** Two paths. **Scan QR Code** (`qrcode.viewfinder`), a full-width primary button with the caption "Fills in the server and token from a sign-in code, such as the one /invite-device sends." Then a divider, "or enter manually", over the fields below. Scan QR Code is hidden when `DataScannerViewController.isSupported && isAvailable` is false, which includes a denied camera; the fields remain. The token field's `PasteButton` reads the pasteboard without the paste prompt.
 - **Below them.** An **Address** field (`.keyboardType(.URL)`, `.textContentType(.URL)`, no autocapitalization or autocorrection) and a **Name** field with the host as its placeholder.
 - **Advanced** (a `DisclosureGroup`, collapsed). **Origin**, with the footer "Sent as the Origin header. A token signs in only from the origin of the client that issued it, such as https://web.apron.chat."
 
@@ -232,7 +232,7 @@ The origin is hidden by default because the default (`https://<host>`) is right 
 
 **Flow.**
 
-1. A scanned or pasted link fills the address and keeps the token for step 3. A bare token without a server shows "That token has no server address. Enter the address." under the field.
+1. A scanned, pasted or tapped link (`https://link.apron.chat/#server=…&token=…`, §A.4) fills in the address and the token together, and picks Token. The origin follows the address, as when you type it. A code holding only a bare token fills in only the token. Nothing connects by itself (link.apron.chat SPEC §6). The scan entry becomes a banner, "Token received. For chat.example. Check the server, then tap Connect.", with **Scan Again**. You tap **Connect**.
 2. **Connect** saves the server and connects. The button shows "Connecting…" with a spinner ([buttons]: "display an activity indicator"). On the `server` frame, push Sign In.
 3. If the link carried a token, Sign In opens with it filled in, and **Sign In** is the focused button. You still tap it (§A.4).
 
@@ -273,10 +273,10 @@ Each section has one action button at its bottom, within reach.
 **Token section.**
 
 - A `SecureField` labeled "Token or sign-in link". The token is a credential ([text-fields]: "Always use a secure text field when your app asks for sensitive data"). After a paste, the footer confirms what was read: "Token received" or "Link for chat.example".
-- `PasteButton`, and **Scan QR Code** when `DataScannerViewController.isSupported && isAvailable`.
+- `PasteButton`, and **Scan QR Code** when `DataScannerViewController.isSupported && isAvailable`. A scanned or pasted token shows "Token received" under the field.
 - **Sign In**.
 - Footer: "Signed in elsewhere? In that app, send /invite-device and a name, such as /invite-device phone, then paste the token here. A server's admin can also give you one." This defines the term ([inclusion]: "Avoid using specialized or technical terms without defining them.").
-- A link for a different server shows "This link is for other.example." with **Add other.example**.
+- A link for a different server shows "This link is for other.example." and fills in nothing. **Judgment call:** no **Add other.example** button, since that would open a sheet from inside this one.
 
 **Email section.**
 
@@ -289,11 +289,11 @@ Each section has one action button at its bottom, within reach.
 
 **QR scanner.**
 
-- A `fullScreenCover` holding `DataScannerViewController`, QR only, with highlighting.
+- A `fullScreenCover` holding `DataScannerViewController`, QR only, with highlighting. Add Server and Sign In open the same scanner.
 - A top **Close** button, and the bottom hint "Point the camera at a sign-in QR code."
 - The camera permission is requested only here, when you tap Scan ([privacy]: "Request permission only when your app clearly needs access to the data or resource.").
-- Denied: "Camera access is off for Ladle." with **Open Settings** (`UIApplication.openSettingsURLString`) and **Paste Instead**.
-- A code that is not a token or link: "That QR code isn't an Apron sign-in." Scanning continues.
+- Denied or restricted camera access makes the scanner unavailable, so Scan QR Code is hidden and the fields and Paste remain.
+- A code that is not a token or link, such as a web address or a Wi-Fi code: "That QR code isn't an Apron sign-in." in place of the hint. Scanning continues. A sign-in closes the scanner and fills in the sheet.
 
 The HIG has no Live Text or scanning page. The `live-text` page returned 404, so the scanner UI here is a judgment call.
 
@@ -641,7 +641,7 @@ The session is live by default. The UI says something only when it is not live, 
 
 - Tokens live only in the Keychain, as one generic password per server id with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` (`KeychainStore`). [privacy] says "Store sensitive information in a keychain." They are never in `servers.json`, the message cache, logs, or state restoration.
 - Cached messages are display-only files with complete-until-first-auth protection (2.5). Sign-out and server removal delete them.
-- The camera purpose string is "Ladle uses the camera to scan sign-in QR codes. It doesn't record or save images." It is a full sentence in sentence case, active voice, ending with a period ([privacy]: "Aim for a brief, complete sentence that's straightforward, specific, and easy to understand."). Ladle asks only when you tap Scan.
+- The camera purpose string is "Ladle uses the camera to scan sign-in QR codes, and to take photos and videos you attach to messages." It is a full sentence in sentence case, active voice, ending with a period ([privacy]: "Aim for a brief, complete sentence that's straightforward, specific, and easy to understand."). Ladle asks only when you tap Scan QR Code or take a photo or video.
 - Ladle loads `og` media, avatars, and streams only from the server's own origin (§4.8.1, §5.5). Avatars from other `https:` hosts are not loaded in v1, and initials show instead.
 - Ladle connects to a new server only after you tap Connect (§A.4).
 - The token field is a `SecureField`. The token never appears on screen after you enter it.

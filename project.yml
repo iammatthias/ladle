@@ -54,7 +54,7 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
-        INFOPLIST_KEY_NSCameraUsageDescription: Ladle uses the camera to take photos and videos you attach to messages.
+        INFOPLIST_KEY_NSCameraUsageDescription: Ladle uses the camera to scan sign-in QR codes, and to take photos and videos you attach to messages.
         INFOPLIST_KEY_NSMicrophoneUsageDescription: Ladle uses the microphone to record voice notes you attach to messages, and to record sound with videos you take.
         ENABLE_PREVIEWS: YES
   # Debug-only design-review renderer: the app's views as a Mac Catalyst app that writes PNGs of
