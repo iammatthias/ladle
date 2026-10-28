@@ -14,28 +14,34 @@ struct QRScanner: View {
     }
 
     var body: some View {
-        QRScannerView { text in
-            let accepted = onScan(text)
-            rejected = !accepted
-            return accepted
+        ZStack {
+            QRScannerView { text in
+                let accepted = onScan(text)
+                rejected = !accepted
+                return accepted
+            }
+            .ignoresSafeArea()
+            VStack {
+                Button("Close") { dismiss() }
+                    .buttonStyle(.glass)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(Tokens.Space.s4)
+                Spacer()
+                hint
+            }
         }
-        .ignoresSafeArea()
-        .overlay(alignment: .topLeading) {
-            Button("Close") { dismiss() }
-                .buttonStyle(.glass)
-                .padding(Tokens.Space.s4)
-        }
-        .overlay(alignment: .bottom) {
-            Label(rejected ? "That QR code isn't an Apron sign-in." : "Point the camera at a sign-in QR code.",
-                  systemImage: rejected ? "exclamationmark.triangle" : "qrcode.viewfinder")
-                .apText(.ui, .semibold)
-                .foregroundStyle(Palette.ink)
-                .padding(.horizontal, Tokens.Space.s4)
-                .padding(.vertical, Tokens.Space.s3)
-                .background(Palette.chrome, in: Capsule())
-                .padding(Tokens.Space.s6)
-                .accessibilityAddTraits(.updatesFrequently)
-        }
+    }
+
+    private var hint: some View {
+        Label(rejected ? "That QR code isn't an Apron sign-in." : "Point the camera at a sign-in QR code.",
+              systemImage: rejected ? "exclamationmark.triangle" : "qrcode.viewfinder")
+            .apText(.ui, .semibold)
+            .foregroundStyle(Palette.ink)
+            .padding(.horizontal, Tokens.Space.s4)
+            .padding(.vertical, Tokens.Space.s3)
+            .background(Palette.chrome, in: Capsule())
+            .padding(Tokens.Space.s6)
+            .accessibilityAddTraits(.updatesFrequently)
     }
 }
 
