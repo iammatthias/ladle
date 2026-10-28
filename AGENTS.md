@@ -53,16 +53,30 @@ clone), which is only a worked example.
       records advance; after a reconnect it pages forward from `checkpoint + 1`.
     - Results can resume before the notifications sent ahead of them are applied, so code and
       tests wait for store state rather than assume it on return.
+    - Read cursors: `readCursors` keeps this user's own `read_message_id` per room from
+      `activity` (§4.6), forward only; `unreadCount(in:)` counts loaded messages from others
+      after it, and is 0 without a cursor.
   - `SessionStore`: every server's session, the saved list, and account persistence.
+  - `PreviewServer` and `PreviewFixtures`: an in-memory server that answers from a script, and a
+    two-server world built on it (rooms, threads, unread rooms, replies, reactions, an edit, a
+    deleted message, presence). The design screenshots render from it; `PreviewFixturesTests`
+    pins what it holds. Message ids are server-wide, so no two rooms share a minute in the
+    script.
   - `SignIn`, `TokenPayload` (a bare token or a §A.4 link with `token`), `UserDirectory` (one kept
     user object per `user_id`, merge rules, `Name (@user_id)` on clashes).
   - `ServerRecord`, `ServerStore`, `TokenStore`: the saved servers (JSON, no secrets) and the seam
     for the bearer token. `InMemoryTokenStore` is for tests.
 - `Ladle/`: the app, views only; logic belongs in ApronKit where `swift test` reaches it.
   `Servers/` (list, editor), `SignIn/` (sheet, VisionKit QR scanner), `Rooms/`, `Timeline/`
-  (messages, composer). `Servers/KeychainStore.swift` is the only place a secret is persisted
-  (generic password, service `com.iammatthias.ladle.token`, account = server id).
+  (messages, composer, `TimelineItems`: messages, the read line, and thread cards placed at the
+  thread's creation position), `Design/` (`Theme`: the three directions under review, their
+  color tokens as light and dark hex pairs, faces, and density; `People`: avatars and presence
+  glyphs; `Fonts/`: Nunito under the SIL OFL, license beside it). Debug builds switch direction
+  from the palette menu on the server list (`@AppStorage("debug.direction")`).
+  `Servers/KeychainStore.swift` is the only place a secret is persisted (generic password,
+  service `com.iammatthias.ladle.token`, account = server id).
 - `LadleTests/`: hermetic app tests (no network, no server).
+- `LadleShots/`: the design-review renderer (see "Design review").
 - `Packages/ApronKit/Tests/ApronKitIntegrationTests/`: `ServerSession` against the real Rust
   server. `Aprond` copies the binary to a temporary directory (its build tree may be rebuilding),
   starts it per test with `--store memory --email.enable --email.sender log` on a free loopback
@@ -86,8 +100,48 @@ clone), which is only a worked example.
   tests skip when `aprond` is missing; set `APRON_REQUIRE_SERVER=1` to make that a failure.
 - aprond has no page-size flag; the paging test passes `limit` through the session's page size.
 - Deployment target is iOS 27.1 because the newest installed SDK is iOS 27.1 (Xcode 27.1); a
-  target cannot be newer than its SDK. Bump to 27.2 in `project.yml` and `Package.swift` once
-  Xcode ships that SDK.
+  target cannot be newer than its SDK. Bump to 27.2 in `project.yml` once Xcode ships that SDK.
+  `Package.swift` says iOS 27.0: a floor for the `LadleShots` renderer, not the app's target.
+
+## Design review
+
+The iOS Simulator does not run here (CoreSimulator 1171.7 is older than Xcode 27.1's 1174.9;
+never restart its services or kill its processes). Screens are reviewed on this Mac instead:
+
+```sh
+./build.sh shots /path/to/out      # PNGs of every direction and screen, plus contrast.json
+```
+
+`LadleShots` is a debug-only Mac Catalyst app target built from `Ladle/` (minus `LadleApp.swift`)
+plus `LadleShots/ShotsApp.swift`. It seeds `PreviewFixtures`, pins its window to 393x852 pt
+(iPhone width, compact size class), and for each direction renders the server list, the room
+list, the busy room, and the composer replying to a message, in light and dark, plus the busy
+room at AX3. It captures in process with `UIView.drawHierarchy` at 3x, writes `contrast.json`
+(WCAG ratios of every text token pair), and quits. `TZ=UTC` keeps the times reproducible; two
+runs are byte-identical except the blinking caret in the composer shots.
+
+Limits of the Mac render, each checked on this machine:
+
+- Mac Catalyst ignores Dynamic Type: `UIFontMetrics` returns 17 pt for body at AX XXL. The
+  renderer sets `Theme.fixedTypeSize`, which sizes theme text from the HIG's iOS Dynamic Type
+  table. The app never sets it and uses live text styles. System chrome (navigation bar
+  buttons, list chevrons) stays at its default size in the AX3 shots.
+- Mac Catalyst falls back to SF Pro for `design: .rounded`, even with SF Pro Rounded
+  registered. That is one reason the Enamel direction bundles Nunito.
+- The software keyboard never appears on a Mac, so the composer shot shows the focused field
+  and reply banner without a keyboard. Hardware-keyboard hints do show, since a keyboard is
+  attached.
+- Gestures (swipe to reply) and haptics cannot be shown in a still.
+
+Why not the other routes: running the iOS app as "Designed for iPad" on this Mac fails twice.
+First, `xcodebuild -destination 'platform=macOS,variant=Designed for iPad,arch=arm64'` says "My
+Mac's iOS Support Version 27.0 is less than Ladle.app's iOS 27.1 deployment target". With the
+target lowered to 27.0, it says "Provisioning profile "iOS Team Provisioning Profile: *"
+doesn't include the currently selected device" (this Mac). Fixing that means registering this
+Mac with the developer account (`-allowProvisioningUpdates`), which an agent should not do
+unasked. An ad-hoc signed iOS build launched with `open` fails with "incorrect executable
+format". The third route, `ImageRenderer` in a macOS test host, was not tried once Catalyst
+worked.
 
 ## Conformance fixture gate
 
@@ -108,7 +162,9 @@ clone. Run it before `swift test` (the gate line above does), and `./build.sh te
   default in `init(from:)`, so older files keep loading. Adding a non-optional field without a
   default breaks saved files.
 - Apple frameworks only: Foundation, URLSession WebSockets, AuthenticationServices,
-  Security, SwiftUI, Observation. A third-party package needs a justified entry here. None so far.
+  Security, SwiftUI, Observation, CoreText (registers the bundled font), GameController (tells
+  whether a hardware keyboard is attached). A third-party package needs a justified entry here.
+  None so far. Bundled fonts are SIL OFL only, each with its license file beside it: Nunito.
 - Replay rule: a record replaces only on a numerically greater `log_id`, or a tombstone at an
   equal one; a room record without `log_id` always replaces; replacement is whole. Compare
   `log_id`s with `LogID`, never as strings.
@@ -168,7 +224,7 @@ Fallbacks: email with a typed code (§4.11). Optional later paths, not implement
 
 ## Cleanup
 
-- `build/` is DerivedData; delete it when a work session ends. `Packages/ApronKit/.build/` is
+- `build/` is DerivedData, including the `LadleShots` build; delete it when a work session ends. `Packages/ApronKit/.build/` is
   SwiftPM's; both are gitignored.
 - Delete simulators you create once a phase is done, except "Ladle iPhone", which later phases
   reuse.

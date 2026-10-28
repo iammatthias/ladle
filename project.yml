@@ -39,6 +39,31 @@ targets:
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         INFOPLIST_KEY_NSCameraUsageDescription: Ladle uses the camera to scan a sign-in QR code.
         ENABLE_PREVIEWS: YES
+  # Debug-only design-review renderer: the app's views as a Mac Catalyst app that writes PNGs of
+  # the PreviewFixtures screens and quits. iOS 27.0 because this Mac's iOS support version is
+  # 27.0; ad-hoc signed so it runs without a provisioning profile. See AGENTS.md, "Design review".
+  LadleShots:
+    type: application
+    platform: iOS
+    sources:
+      - path: Ladle
+        excludes:
+          - App/LadleApp.swift
+      - path: LadleShots
+    dependencies:
+      - package: ApronKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.iammatthias.ladle.shots
+        PRODUCT_NAME: LadleShots
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        IPHONEOS_DEPLOYMENT_TARGET: "27.0"
+        SUPPORTS_MACCATALYST: YES
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: "-"
+        DEVELOPMENT_TEAM: ""
   # Hermetic: no network, no server. The protocol and server integration tests live in
   # Packages/ApronKit (swift test).
   LadleTests:
@@ -62,3 +87,9 @@ schemes:
     test:
       targets:
         - LadleTests
+  LadleShots:
+    build:
+      targets:
+        LadleShots: all
+    run:
+      config: Debug

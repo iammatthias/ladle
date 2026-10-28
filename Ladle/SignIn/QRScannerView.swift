@@ -1,4 +1,5 @@
 import SwiftUI
+#if !targetEnvironment(macCatalyst)
 import VisionKit
 
 /// Scans one QR code with VisionKit and hands back its text.
@@ -46,3 +47,11 @@ struct QRScannerView: UIViewControllerRepresentable {
         }
     }
 }
+#else
+/// VisionKit's scanner does not exist on Mac Catalyst, where only the design-review renderer runs.
+struct QRScannerView: View {
+    let onScan: (String) -> Void
+    static let isAvailable = false
+    var body: some View { EmptyView() }
+}
+#endif
