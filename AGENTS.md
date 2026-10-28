@@ -53,9 +53,16 @@ clone), which is only a worked example.
       records advance; after a reconnect it pages forward from `checkpoint + 1`.
     - Results can resume before the notifications sent ahead of them are applied, so code and
       tests wait for store state rather than assume it on return.
-    - Read cursors: `readCursors` keeps this user's own `read_message_id` per room from
-      `activity` (§4.6), forward only; `unreadCount(in:)` counts loaded messages from others
-      after it, and is 0 without a cursor.
+    - Reading, as apron-web's `readAction`, `markRead` and `readPositions`: `readCursors` keeps
+      this user's own `read_message_id` per room from `activity` (§4.6), forward only.
+      `readPositions` is how far this user read each room on this device, from a
+      `ReadPositionStore` (`read-positions.json` beside `servers.json`, by server, account and
+      room; in memory for tests and previews). `readThrough(_:)` is the furthest of the two and
+      this user's newest loaded message; `unreadCount(in:)` counts loaded messages from others
+      after it, all of them when nothing is known. `markRead(_:through:)` moves the position,
+      and with capability `activity` the cursor, sending the frame unless `ext:settings` says
+      `read_cursors: false` (`ServerInfo.keepsReadCursors`). The timeline calls it when the
+      pane is on screen in the active app, at the bottom, loaded and landed at its New line.
   - `SessionStore`: every server's session, the saved list, and account persistence.
   - Uploads (§4.8.3, §4.8.4, §4.8.6), as apron-web does them. `Embed` parses an embed once;
     its `upload` is pending until `url`, then an image, video or audio from `og`, or a file.
@@ -87,8 +94,9 @@ clone), which is only a worked example.
     scanned or pasted sign-in fills in: server and token when adding a server, the token alone
     otherwise, or the other server a saved server's link names), `UserDirectory` (one kept
     user object per `user_id`, merge rules, `Name (@user_id)` on clashes).
-  - `ServerRecord`, `ServerStore`, `TokenStore`: the saved servers (JSON, no secrets) and the seam
-    for the bearer token. `InMemoryTokenStore` is for tests.
+  - `ServerRecord`, `ServerStore`, `TokenStore`, `ReadPositionStore`: the saved servers (JSON, no
+    secrets), the seam for the bearer token, and the read positions. The in-memory stores are
+    for tests.
 - `Ladle/`: the app, views only; logic belongs in ApronKit where `swift test` reaches it. The
   design follows apron-web, the official web client (see "Design").
   `App/` (`RootView`: one pane at a time in compact width, a split view with the server rail,
@@ -195,6 +203,9 @@ Limits of the Mac render, each checked on this machine:
 - The software keyboard never appears on a Mac, so the reaction picker shows its field without
   the emoji keyboard.
 - Gestures (swipe actions) and haptics cannot be shown in a still.
+- The renderer sets `scenePhase` to `.inactive`: every room shot reads one store, and a pane in
+  the active app marks its room read, which would strip the New line and the badges from the
+  shots after the first. The app never sets it.
 - VisionKit's scanner does not exist on Mac Catalyst, so the camera cover is never shot; the
   renderer passes `canScan: true` to show the Scan QR Code entry, and seeds the scanned state
   through `prefill`, the path a tapped link takes.
