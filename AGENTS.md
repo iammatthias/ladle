@@ -102,6 +102,11 @@ clone), which is only a worked example.
   gate below, the unit tests, and the integration tests. It needs no simulator. The integration
   tests skip when `aprond` is missing; set `APRON_REQUIRE_SERVER=1` to make that a failure.
 - aprond has no page-size flag; the paging test passes `limit` through the session's page size.
+- `tools/testflight.sh` archives a Release build and uploads it to App Store Connect for
+  TestFlight, with cloud signing through a Team API key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, the key
+  in `~/.appstoreconnect/private_keys/`). The build number is the commit count, so it needs a
+  clean tree. `docs/PRIVACY.md` is the privacy policy TestFlight links to, and
+  `Ladle/PrivacyInfo.xcprivacy` declares no tracking and no collected data; keep both true.
 - Deployment target is iOS 27.1 because the newest installed SDK is iOS 27.1 (Xcode 27.1); a
   target cannot be newer than its SDK. Bump to 27.2 in `project.yml` once Xcode ships that SDK.
   `Package.swift` says iOS 27.0: a floor for the `LadleShots` renderer, not the app's target.
