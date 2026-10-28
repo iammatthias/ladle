@@ -246,7 +246,7 @@ The origin is hidden by default because the default (`https://<host>`) is right 
 
 **Keyboard.** Return in Address runs Connect when the address is valid. Esc cancels.
 
-**Haptics.** `UINotificationFeedbackGenerator` `.success` when a QR code is recognized. `.error` when Connect fails, because you are waiting on it.
+**Haptics.** `.sensoryFeedback(.success)` when a scan, paste or tapped link fills in a token. `.error` when Connect fails, because you are waiting on it.
 
 **Accessibility.** The paste and scan buttons have text labels, not icons alone ([buttons]: "Consider using text when a short label communicates more clearly than an icon."). Errors are announced with `AccessibilityNotification.Announcement`.
 
@@ -656,7 +656,7 @@ One meaning per pattern, used only for events you cause ([playing-haptics]: "Use
 |---|---|---|
 | Swipe-to-reply crosses its threshold | `UIImpactFeedbackGenerator(style: .light)` | `.impact(weight: .light)` |
 | Reaction added or removed | `UISelectionFeedbackGenerator` | `.selection` |
-| QR code recognized | `UINotificationFeedbackGenerator`, `.success` | `.success` |
+| A scan, paste or link fills in a token | `.sensoryFeedback(.success)` | `.success` |
 | Sign-in succeeded | `UINotificationFeedbackGenerator`, `.success` | `.success` |
 | Sign-in, connect, or send failed while on screen | `UINotificationFeedbackGenerator`, `.error` | `.error` |
 
