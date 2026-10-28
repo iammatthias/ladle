@@ -435,6 +435,32 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.readPositions, ["general": LogID("200")!])
     }
 
+    func testTheNewLineGoesBeforeTheFirstUnreadMessageYouDidNotWrite() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        let open = Task { try await session.open("general") }
+        _ = await frame(socket, 2)
+        await socket.deliver(["id": "c3", "result": [
+            "messages": [message("120", "a"), message("130", "b")], "first_log_id": "120", "last_log_id": "130", "more": true,
+            "latest_log_id": "130", "history_log_id": "100",
+        ]])
+        try await open.value
+        XCTAssertEqual(session.histories["general"]?.canLoadOlder, true)
+        XCTAssertNil(session.newLine(in: "general", after: nil), "nothing known")
+        XCTAssertNil(session.newLine(in: "general", after: LogID("110")!), "the first unread may be in the page before")
+        XCTAssertEqual(session.newLine(in: "general", after: LogID("120")!), LogID("130"))
+        XCTAssertNil(session.newLine(in: "general", after: LogID("130")!), "all read")
+
+        await socket.deliver(["method": "message", "params": [
+            "message_id": "140", "log_id": "140", "room_id": "general", "from": ["user_id": "ada"], "body": ["text": "mine"],
+        ]])
+        await socket.deliver(["method": "message", "params": message("150", "c")])
+        await eventually("messages applied") { session.timeline("general").count == 4 }
+        XCTAssertNil(session.newLine(in: "general", after: LogID("130")!), "the first message after is your own")
+        XCTAssertEqual(session.newLine(in: "general", after: LogID("140")!), LogID("150"))
+    }
+
     func testTheReadCursorsSettingCountsOnlyUnderItsCapability() {
         func info(_ capabilities: [String], ext: JSONValue? = nil) -> ServerInfo {
             var params: [String: JSONValue] = ["apron": 9, "auth": ["token"], "capabilities": .array(capabilities.map(JSONValue.string))]
