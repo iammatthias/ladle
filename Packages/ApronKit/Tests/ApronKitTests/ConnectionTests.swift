@@ -103,6 +103,38 @@ final class ConnectionTests: XCTestCase {
         XCTAssertEqual(posted["message_id"], "1724803200042")
     }
 
+    func testPipelinedRequestsReachTheWireInCallOrderAndRepliesResolveOutOfOrder() async throws {
+        let (connection, transport) = makeConnection()
+        await transport.deliver(greeting)
+        _ = try await connection.connect()
+        var outgoing = transport.sent.makeAsyncIterator()
+        let auth = try await connection.send("auth", params: ["scheme": "guest"])
+        let rooms = try await connection.send("room_list", params: ["filter": "joined"])
+        let history = try await connection.send("history", params: ["room_id": "general"])
+        var sent: [String] = []
+        for _ in 0 ..< 3 { sent.append(await outgoing.next() ?? "") }
+        XCTAssertEqual(sent, [
+            #"{"id":"c1","method":"auth","params":{"scheme":"guest"}}"#,
+            #"{"id":"c2","method":"room_list","params":{"filter":"joined"}}"#,
+            #"{"id":"c3","method":"history","params":{"room_id":"general"}}"#,
+        ])
+        await transport.deliver(["id": "c3", "result": ["messages": []]])
+        await transport.deliver(["id": "c1", "result": ["you": ["user_id": "guest_1"]]])
+        let roomsValue = Task { try await rooms.value }
+        await transport.deliver(["id": "c2", "error": ["code": -32001, "message": "Denied"]])
+        let historyResult = try await history.value
+        let authResult = try await auth.value
+        XCTAssertEqual(historyResult, ["messages": []])
+        XCTAssertEqual(authResult, ["you": ["user_id": "guest_1"]])
+        do {
+            _ = try await roomsValue.value
+            XCTFail("expected denied")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.code, RPCError.Code.denied)
+        }
+        await connection.close()
+    }
+
     func testErrorReplyThrowsTheRPCError() async throws {
         let (connection, transport) = makeConnection()
         await transport.deliver(greeting)

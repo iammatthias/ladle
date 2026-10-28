@@ -14,6 +14,8 @@ public protocol FrameTransport: Sendable {
 public enum FrameTransportError: Error, Equatable, Sendable {
     case closed
     case binaryFrame
+    /// The server answered the upgrade request with this HTTP status instead of 101.
+    case handshakeRejected(status: Int)
 }
 
 /// A WebSocket over URLSession. `origin` is sent as the `Origin` header on the upgrade request:
@@ -48,6 +50,9 @@ public final class WebSocketTransport: FrameTransport {
         } catch let error as FrameTransportError {
             throw error
         } catch {
+            if let response = task.response as? HTTPURLResponse, response.statusCode != 101 {
+                throw FrameTransportError.handshakeRejected(status: response.statusCode)
+            }
             if task.closeCode != .invalid { throw FrameTransportError.closed }
             throw error
         }
