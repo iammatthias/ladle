@@ -3,6 +3,7 @@
 # Builds or tests the Ladle scheme with DerivedData in ./build. Tests need a simulator: the
 # "Ladle iPhone" device if it exists, else set DEST. A build with no simulator runtime falls
 # back to the generic iOS Simulator destination.
+# `test` also checks that Ladle/Design/Tokens.swift matches apron-web at the pinned commit.
 # `shots <dir>` builds the LadleShots Mac Catalyst renderer and writes the design-review PNGs
 # and contrast.json to <dir>; it needs no simulator.
 set -o pipefail
@@ -26,6 +27,7 @@ fi
 
 if [[ $ACTION == test && -z $NO_FIXTURE_CHECK ]]; then
   scripts/sync-fixtures.sh --check || exit 1
+  tools/design/tokens.py --check || exit 1
 fi
 
 [[ -f Config/Domains.xcconfig ]] || cp Config/Domains.example.xcconfig Config/Domains.xcconfig
