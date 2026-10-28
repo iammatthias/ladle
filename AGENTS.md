@@ -49,8 +49,9 @@ clone), which is only a worked example.
 - `./build.sh test` runs the fixture drift check and then the `Apron` scheme's tests on the
   "Apron iPhone" simulator (create it once with `xcrun simctl create "Apron iPhone" <iPhone
   device type> <iOS runtime>`). Set `DEST` to override.
-- The phase 1 gate is `swift test --package-path Packages/ApronKit`. It runs the fixture gate
-  below plus the unit tests, and needs no simulator.
+- The phase 1 gate is `scripts/sync-fixtures.sh --check && swift test --package-path
+  Packages/ApronKit`. It checks the fixture copies against the spec clone, then runs the fixture
+  gate below plus the unit tests. It needs no simulator.
 - Two schemes on purpose. `Apron` stays runnable with no network and no server.
   `ApronIntegration` talks to a real server and is excluded from the default scheme.
 - Deployment target is iOS 27.1 because the newest installed SDK is iOS 27.1 (Xcode 27.1); a
@@ -63,8 +64,8 @@ clone), which is only a worked example.
 replay/`, every variant twice (literal frames, and with `"jsonrpc":"2.0"` added to each frame),
 checking each `expect` step and the final `expected` projection. Currently 18 files, 42 variants,
 84 runs; the aggregate test pins those counts, so bump them when fixtures are added upstream.
-The fixtures are copies: `scripts/sync-fixtures.sh --check` (run by `./build.sh test`) fails
-when they drift from the clone. The session fixtures (`wire/session/`) are phase 2.
+The fixtures are copies: `scripts/sync-fixtures.sh --check` fails when they drift from the
+clone. Run it before `swift test` (the gate line above does), and `./build.sh test` runs it too. The session fixtures (`wire/session/`) are phase 2.
 
 ## Rules
 
