@@ -85,7 +85,7 @@ clone), which is only a worked example.
   `App/` (`RootView`: one pane at a time in compact width, a split view with the server rail,
   rooms, room and member column in regular width; `@SceneStorage` restoration; `apron:` links),
   `Servers/` (the server list and iPad rail, `ConnectView`: add a server and sign in in one
-  sheet), `SignIn/` (VisionKit QR scanner), `Rooms/`, `Timeline/` (messages, composer with the
+  sheet), `Rooms/`, `Timeline/` (messages, composer with the
   mention list, reaction picker, member list, `TimelineItems`: day pills, messages, the New
   line, thread cards at the thread's creation position, and queued messages; `EmbedViews`:
   upload embeds as a picture, an inline video, an audio player, a file card that opens in
@@ -227,8 +227,8 @@ clone. Run it before `swift test` (the gate line above does), and `./build.sh te
 
 ## Identity and sign-in
 
-The primary v1 sign-in is a bearer token (`scheme: "token"`, §3.2.1), pasted into the app or
-scanned from a QR code, obtained from another client. This works today with no server changes:
+The primary v1 sign-in is a bearer token (`scheme: "token"`, §3.2.1), pasted into the app,
+obtained from another client. (A QR scanner was removed until apron-web can show one.) This works today with no server changes:
 the web client has a "sign in with a token the server gave you" mode, the public demo issues
 tokens through `/invite-bot` (a bot identity), and the protocol allows a command that issues
 more tokens. The Rust server's `/invite-device <name>` (after apron-server-cloudflare's) mints a

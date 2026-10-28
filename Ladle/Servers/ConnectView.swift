@@ -19,7 +19,6 @@ struct ConnectView: View {
     @State private var email = ""
     @State private var code = ""
     @State private var guestName = ""
-    @State private var scanning = false
     @State private var working = false
     @State private var error: String?
     @State private var session: ServerSession?
@@ -119,13 +118,6 @@ struct ConnectView: View {
                     if working { ProgressView() } else { Button(submitLabel) { submit() }.disabled(!canSubmit).fontWeight(.semibold) }
                 }
             }
-            .sheet(isPresented: $scanning) {
-                QRScannerView { scanned in
-                    scanning = false
-                    accept(scanned)
-                }
-                .ignoresSafeArea()
-            }
             .onAppear(perform: load)
             .onChange(of: methods) { _, offered in if !offered.contains(method), let first = offered.first { method = first } }
         }
@@ -150,10 +142,6 @@ struct ConnectView: View {
                     PasteButton(payloadType: String.self) { strings in if let first = strings.first { accept(first) } }
                         .labelStyle(.titleAndIcon)
                         .buttonBorderShape(.capsule)
-                    if QRScannerView.isAvailable {
-                        Button("Scan QR Code", systemImage: "qrcode.viewfinder") { scanning = true }
-                            .buttonStyle(GhostButtonStyle(tone: Palette.accent))
-                    }
                 }
             }
         case .email:
