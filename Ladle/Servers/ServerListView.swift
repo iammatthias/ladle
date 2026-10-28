@@ -36,18 +36,14 @@ struct ServerListView: View {
                     }
                 }
             } header: {
-                SectionHead(title: "Servers").textCase(nil)
+                if !store.records.isEmpty { SectionHead(title: "Servers").textCase(nil) }
             }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Palette.chrome)
         .overlay {
-            if store.records.isEmpty {
-                EmptyState(title: "No servers yet", detail: "Add an Apron server by its address, then sign in with a token, an email code, or as a guest.") {
-                    Button("Add Server") { connecting = ConnectRequest() }.buttonStyle(PrimaryButtonStyle())
-                }
-            }
+            if store.records.isEmpty { NoServers(connecting: $connecting) }
         }
         .navigationTitle("Servers")
         .navigationBarTitleDisplayMode(.inline)
@@ -171,6 +167,33 @@ struct ServerRail: View {
                              session.status == .signedIn ? nil : ConnectionState(session.status)?.title(record)]
             .compactMap { $0 }.joined(separator: ", "))
         .accessibilityAddTraits(active ? .isSelected : [])
+    }
+}
+
+/// The first run: Ladle runs no server, so it points at the Apron project's demo server (in the
+/// Add Server sheet) and at hosting your own.
+struct NoServers: View {
+    @Binding var connecting: ConnectRequest?
+
+    var body: some View {
+        EmptyState(title: "No servers yet", detail: "Ladle connects to Apron chat servers. Try the public demo server run by the Apron project, or host your own.") {
+            VStack(spacing: Tokens.Space.s1) {
+                Button("Add Server") { connecting = ConnectRequest() }.buttonStyle(PrimaryButtonStyle())
+                HostYourOwnLink()
+            }
+        }
+    }
+}
+
+/// Where the Apron project's own server lives, for running one.
+struct HostYourOwnLink: View {
+    var body: some View {
+        Link(destination: OfficialServer.selfHosting) {
+            Label("Host Your Own Server", systemImage: "arrow.up.right")
+                .labelStyle(.titleAndIcon)
+        }
+        .buttonStyle(GhostButtonStyle(tone: Palette.denim))
+        .accessibilityHint("Opens the Apron server project on GitHub")
     }
 }
 
