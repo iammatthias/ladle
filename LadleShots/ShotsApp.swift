@@ -1,11 +1,11 @@
 import ApronKit
-import GameController
 import SwiftUI
 import UIKit
 
 /// The design-review renderer. With `LADLE_SHOTS_DIR` set, it seeds `PreviewFixtures`, renders
-/// every direction's four screens in light and dark plus one accessibility-size timeline, writes
-/// a PNG per shot and `contrast.json`, and quits. AGENTS.md, "Design review", has the commands.
+/// each screen the web-parity pairs compare at iPhone size (390x844) in dark and light, the
+/// timeline at AX3, and the iPad split view (1180x820) in dark and light, writes a PNG per shot
+/// and `contrast.json`, and quits. AGENTS.md, "Design review", has the commands.
 @main
 struct ShotsApp: App {
     @State private var shot = AnyView(Color.clear)
@@ -18,12 +18,13 @@ struct ShotsApp: App {
 }
 
 enum Screen: String, CaseIterable {
-    case servers, rooms, timeline, composer
+    case servers, connect, rooms, timeline, mention, members, reaction, ipad
 }
 
 @MainActor
 enum Renderer {
-    static let size = CGSize(width: 393, height: 852)
+    static let phone = CGSize(width: 390, height: 844)
+    static let pad = CGSize(width: 1180, height: 820)
 
     static func run(show: (AnyView) -> Void) async {
         guard let path = ProcessInfo.processInfo.environment["LADLE_SHOTS_DIR"],
@@ -31,63 +32,68 @@ enum Renderer {
         else { return }
         let directory = URL(fileURLWithPath: path)
         try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        scene.sizeRestrictions?.minimumSize = size
-        scene.sizeRestrictions?.maximumSize = size
         scene.titlebar?.titleVisibility = .hidden
         scene.titlebar?.toolbar = nil
+        Appearance.apply()
 
-        // The Pass hint line shows only with a hardware keyboard, which connects after launch.
-        for _ in 0 ..< 20 where GCKeyboard.coalesced == nil {
-            try? await Task.sleep(for: .milliseconds(50))
-        }
         let store = await PreviewFixtures.makeStore()
-        guard let home = store.session(for: PreviewFixtures.homeID),
-              let target = home.store.message(PreviewFixtures.replyTargetID)
-        else { exit(1) }
+        guard let home = store.session(for: PreviewFixtures.homeID) else { exit(1) }
 
-        var shots: [(direction: Direction, screen: Screen, style: UIUserInterfaceStyle, large: Bool)] = []
-        for direction in Direction.allCases {
-            for screen in Screen.allCases {
-                shots.append((direction, screen, .light, false))
-                shots.append((direction, screen, .dark, false))
-            }
-            shots.append((direction, .timeline, .light, true))
+        var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool)] = []
+        for screen in Screen.allCases {
+            shots.append((screen, .dark, false))
+            shots.append((screen, .light, false))
         }
+        shots.append((.timeline, .dark, true))
 
         for shot in shots {
-            var theme = Theme.of(shot.direction)
-            theme.fixedTypeSize = shot.large ? .accessibility3 : .large
-            theme.applyNavigationAppearance()
+            let size = shot.screen == .ipad ? pad : phone
+            scene.sizeRestrictions?.minimumSize = .zero
+            scene.sizeRestrictions?.maximumSize = size
+            scene.sizeRestrictions?.minimumSize = size
             scene.windows.first?.overrideUserInterfaceStyle = shot.style
-            let root: AnyView = switch shot.screen {
-            case .servers:
-                AnyView(ServerListView(store: store))
-            case .rooms:
-                AnyView(NavigationStack { RoomListView(session: home) })
-            case .timeline:
-                AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID) })
-            case .composer:
-                AnyView(NavigationStack {
-                    TimelineView(session: home, roomID: PreviewFixtures.busyRoomID,
-                                 draft: Draft(mode: .reply(target), text: "Looking now. Is it the bowl-only glyph?"))
-                })
-            }
-            show(AnyView(root
-                .themed(theme)
+            show(AnyView(view(shot.screen, store: store, home: home)
+                .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
                 .dynamicTypeSize(shot.large ? .accessibility3 : .large)
+                .apronStyle()
                 .id(UUID())))
-            try? await Task.sleep(for: .milliseconds(1500))
-            let name = "\(shot.direction.rawValue)-\(shot.screen.rawValue)-\(shot.large ? "large" : shot.style == .dark ? "dark" : "light").png"
+            try? await Task.sleep(for: .milliseconds(shot.screen == .ipad ? 2500 : 1500))
+            let name = "ladle-\(shot.screen.rawValue)-\(shot.large ? "ax3" : shot.style == .dark ? "dark" : "light").png"
             capture(scene, to: directory.appending(path: name))
         }
         writeContrast(to: directory.appending(path: "contrast.json"))
         exit(0)
     }
 
+    static func view(_ screen: Screen, store: SessionStore, home: ServerSession) -> AnyView {
+        switch screen {
+        case .servers:
+            AnyView(NavigationStack { ServerListView(store: store, open: { _ in }, connecting: .constant(nil)) })
+        case .connect:
+            AnyView(ConnectView(store: store, prefill: TokenPayload(token: "", server: URL(string: "wss://chat.example/ws"))))
+        case .rooms:
+            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
+        case .timeline:
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID) })
+        case .mention:
+            AnyView(NavigationStack {
+                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, draft: Draft(text: "Thanks @"))
+            })
+        case .members:
+            AnyView(NavigationStack { MemberList(session: home, roomID: PreviewFixtures.busyRoomID) })
+        case .reaction:
+            AnyView(ReactionPicker { _ in })
+        case .ipad:
+            AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
+                                roomID: .constant(PreviewFixtures.busyRoomID), connecting: .constant(nil)))
+        }
+    }
+
     static func capture(_ scene: UIWindowScene, to url: URL) {
         guard let window = scene.windows.first else { return }
+        window.makeKey()
         let format = UIGraphicsImageRendererFormat()
-        format.scale = 3
+        format.scale = 2
         format.opaque = true
         let image = UIGraphicsImageRenderer(bounds: window.bounds, format: format).image { _ in
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
@@ -95,8 +101,17 @@ enum Renderer {
         try? image.pngData()?.write(to: url)
     }
 
-    /// WCAG 2 contrast of every text-bearing token pair, per direction and appearance.
+    /// WCAG 2 contrast of the text tokens on the grounds they sit on, per theme.
     static func writeContrast(to url: URL) {
+        typealias C = Tokens.Color
+        let pairs: [(String, Themed<RGBA>, Themed<RGBA>)] = [
+            ("ink on timeline", C.ink, C.bg100), ("ink-muted on timeline", C.inkMuted, C.bg100),
+            ("ink-muted on chrome", C.inkMuted, C.bg000), ("ink on raised", C.ink, C.bg200),
+            ("on-accent on accent", C.onAccent, C.accent), ("accent on timeline", C.accent, C.bg100),
+            ("denim on denim-soft", C.denim, C.denimSoft), ("denim on timeline", C.denim, C.bg100),
+            ("ink on accent-soft", C.ink, C.accentSoft), ("private on private-soft", C.private, C.privateSoft),
+            ("danger on timeline", C.danger, C.bg100),
+        ]
         func luminance(_ rgb: UInt32) -> Double {
             func channel(_ value: UInt32) -> Double {
                 let c = Double(value & 0xFF) / 255
@@ -104,22 +119,13 @@ enum Renderer {
             }
             return 0.2126 * channel(rgb >> 16) + 0.7152 * channel(rgb >> 8) + 0.0722 * channel(rgb)
         }
-        func ratio(_ a: UInt32, _ b: UInt32) -> Double {
-            let (l1, l2) = (luminance(a), luminance(b))
-            return (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05)
+        func ratio(_ a: RGBA, _ b: RGBA) -> String {
+            let (l1, l2) = (luminance(a.rgb), luminance(b.rgb))
+            return String(format: "%.2f", (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05))
         }
-        var report: [String: JSONValue] = [:]
-        for direction in Direction.allCases {
-            var pairs: [JSONValue] = []
-            for pair in Theme.of(direction).palette.textPairs {
-                pairs.append([
-                    "pair": .string(pair.name),
-                    "light": .number(String(format: "%.2f", ratio(pair.foreground.light, pair.background.light))),
-                    "dark": .number(String(format: "%.2f", ratio(pair.foreground.dark, pair.background.dark))),
-                ])
-            }
-            report[direction.rawValue] = .array(pairs)
+        let report: [JSONValue] = pairs.map { name, text, ground in
+            ["pair": .string(name), "dark": .number(ratio(text.dark, ground.dark)), "light": .number(ratio(text.light, ground.light))]
         }
-        try? JSONValue.object(report).serializedData().write(to: url)
+        try? JSONValue.array(report).serializedData().write(to: url)
     }
 }

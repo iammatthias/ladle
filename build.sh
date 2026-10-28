@@ -4,7 +4,7 @@
 # "Ladle iPhone" device if it exists, else set DEST. A build with no simulator runtime falls
 # back to the generic iOS Simulator destination.
 # `test` also checks that Ladle/Design/Tokens.swift matches apron-web at the pinned commit.
-# `shots <dir>` builds the LadleShots Mac Catalyst renderer and writes the design-review PNGs
+# `shots <dir>` builds the LadleShots Mac Catalyst renderer and writes the web-parity PNGs
 # and contrast.json to <dir>; it needs no simulator.
 set -o pipefail
 cd "$(dirname "$0")"

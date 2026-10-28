@@ -1,161 +1,266 @@
 import ApronKit
 import SwiftUI
 
-/// A room's messages, oldest first, paging back as the top comes into view.
+/// A room's messages, oldest first, paging back as the top comes into view. The web's timeline:
+/// day pills, the New line in denim, thread cards where each thread began, room notices as
+/// callouts, and queued messages at the end. Problems show inline, never as alerts.
 struct TimelineView: View {
     let session: ServerSession
     let roomID: String
     @State private var draft: Draft
-    @State private var error: String?
+    @State private var problem: String?
     @State private var reacting: MessageSnapshot?
-    @Environment(\.theme) private var theme
+    @State private var deleting: MessageSnapshot?
+    @State private var leaving = false
+    @State private var showingMembers = false
+    @State private var atBottom = true
+    @State private var jumpTarget: String?
+    @State private var sentCount = 0
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.openRoom) private var openRoom
 
-    init(session: ServerSession, roomID: String, draft: Draft = Draft()) {
+    init(session: ServerSession, roomID: String, draft: Draft = Draft(), showingMembers: Bool = false) {
         self.session = session
         self.roomID = roomID
         _draft = State(initialValue: draft)
+        _showingMembers = State(initialValue: showingMembers)
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 0) {
-                if session.histories[roomID]?.canLoadOlder == true {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .task(id: session.timeline(roomID).count) {
-                            do { try await session.loadOlder(roomID) } catch { self.error = errorText(error) }
-                        }
-                }
-                ForEach(session.timelineItems(roomID)) { item in
-                    row(item)
-                }
-            }
-            .padding(.horizontal, theme.layout == .dense ? 12 : 16)
-            .padding(.vertical, 12)
-        }
-        .defaultScrollAnchor(.bottom)
-        .background(theme.palette.background.color)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            VStack(spacing: 0) {
-                if theme.direction == .enamel {
-                    RoomSwitcher(session: session, current: roomID)
-                }
-                ComposerView(session: session, draft: $draft) { text in
-                    let draft = self.draft
-                    self.draft = Draft()
-                    perform {
-                        switch draft.mode {
-                        case .new: try await session.send(text, in: roomID)
-                        case .reply(let target): try await session.send(text, in: roomID, replyTo: target.messageID)
-                        case .edit(let target): try await session.edit(target, text: text)
-                        }
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    if session.histories[roomID]?.canLoadOlder == true {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget)
+                            .task(id: session.timeline(roomID).count) {
+                                do { try await session.loadOlder(roomID) } catch { problem = errorText(error) }
+                            }
                     }
+                    ForEach(session.timelineItems(roomID)) { item in
+                        row(item).id(item.id)
+                    }
+                    ForEach(Array(session.notices.enumerated()).filter { $0.element.roomID == roomID }, id: \.offset) { _, notice in
+                        Callout(title: noticeTitle(notice)) { Text(rendered(notice.body)) }
+                            .padding(.horizontal, Tokens.Space.s4)
+                            .padding(.top, Tokens.Space.s3)
+                    }
+                    Color.clear.frame(height: Tokens.Space.s3).id("bottom")
                 }
             }
-        }
-        .background {
-            Button("Reply to Last Message") {
-                if let last = session.timeline(roomID).last(where: { !$0.isTombstone && $0.from.userID != session.you?.userID }) {
-                    draft = Draft(mode: .reply(last))
+            .defaultScrollAnchor(.bottom)
+            .scrollDismissesKeyboard(.interactively)
+            .onScrollGeometryChange(for: Bool.self) { geometry in
+                geometry.visibleRect.maxY >= geometry.contentSize.height - 80
+            } action: { _, bottom in
+                atBottom = bottom
+            }
+            .onChange(of: jumpTarget) {
+                guard let jumpTarget else { return }
+                withAnimation(Motion.slide(reduceMotion)) { proxy.scrollTo(jumpTarget, anchor: .center) }
+                self.jumpTarget = nil
+            }
+            .overlay(alignment: .bottom) {
+                if !atBottom, session.unreadCount(in: roomID) > 0 {
+                    JumpBar(count: session.unreadCount(in: roomID), mentions: session.mentionCount(in: roomID)) {
+                        withAnimation(Motion.slide(reduceMotion)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                    }
+                    .padding(.bottom, Tokens.Space.s2)
+                    .transition(.opacity)
                 }
             }
-            .keyboardShortcut("r", modifiers: .command)
-            .opacity(0)
-            .accessibilityHidden(true)
+            .safeAreaInset(edge: .top, spacing: 0) { banner }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                ComposerView(session: session, roomID: roomID, draft: $draft, onSend: send)
+                    .background(Palette.timeline)
+            }
         }
+        .background(Palette.timeline)
+        .sensoryFeedback(.impact(weight: .light), trigger: sentCount)
         .navigationTitle(session.title(of: roomID))
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if session.status == .signedIn, session.server?.has("rooms") == true {
-                Menu("Room", systemImage: "ellipsis") {
-                    if session.joinedRoomIDs.contains(roomID) {
-                        Button("Leave", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) {
-                            perform { try await session.leave(roomID) }
-                        }
-                    } else {
-                        Button("Join", systemImage: "plus.circle") { perform { try await session.join(roomID) } }
-                    }
-                }
+        .toolbar { toolbar }
+        .sheet(item: $reacting) { message in
+            ReactionPicker { emoji in
+                reacting = nil
+                perform { try await session.toggleReaction(emoji, on: message.messageID) }
             }
         }
-        .confirmationDialog("React", isPresented: Binding(get: { reacting != nil }, set: { if !$0 { reacting = nil } })) {
-            ForEach(Self.quickReactions, id: \.self) { emoji in
-                Button(emoji) {
-                    if let message = reacting { perform { try await session.toggleReaction(emoji, on: message.messageID) } }
-                }
-            }
+        .modifier(MembersPresentation(session: session, roomID: roomID, showing: $showingMembers, compact: sizeClass == .compact))
+        .confirmationDialog("Delete this message?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
+                            titleVisibility: .visible, presenting: deleting) { message in
+            Button("Delete Message", role: .destructive) { perform { try await session.delete(message) } }
+        } message: { _ in
+            Text("It is removed for everyone in the room.")
         }
-        .alert("Something went wrong", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
-            Button("OK") {}
+        .confirmationDialog("Leave \(session.title(of: roomID))?", isPresented: $leaving, titleVisibility: .visible) {
+            Button("Leave", role: .destructive) { perform { try await session.leave(roomID) } }
         } message: {
-            Text(error ?? "")
+            Text(session.isPrivate(roomID) ? "It is private, so you need an invitation to come back." : "You can join it again from Browse Rooms.")
         }
         .task(id: session.status) {
             guard session.status == .signedIn else { return }
-            do { try await session.open(roomID) } catch { self.error = errorText(error) }
+            do { try await session.open(roomID) } catch { problem = errorText(error) }
         }
     }
 
-    static let quickReactions = ["👍", "❤️", "😂", "🎉", "👀", "🙏"]
+    @ToolbarContentBuilder
+    private var toolbar: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            HStack(spacing: Tokens.Space.s1) {
+                if session.isPrivate(roomID) { Lock() }
+                Text(session.title(of: roomID)).font(.headline).foregroundStyle(Palette.ink).lineLimit(1)
+            }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+        }
+        ToolbarItemGroup(placement: .primaryAction) {
+            Button("Members", systemImage: "person.2") { showingMembers.toggle() }
+                .keyboardShortcut("m", modifiers: [.command, .shift])
+            if session.status == .signedIn, session.server?.has("rooms") == true {
+                Menu("Room", systemImage: "ellipsis") {
+                    if session.joinedRoomIDs.contains(roomID) {
+                        Button("Leave Room", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leaving = true }
+                    } else {
+                        Button("Join Room", systemImage: "plus.circle") { perform { try await session.join(roomID) } }
+                    }
+                }
+            }
+        }
+    }
+
+    /// Connection state (UX spec 4.1) and the last failure, under the navigation bar.
+    @ViewBuilder
+    private var banner: some View {
+        let state = ConnectionState(session.status)
+        VStack(spacing: Tokens.Space.s2) {
+            if let state, state.isProblem {
+                ActionBanner(symbol: state.symbol, title: state.title(session.record), detail: state.detail) {
+                    if state.canRetry { Button("Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
+                }
+            } else if let state {
+                Label(state.title(session.record), systemImage: state.symbol)
+                    .apText(.sm, .medium)
+                    .foregroundStyle(Palette.ink)
+                    .padding(.horizontal, Tokens.Space.s3)
+                    .padding(.vertical, 3)
+                    .background(Palette.raised, in: Capsule())
+                    .overlay(Capsule().strokeBorder(Palette.line))
+            }
+            if let problem {
+                ActionBanner(symbol: "exclamationmark.triangle", title: problem, tone: Palette.danger) {
+                    Button("Dismiss", systemImage: "xmark") { self.problem = nil }
+                        .labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
+                }
+                .task(id: problem) {
+                    try? await Task.sleep(for: .seconds(6))
+                    self.problem = nil
+                }
+            }
+        }
+        .padding(.horizontal, Tokens.Space.s4)
+        .padding(.top, state == nil && problem == nil ? 0 : Tokens.Space.s2)
+    }
 
     @ViewBuilder
     private func row(_ item: TimelineItem) -> some View {
         switch item {
         case .message(let message, let continues):
-            MessageRow(session: session, message: message, continues: continues) { emoji in
-                perform { try await session.toggleReaction(emoji, on: message.messageID) }
-            }
-            .padding(.top, continues ? theme.runSpacing : theme.groupSpacing)
-            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 12))
-            .contextMenu { actions(for: message) }
-            .modifier(SwipeToReply(enabled: theme.direction == .mise && !message.isTombstone) {
-                draft = Draft(mode: .reply(message))
-            })
+            MessageRow(session: session, message: message, continues: continues,
+                       onReact: { emoji in perform { try await session.toggleReaction(emoji, on: message.messageID) } },
+                       onAddReaction: { reacting = message },
+                       onJump: { jumpTarget = $0.text })
+                .padding(.horizontal, Tokens.Space.s2)
+                .padding(.top, continues ? 0 : Tokens.Space.s3)
+                .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Tokens.Radius.md))
+                .contextMenu { actions(for: message) }
+                .accessibilityActions { actions(for: message) }
+        case .day(let date):
+            TimelineDivider(kind: .day, label: dayLabel(date))
+                .padding(.top, Tokens.Space.s6)
+                .padding(.bottom, Tokens.Space.s2)
         case .unreadLine:
-            UnreadLine()
-                .padding(.top, theme.groupSpacing)
+            TimelineDivider(kind: .new, label: "New")
+                .padding(.horizontal, Tokens.Space.s4)
+                .padding(.top, Tokens.Space.s6)
+                .padding(.bottom, Tokens.Space.s2)
         case .thread(let threadID):
-            NavigationLink(value: threadID) {
-                ThreadCard(session: session, threadID: threadID)
-            }
-            .buttonStyle(.plain)
-            .padding(.top, theme.groupSpacing)
+            Button { openRoom(threadID) } label: { ThreadCard(session: session, threadID: threadID) }
+                .buttonStyle(.plain)
+                .padding(.leading, Tokens.Space.s4 + Tokens.AvatarSize.md + Tokens.Space.s3)
+                .padding(.trailing, Tokens.Space.s4)
+                .padding(.top, Tokens.Space.s2)
+        case .pending(let pending):
+            PendingRow(session: session, pending: pending)
+                .padding(.horizontal, Tokens.Space.s4)
+                .padding(.top, Tokens.Space.s3)
         }
     }
 
     @ViewBuilder
     private func actions(for message: MessageSnapshot) -> some View {
-        if !message.isTombstone, session.status == .signedIn {
-            if session.server?.has("reactions") == true {
+        if !message.isTombstone {
+            if session.status == .signedIn, session.server?.has("reactions") == true {
                 ControlGroup {
-                    ForEach(Self.quickReactions.prefix(4), id: \.self) { emoji in
+                    ForEach(ReactionPicker.quick.prefix(4), id: \.self) { emoji in
                         Button(emoji) { perform { try await session.toggleReaction(emoji, on: message.messageID) } }
                     }
+                    Button("More Reactions", systemImage: "face.smiling") { reacting = message }
                 }
                 .controlGroupStyle(.compactMenu)
             }
             Button("Reply", systemImage: "arrowshape.turn.up.left") { draft = Draft(mode: .reply(message)) }
-            if session.server?.has("reactions") == true {
-                Button("More Reactions", systemImage: "face.smiling") { reacting = message }
-            }
-            Button("Copy", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.plainText }
-            if message.from.userID == session.you?.userID, session.server?.has("edit") == true {
-                Button("Edit", systemImage: "pencil") {
-                    draft = Draft(mode: .edit(message), text: message.plainText)
-                }
-                Button("Delete", systemImage: "trash", role: .destructive) { perform { try await session.delete(message) } }
+            Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.plainText }
+            if session.status == .signedIn, message.from.userID == session.you?.userID, session.server?.has("edit") == true {
+                Button("Edit", systemImage: "pencil") { draft = Draft(mode: .edit(message), text: message.plainText) }
+                Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
             }
         }
+    }
+
+    private func send(_ text: String, mentions: [String]) {
+        let mode = draft.mode
+        draft = Draft()
+        sentCount += 1
+        switch mode {
+        case .new, .reply:
+            var replyTo: LogID?
+            if case .reply(let target) = mode { replyTo = target.messageID }
+            if ServerSession.Draft(text: text).isCommand {
+                perform { try await session.send(text, in: roomID, replyTo: replyTo, mentions: mentions) }
+            } else {
+                session.post(text, in: roomID, replyTo: replyTo, mentions: mentions)
+            }
+        case .edit(let target):
+            perform { try await session.edit(target, text: text) }
+        }
+    }
+
+    private func noticeTitle(_ notice: Notice) -> String? {
+        switch notice.from.userID {
+        case "~private": "Only you can see this"
+        case "~room": nil
+        case "~server": session.record.label
+        default: session.displayName(for: notice.from)
+        }
+    }
+
+    private func dayLabel(_ date: Date) -> String {
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) { return "Today" }
+        if calendar.isDateInYesterday(date) { return "Yesterday" }
+        return date.formatted(.dateTime.weekday(.wide).month(.wide).day())
     }
 
     private func perform(_ operation: @escaping () async throws -> Void) {
         Task {
-            do { try await operation() } catch { self.error = errorText(error) }
+            do { try await operation() } catch { problem = errorText(error) }
         }
     }
 }
 
-/// What the composer is writing: a new message, a reply, or an edit.
+/// What the composer is writing: a new message, a reply, or an edit, and who it mentions.
 struct Draft {
     enum Mode {
         case new
@@ -165,178 +270,206 @@ struct Draft {
 
     var mode = Mode.new
     var text = ""
+    /// Users picked from the mention list, by `user_id`, with the name inserted for each.
+    var mentions: [String: String] = [:]
 }
 
-/// Mise: drag a message right past a threshold to reply. One light impact marks the threshold;
-/// the context menu's Reply stays as the non-gesture path.
-private struct SwipeToReply: ViewModifier {
-    let enabled: Bool
-    let reply: () -> Void
-    @State private var offset: CGFloat = 0
-    @Environment(\.theme) private var theme
-    private let threshold: CGFloat = 64
+extension MessageSnapshot: @retroactive Identifiable {
+    public var id: String { messageID.text }
+}
+
+/// The member list: a sheet on iPhone, as the web's overlay under 960 px; the inspector column
+/// on iPad, as the web's own column at 960 px and wider. Only one is attached, so the
+/// inspector's toolbar never lands in an iPhone navigation bar.
+private struct MembersPresentation: ViewModifier {
+    let session: ServerSession
+    let roomID: String
+    @Binding var showing: Bool
+    let compact: Bool
 
     func body(content: Content) -> some View {
-        if enabled {
-            content
-                .offset(x: offset)
-                .background(alignment: .leading) {
-                    Image(systemName: "arrowshape.turn.up.left.fill")
-                        .foregroundStyle(theme.palette.accent.color)
-                        .opacity(Double(min(offset / threshold, 1)))
-                        .padding(.leading, 4)
-                }
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 20)
-                        .onChanged { value in
-                            guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                            offset = min(max(0, value.translation.width), threshold * 1.4)
-                        }
-                        .onEnded { _ in
-                            if offset >= threshold { reply() }
-                            withAnimation(.spring(duration: 0.3)) { offset = 0 }
-                        }
-                )
-                .sensoryFeedback(.impact(weight: .light), trigger: offset >= threshold) { _, crossed in crossed }
+        if compact {
+            content.sheet(isPresented: $showing) {
+                NavigationStack { MemberList(session: session, roomID: roomID) }
+                    .presentationDetents([.medium, .large])
+                    .presentationBackground(Palette.chrome)
+            }
         } else {
-            content
+            content.inspector(isPresented: $showing) {
+                MemberList(session: session, roomID: roomID).inspectorColumnWidth(Tokens.Size.memberListW)
+            }
         }
     }
 }
 
-/// The read line: the first message from someone else after this user's read cursor.
-private struct UnreadLine: View {
-    @Environment(\.theme) private var theme
+/// The web's JumpBar: new messages below, and the way back to them.
+struct JumpBar: View {
+    let count: Int
+    let mentions: Int
+    let jump: () -> Void
 
     var body: some View {
-        HStack(spacing: 8) {
-            Rectangle().fill(theme.palette.accent.color).frame(height: 1)
-            Text("New")
-                .font(theme.font(.caption, theme.metaFace, weight: .bold))
-                .textCase(.uppercase)
-                .foregroundStyle(theme.palette.accent.color)
-            Rectangle().fill(theme.palette.accent.color).frame(height: 1)
+        Button(action: jump) {
+            HStack(spacing: Tokens.Space.s3) {
+                Text(mentions > 0 ? "\(count) new, \(mentions) mention\(mentions == 1 ? "" : "s") of you" : "\(count) new message\(count == 1 ? "" : "s")")
+                    .foregroundStyle(Palette.inkMuted)
+                Text("Jump").fontWeight(.semibold).foregroundStyle(Palette.denim)
+            }
+            .apText(.ui)
+            .padding(.leading, Tokens.Space.s3)
+            .padding(.trailing, Tokens.Space.s3)
+            .frame(minHeight: Tokens.Control.md + Tokens.Space.s2)
+            .background(Palette.raised, in: Capsule())
+            .overlay(Capsule().strokeBorder(mentions > 0 ? Palette.accent : Palette.line))
+            .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+            .touchTarget()
         }
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("New messages")
+        .buttonStyle(.plain)
+        .accessibilityHint("Scrolls to the newest messages")
     }
 }
 
-/// A thread opened from this room: its title, message count, and new messages.
-private struct ThreadCard: View {
+/// The web's ThreadMarker: a denim card at the point the thread began, with who is in it, its
+/// unread count and last time, its description and its latest line.
+struct ThreadCard: View {
     let session: ServerSession
     let threadID: String
-    @Environment(\.theme) private var theme
 
     var body: some View {
-        let palette = theme.palette
-        let count = session.timeline(threadID).count
+        let messages = session.timeline(threadID).filter { !$0.isTombstone }
+        let last = messages.last
         let unread = session.unreadCount(in: threadID)
-        let last = session.lastMessage(in: threadID)
-        let summary = [
-            "\(count) \(count == 1 ? "message" : "messages")",
-            unread > 0 ? "\(unread) new" : nil,
-            last.map { "last from \(session.displayName(for: $0.from))" },
-        ].compactMap { $0 }.joined(separator: " · ")
-        switch theme.layout {
-        case .dense:
-            HStack(spacing: 6) {
-                Image(systemName: "number")
-                Text(session.title(of: threadID)).fontWeight(.bold)
-                Text(summary).foregroundStyle(palette.secondary.color).lineLimit(1)
-                Spacer(minLength: 0)
-                Image(systemName: "chevron.right").foregroundStyle(palette.secondary.color)
-            }
-            .font(theme.font(.footnote, .mono))
-            .foregroundStyle(palette.accent.color)
-            .frame(minHeight: 44)
-            .padding(.horizontal, 10)
-            .background(palette.surface.color, in: RoundedRectangle(cornerRadius: 6))
-        default:
-            HStack(spacing: 12) {
-                Image(systemName: "bubble.left.and.text.bubble.right")
-                    .font(.title3)
-                    .foregroundStyle(palette.accent.color)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(session.title(of: threadID))
-                        .font(theme.font(.headline, theme.titleFace, weight: .semibold))
-                        .foregroundStyle(palette.text.color)
-                    Text(summary)
-                        .font(theme.font(.footnote))
-                        .foregroundStyle(palette.secondary.color)
-                }
-                Spacer(minLength: 0)
-                if unread > 0 {
-                    UnreadBadge(count: unread)
-                }
-                Image(systemName: "chevron.right")
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(palette.secondary.color)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 12)
-            .frame(minHeight: 44)
-            .background(palette.surface.color, in: RoundedRectangle(cornerRadius: theme.layout == .bubbles ? 22 : 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: theme.layout == .bubbles ? 22 : 12, style: .continuous).strokeBorder(palette.separator.color))
-        }
-    }
-}
-
-/// Enamel: the joined rooms of this server as a strip just above the composer, within thumb
-/// reach. Unread rooms show their count; the current room is marked with a check and a fill.
-private struct RoomSwitcher: View {
-    let session: ServerSession
-    let current: String
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        let palette = theme.palette
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    ForEach(session.roomTree.flatMap { [$0.roomID] + $0.threadIDs }, id: \.self) { roomID in
-                        let selected = roomID == current
-                        let unread = session.unreadCount(in: roomID)
-                        NavigationLink(value: roomID) {
-                            HStack(spacing: 6) {
-                                if selected { Image(systemName: "checkmark") }
-                                Text(session.title(of: roomID)).lineLimit(1)
-                                if unread > 0 { Text("\(unread)").fontWeight(.bold).monospacedDigit() }
-                            }
-                            .font(theme.font(.subheadline, weight: selected || unread > 0 ? .semibold : .regular))
-                            .foregroundStyle(selected ? palette.onAccent.color : palette.text.color)
-                            .padding(.horizontal, 14)
-                            .frame(minHeight: 44)
-                            .background(selected ? palette.accent.color : palette.surface.color, in: Capsule())
-                            .overlay(Capsule().strokeBorder(palette.separator.color, lineWidth: selected ? 0 : 1))
-                        }
-                        .buttonStyle(.plain)
-                        .allowsHitTesting(!selected)
-                        .id(roomID)
-                        .accessibilityAddTraits(selected ? .isSelected : [])
-                        .accessibilityLabel(session.title(of: roomID) + (unread > 0 ? ", \(unread) new" : ""))
+        let faces = Array(NSOrderedSet(array: messages.reversed().map(\.from.userID)).array.compactMap { $0 as? String }.prefix(3))
+        let ground = session.isPrivate(threadID) ? Palette.privateSoft : Palette.denimSoft
+        VStack(alignment: .leading, spacing: Tokens.Space.s0_5) {
+            HStack(spacing: Tokens.Space.s2) {
+                HStack(spacing: -6) {
+                    ForEach(faces, id: \.self) { id in
+                        let name = session.users.user(id).flatMap(UserObject.init).map(session.displayName(for:)) ?? id
+                        Avatar(name: name, userID: id, size: .sm).overlay(Circle().stroke(ground, lineWidth: 2))
                     }
                 }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                if session.isPrivate(threadID) { Lock() }
+                Text(session.title(of: threadID)).fontWeight(.semibold)
+                    .foregroundStyle(session.isPrivate(threadID) ? Palette.private : Palette.denim)
+                    .lineLimit(1)
+                Spacer(minLength: Tokens.Space.s2)
+                if unread > 0 { UnreadCount(count: unread) }
+                if let last {
+                    Text(last.date, format: .dateTime.hour().minute()).apText(.sm).monospacedDigit().foregroundStyle(Palette.inkMuted)
+                }
             }
-            .onAppear { proxy.scrollTo(current, anchor: .center) }
+            if let description = session.roomDescription(threadID) {
+                Label { Text(description).lineLimit(1) } icon: { Image(systemName: "text.alignleft").foregroundStyle(Palette.inkMuted) }
+                    .foregroundStyle(Palette.ink)
+            }
+            if let last {
+                Label {
+                    Text("\(Text(session.displayName(for: last.from)).fontWeight(.semibold)) \(Text(rendered(last.body)))").lineLimit(1)
+                } icon: {
+                    Image(systemName: "arrow.turn.down.right").foregroundStyle(Palette.inkMuted)
+                }
+                .foregroundStyle(Palette.ink)
+            }
         }
-        .background(.bar)
+        .apText(.ui)
+        .labelStyle(TightLabel())
+        .padding(.top, Tokens.Space.s1)
+        .padding(.bottom, Tokens.Space.s1_5)
+        .padding(.horizontal, Tokens.Space.s3)
+        .frame(maxWidth: 520, alignment: .leading)
+        .frame(minHeight: Tokens.Size.touchTarget)
+        .background(ground, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Thread \(session.title(of: threadID))" + (unread > 0 ? ", \(unread) new" : ""))
+        .accessibilityHint("Opens the thread")
     }
 }
 
-struct UnreadBadge: View {
-    let count: Int
-    @Environment(\.theme) private var theme
+/// A label whose icon sits close, as the web's thread lines.
+struct TightLabel: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: Tokens.Space.s1) {
+            configuration.icon.imageScale(.small)
+            configuration.title
+        }
+    }
+}
+
+/// A queued message: dimmed with "Sending…", or "Not sent" with Retry and Delete (UX spec 4.2).
+struct PendingRow: View {
+    let session: ServerSession
+    let pending: ServerSession.PendingMessage
 
     var body: some View {
-        Text("\(count)")
-            .font(theme.font(.caption, theme.metaFace, weight: .bold).monospacedDigit())
-            .foregroundStyle(theme.palette.onAccent.color)
-            .padding(.horizontal, 7)
-            .frame(minWidth: 22, minHeight: 22)
-            .background(theme.palette.accent.color, in: Capsule())
-            .accessibilityLabel("\(count) new")
+        HStack(alignment: .top, spacing: Tokens.Space.s3) {
+            if let you = session.you {
+                Avatar(name: session.displayName(for: you), userID: you.userID).padding(.top, 2)
+            }
+            VStack(alignment: .leading, spacing: Tokens.Space.s1) {
+                Text(pending.text).apText(.body).foregroundStyle(Palette.ink)
+                switch pending.state {
+                case .sending:
+                    Label("Sending…", systemImage: "clock").apText(.sm).foregroundStyle(Palette.inkMuted)
+                case .failed(let reason):
+                    Label("Not sent. \(reason)", systemImage: "exclamationmark.circle").apText(.sm).foregroundStyle(Palette.danger)
+                    HStack(spacing: Tokens.Space.s2) {
+                        Button("Retry") { session.retry(pending.id) }.buttonStyle(GhostButtonStyle(tone: Palette.accent))
+                        Button("Delete", role: .destructive) { session.discard(pending.id) }.buttonStyle(GhostButtonStyle(tone: Palette.danger))
+                    }
+                }
+            }
+        }
+        .opacity(pending.state == .sending ? Tokens.Opacity.dim : 1)
+        .accessibilityElement(children: .contain)
     }
+}
+
+/// The session's state as UX spec 4.1 shows it. Nil when live.
+struct ConnectionState {
+    let symbol: String
+    let isProblem: Bool
+    let canRetry: Bool
+    var detail: String?
+    private let words: (ServerRecord) -> String
+
+    init?(_ status: ServerSession.Status) {
+        switch status {
+        case .signedIn:
+            return nil
+        case .connecting, .signingIn:
+            (symbol, isProblem, canRetry, words) = ("arrow.triangle.2.circlepath", false, false, { _ in "Connecting…" })
+        case .reconnecting(let attempt, let delay) where attempt <= 3:
+            _ = delay
+            (symbol, isProblem, canRetry, words) = ("arrow.triangle.2.circlepath", false, false, { _ in "Reconnecting…" })
+        case .reconnecting(_, let delay):
+            let seconds = Int(delay.components.seconds) + 1
+            (symbol, isProblem, canRetry, words) = ("wifi.exclamationmark", true, true, { "Can't reach \($0.url.host() ?? $0.label). Retrying in \(seconds) s" })
+        case .offline:
+            (symbol, isProblem, canRetry, words) = ("wifi.slash", true, true, { _ in "Not connected" })
+        case .signedOut:
+            (symbol, isProblem, canRetry, words) = ("person.crop.circle.badge.exclamationmark", true, false, { "Signed out of \($0.label)" })
+            detail = "Sign in from the room list to send."
+        case .stopped(.denied(let message)):
+            (symbol, isProblem, canRetry, words) = ("hand.raised", true, true, { "\($0.url.host() ?? $0.label) refused the connection" })
+            detail = message
+        case .stopped(.rejected(let code)):
+            (symbol, isProblem, canRetry, words) = ("hand.raised", true, false, { "\($0.url.host() ?? $0.label) refused this app's origin (HTTP \(code))" })
+            detail = "Edit the server's origin to match the client that made your token."
+        }
+    }
+
+    func title(_ record: ServerRecord) -> String { words(record) }
+}
+
+extension EnvironmentValues {
+    /// Opens a room or thread in the current navigation, from a thread card or a link.
+    @Entry var openRoom = OpenRoomAction { _ in }
+}
+
+/// Opens a room by id; a struct so the environment can tell it apart from a new closure.
+struct OpenRoomAction {
+    let open: (String) -> Void
+    init(_ open: @escaping (String) -> Void) { self.open = open }
+    func callAsFunction(_ roomID: String) { open(roomID) }
 }

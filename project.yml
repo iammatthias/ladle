@@ -16,7 +16,7 @@ settings:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
     SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
-    TARGETED_DEVICE_FAMILY: "1"
+    TARGETED_DEVICE_FAMILY: "1,2"
     DEVELOPMENT_TEAM: MP92RCAPRG
     MARKETING_VERSION: "0.1"
     CURRENT_PROJECT_VERSION: "1"
@@ -29,6 +29,15 @@ targets:
       - path: Ladle
     dependencies:
       - package: ApronKit
+    info:
+      path: Config/Ladle-Info.plist
+      properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        # §A.4 links from other apps: apron:?server=…&room=…
+        CFBundleURLTypes:
+          - CFBundleURLName: com.iammatthias.ladle.apron
+            CFBundleURLSchemes: [apron]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.iammatthias.ladle
@@ -36,7 +45,8 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Ladle
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
-        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone: UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
+        INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad: UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight
         INFOPLIST_KEY_NSCameraUsageDescription: Ladle uses the camera to scan a sign-in QR code.
         ENABLE_PREVIEWS: YES
   # Debug-only design-review renderer: the app's views as a Mac Catalyst app that writes PNGs of

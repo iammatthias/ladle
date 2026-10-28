@@ -3,17 +3,15 @@ import SwiftUI
 
 @main
 struct LadleApp: App {
-    @State private var store: SessionStore = {
-        let store = SessionStore(serverStore: try? ServerStore.applicationSupport(), tokens: KeychainStore())
-        try? store.load()
-        return store
-    }()
-    @AppStorage("debug.direction") private var direction = Direction.mise
+    @State private var store = SessionStore(serverStore: try? ServerStore.applicationSupport(), tokens: KeychainStore())
+    @State private var loadError: String?
 
     var body: some Scene {
         WindowGroup {
-            ServerListView(store: store)
-                .themed(Theme.of(direction))
+            RootView(store: store, loadError: loadError)
+                .task {
+                    do { try store.load() } catch { loadError = error.localizedDescription }
+                }
         }
     }
 }
