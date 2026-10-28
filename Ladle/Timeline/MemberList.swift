@@ -46,7 +46,7 @@ struct MemberList: View {
         let presence = session.presence(of: person.userID) ?? .offline
         let you = person.userID == session.you?.userID
         return HStack(spacing: Tokens.Space.s2) {
-            Avatar(name: name, userID: person.userID, presence: presence, size: .sm)
+            Avatar(name: name, userID: person.userID, presence: presence, size: .sm, image: session.avatarURL(of: person.userID))
                 .opacity(offline ? Tokens.Opacity.dim : 1)
             Text(name).apText(.ui).foregroundStyle(offline ? Palette.inkMuted : Palette.ink).lineLimit(1)
             if you { Text("(you)").apText(.xs).foregroundStyle(Palette.inkMuted) }

@@ -107,6 +107,4 @@ extension MessageSnapshot {
     var mentionIDs: [String] { body?["mentions"]?.arrayValue?.compactMap(\.stringValue) ?? [] }
 
     func mentions(_ userID: String) -> Bool { mentionIDs.contains(userID) }
-
-    var embeds: [JSONValue] { body?["embeds"]?.arrayValue ?? [] }
 }

@@ -16,6 +16,7 @@ struct TimelineView: View {
     @State private var atBottom = true
     @State private var jumpTarget: String?
     @State private var sentCount = 0
+    @State private var viewing: MediaRequest?
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openRoom) private var openRoom
@@ -72,11 +73,20 @@ struct TimelineView: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) { banner }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                ComposerView(session: session, roomID: roomID, draft: $draft, onSend: send)
+                ComposerView(session: session, roomID: roomID, draft: $draft, onSend: send, onProblem: { problem = $0 })
                     .background(Palette.timeline)
             }
         }
         .background(Palette.timeline)
+        .environment(\.openMedia, OpenMediaAction { viewing = MediaRequest(id: $0) })
+        .fullScreenCover(item: $viewing) { request in
+            MediaViewer(items: session.mediaItems(in: roomID), selection: request.id)
+        }
+        .dropDestination(for: ImportedFile.self) { files, _ in
+            guard session.canAttach, !isEditing else { return false }
+            dropped(files)
+            return true
+        }
         .sensoryFeedback(.impact(weight: .light), trigger: sentCount)
         .navigationTitle(session.title(of: roomID))
         .navigationBarTitleDisplayMode(.inline)
@@ -210,7 +220,7 @@ struct TimelineView: View {
                 }
                 .controlGroupStyle(.compactMenu)
             }
-            Button("Reply", systemImage: "arrowshape.turn.up.left") { draft = Draft(mode: .reply(message)) }
+            Button("Reply", systemImage: "arrowshape.turn.up.left") { draft = Draft(mode: .reply(message), attachments: draft.attachments) }
             Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.plainText }
             if session.status == .signedIn, message.from.userID == session.you?.userID, session.server?.has("edit") == true {
                 Button("Edit", systemImage: "pencil") { draft = Draft(mode: .edit(message), text: message.plainText) }
@@ -219,7 +229,30 @@ struct TimelineView: View {
         }
     }
 
-    private func send(_ text: String, mentions: [String]) {
+    private var isEditing: Bool {
+        if case .edit = draft.mode { return true }
+        return false
+    }
+
+    /// Files dropped on the conversation join the draft, as the web's DropZone does.
+    private func dropped(_ files: [ImportedFile]) {
+        let limits = session.mediaLimits?.upload
+        for file in files {
+            let item = DraftAttachment(name: file.url.lastPathComponent, phase: .preparing)
+            draft.attachments.append(item)
+            Task {
+                do {
+                    let attachment = try await AttachmentStaging.prepare(file.url, name: item.name, contentType: nil, limits: limits)
+                    if let index = draft.attachments.firstIndex(where: { $0.id == item.id }) { draft.attachments[index].phase = .ready(attachment) }
+                } catch {
+                    draft.attachments.removeAll { $0.id == item.id }
+                    problem = "\(item.name): \(errorText(error))"
+                }
+            }
+        }
+    }
+
+    private func send(_ text: String, mentions: [String], attachments: [Attachment]) {
         let mode = draft.mode
         draft = Draft()
         sentCount += 1
@@ -228,9 +261,9 @@ struct TimelineView: View {
             var replyTo: LogID?
             if case .reply(let target) = mode { replyTo = target.messageID }
             if ServerSession.Draft(text: text).isCommand {
-                perform { try await session.send(text, in: roomID, replyTo: replyTo, mentions: mentions) }
+                perform { try await session.send(text, in: roomID, replyTo: replyTo, mentions: mentions, attachments: attachments) }
             } else {
-                session.post(text, in: roomID, replyTo: replyTo, mentions: mentions)
+                session.post(text, in: roomID, replyTo: replyTo, mentions: mentions, attachments: attachments)
             }
         case .edit(let target):
             perform { try await session.edit(target, text: text) }
@@ -272,6 +305,13 @@ struct Draft {
     var text = ""
     /// Users picked from the mention list, by `user_id`, with the name inserted for each.
     var mentions: [String: String] = [:]
+    /// Files to send with a new message or reply (§4.8.4).
+    var attachments: [DraftAttachment] = []
+}
+
+/// Which media the viewer opens at.
+struct MediaRequest: Identifiable {
+    let id: String
 }
 
 extension MessageSnapshot: @retroactive Identifiable {
@@ -346,7 +386,7 @@ struct ThreadCard: View {
                 HStack(spacing: -6) {
                     ForEach(faces, id: \.self) { id in
                         let name = session.users.user(id).flatMap(UserObject.init).map(session.displayName(for:)) ?? id
-                        Avatar(name: name, userID: id, size: .sm).overlay(Circle().stroke(ground, lineWidth: 2))
+                        Avatar(name: name, userID: id, size: .sm, image: session.avatarURL(of: id)).overlay(Circle().stroke(ground, lineWidth: 2))
                     }
                 }
                 if session.isPrivate(threadID) { Lock(tint: Palette.private) }
@@ -404,10 +444,16 @@ struct PendingRow: View {
     var body: some View {
         HStack(alignment: .top, spacing: Tokens.Space.s3) {
             if let you = session.you {
-                Avatar(name: session.displayName(for: you), userID: you.userID).padding(.top, 2)
+                Avatar(name: session.displayName(for: you), userID: you.userID, image: session.avatarURL(of: you.userID)).padding(.top, 2)
             }
             VStack(alignment: .leading, spacing: Tokens.Space.s1) {
-                Text(pending.text).apText(.body).foregroundStyle(Palette.ink)
+                if !pending.text.isEmpty {
+                    Text(pending.text).apText(.body).foregroundStyle(Palette.ink)
+                }
+                ForEach(pending.attachments) { attachment in
+                    Label(attachment.title, systemImage: attachment.isImage ? "photo" : attachment.isVideo ? "film" : attachment.isAudio ? "waveform" : "doc")
+                        .apText(.ui, .semibold).foregroundStyle(Palette.ink).lineLimit(1).truncationMode(.middle)
+                }
                 switch pending.state {
                 case .sending:
                     Label("Sending…", systemImage: "clock").apText(.sm).foregroundStyle(Palette.inkMuted)

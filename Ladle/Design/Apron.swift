@@ -40,6 +40,11 @@ enum Palette {
     static let `private` = C.private.color()
     static let privateSoft = C.privateSoft.color()
     static let scrim = C.scrim.color()
+    /// The media viewer: dark like a photo viewer whatever the theme.
+    static let viewerGround = C.viewerGround.color()
+    static let viewerInk = C.viewerInk.color()
+    static let viewerInkMuted = C.viewerInkMuted.color()
+    static let viewerControl = C.viewerControl.color()
 
     /// `--count-shade`: a quiet count keeps this much of its ground, the rest black.
     static let quietCount = Color(uiColor: UIColor { traits in

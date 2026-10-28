@@ -57,6 +57,20 @@ clone), which is only a worked example.
       `activity` (§4.6), forward only; `unreadCount(in:)` counts loaded messages from others
       after it, and is 0 without a cursor.
   - `SessionStore`: every server's session, the saved list, and account persistence.
+  - Uploads (§4.8.3, §4.8.4, §4.8.6), as apron-web does them. `Embed` parses an embed once;
+    its `upload` is pending until `url`, then an image, video or audio from `og`, or a file.
+    `MediaPolicy` loads media only from the server's own HTTP origin (from its WebSocket URL),
+    the origins `ext:media` names, and small `data:image` URLs; avatars may also be any
+    `https:` image. `MediaLimits` reads `ext:media` (apron-web EXT.md §6), which aprond does not
+    advertise, so there a 413 or 415 on the write decides. `AttachmentPreparer` re-encodes a
+    still photo as JPEG within 2048 px (or `max_side`) and 5 MB (or `max_bytes`), which drops
+    its metadata, location included; HEIC must become JPEG because servers describe only PNG,
+    JPEG, GIF and WebP as images. `prepareAvatar` crops the middle square at 512 px.
+  - `send` and `post` take attachments as `upload` embeds; `ServerSession+Uploads` writes each
+    to the `write_url` the result lists, in request order, through `Environment.writeEmbed`
+    (`EmbedWriter.live`, a URLSession `PUT`), and keeps `uploadProgress` by `embed_id`. A
+    failed write comes back as a Not sent outbox item holding the file: the write URL was
+    single-use and the server drops the embed, so Retry posts the file in a message of its own.
   - `PreviewServer` and `PreviewFixtures`: an in-memory server that answers from a script, and a
     two-server world built on it (rooms, threads, unread rooms, replies, reactions, an edit, a
     deleted message, presence). The design screenshots render from it; `PreviewFixturesTests`
@@ -73,7 +87,12 @@ clone), which is only a worked example.
   `Servers/` (the server list and iPad rail, `ConnectView`: add a server and sign in in one
   sheet), `SignIn/` (VisionKit QR scanner), `Rooms/`, `Timeline/` (messages, composer with the
   mention list, reaction picker, member list, `TimelineItems`: day pills, messages, the New
-  line, thread cards at the thread's creation position, and queued messages), `Design/`
+  line, thread cards at the thread's creation position, and queued messages; `EmbedViews`:
+  upload embeds as a picture, an inline video, an audio player, a file card that opens in
+  Quick Look, or a pending card with progress; `Attachments`: the draft's tiles, staging in
+  the temporary directory (cleared at launch), the camera; `VoiceRecorder`: voice notes as
+  `audio/mp4`), `Media/` (`MediaLoader`: images decoded at their shown size and files for Quick
+  Look, no cookies; `MediaViewer`: the room's images full screen, as the web's viewer), `Design/`
   (`Tokens.swift`, generated; `Apron`: colors by job, text roles, motion; `People`: avatars and
   StatusDot; `Components`: the web's UnreadCount, Callout, ActionBanner, EmptyState, buttons).
   `Servers/KeychainStore.swift` is the only place a secret is persisted (generic password,
@@ -146,10 +165,12 @@ never restart its services or kill its processes). Screens are reviewed on this 
 `LadleShots` is a debug-only Mac Catalyst app target built from `Ladle/` (minus `LadleApp.swift`)
 plus `LadleShots/ShotsApp.swift`. It seeds `PreviewFixtures` and renders, at 390x844 pt
 (compact width) in dark and light: the first run (no servers), the server list, Connect, the room list, the busy room, the
-mention list, the member list and the reaction picker; the busy room at AX3; and the iPad
+mention list, the member list and the reaction picker, the composer with attachments, a room
+of uploads (image, video, file, audio, pending), and the media viewer; the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
-`UIView.drawHierarchy` at 2x, writes `contrast.json` (WCAG ratios of the text tokens on their
+`UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with
+generated pictures; a video has no frame to draw, so its tile stays black), writes `contrast.json` (WCAG ratios of the text tokens on their
 grounds), and quits. `TZ=UTC` keeps the times reproducible.
 
 Limits of the Mac render, each checked on this machine:
@@ -194,7 +215,11 @@ clone. Run it before `swift test` (the gate line above does), and `./build.sh te
   default breaks saved files.
 - Apple frameworks only: Foundation, URLSession WebSockets, AuthenticationServices,
   Security, SwiftUI, Observation, Network (`NWPathMonitor` reconnects when the network
-  returns). A third-party package needs a justified entry here. None so far. No bundled fonts:
+  returns), and for attachments PhotosUI, AVFoundation, AVKit, QuickLook, ImageIO,
+  UniformTypeIdentifiers and CryptoKit (cache file names). PhotosPicker and the document
+  picker run out of process and need no usage string; the camera and the microphone (voice
+  notes) have theirs in `project.yml`. Nothing in them is a required-reason API, so
+  `PrivacyInfo.xcprivacy` is unchanged: files go only to the server the user sends them to. A third-party package needs a justified entry here. None so far. No bundled fonts:
   the web ships none either.
 - Replay rule: a record replaces only on a numerically greater `log_id`, or a tombstone at an
   equal one; a room record without `log_id` always replaces; replacement is whole. Compare
