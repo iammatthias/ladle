@@ -11,15 +11,20 @@ actor FakeTransport: FrameTransport {
     private let sentSink: AsyncStream<String>.Continuation
     private(set) var connectCalls = 0
     private(set) var closed = false
+    /// Every frame the client sent, in order.
+    private(set) var sentLog: [String] = []
 
-    init() {
+    /// `dropped` starts the transport already closed by the server, so connecting fails.
+    init(dropped: Bool = false) {
         (sent, sentSink) = AsyncStream.makeStream(of: String.self, bufferingPolicy: .unbounded)
+        inboxClosed = dropped
     }
 
     func connect() async throws { connectCalls += 1 }
 
     func send(_ text: String) async throws {
         if closed { throw FrameTransportError.closed }
+        sentLog.append(text)
         sentSink.yield(text)
     }
 

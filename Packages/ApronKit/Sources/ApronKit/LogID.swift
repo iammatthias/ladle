@@ -19,6 +19,12 @@ public struct LogID: Hashable, Sendable, CustomStringConvertible {
     }
 
     public var description: String { text }
+
+    /// The position before this one, for a backward history continuation (§4.3.2).
+    public var predecessor: LogID? { LogID(String(UInt64(text)! - 1)) }
+
+    /// The position after this one, for a forward history continuation (§4.3.2).
+    public var successor: LogID? { LogID(String(UInt64(text)! + 1)) }
     public var json: JSONValue { .string(text) }
 }
 
