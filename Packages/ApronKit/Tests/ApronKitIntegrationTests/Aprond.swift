@@ -28,7 +28,8 @@ final class Aprond: @unchecked Sendable {
     var url: URL { URL(string: "ws://127.0.0.1:\(port)/ws")! }
 
     /// Skips the test when the binary is missing, or fails it when `APRON_REQUIRE_SERVER=1`.
-    static func start(file: StaticString = #filePath, line: UInt = #line) async throws -> Aprond {
+    /// `arguments` go after the defaults, such as `--upload.max-mb 1`.
+    static func start(_ arguments: [String] = [], file: StaticString = #filePath, line: UInt = #line) async throws -> Aprond {
         guard FileManager.default.isExecutableFile(atPath: binary.path()) else {
             let message = "aprond not found at \(binary.path()); build apron-server-rust or set APROND"
             if ProcessInfo.processInfo.environment["APRON_REQUIRE_SERVER"] == "1" {
@@ -36,12 +37,12 @@ final class Aprond: @unchecked Sendable {
             }
             throw XCTSkip(message)
         }
-        let server = try Aprond()
+        let server = try Aprond(arguments: arguments)
         try await server.waitForLog("listening")
         return server
     }
 
-    private init() throws {
+    private init(arguments: [String]) throws {
         directory = FileManager.default.temporaryDirectory.appending(path: "aprond-\(UUID().uuidString)", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let copy = directory.appending(path: "aprond")
@@ -50,7 +51,7 @@ final class Aprond: @unchecked Sendable {
         process = Process()
         process.executableURL = copy
         process.currentDirectoryURL = directory
-        process.arguments = ["--store", "memory", "--addr", "127.0.0.1:\(port)", "--email.enable", "--email.sender", "log"]
+        process.arguments = ["--store", "memory", "--addr", "127.0.0.1:\(port)", "--email.enable", "--email.sender", "log"] + arguments
         let stderr = Pipe()
         process.standardError = stderr
         process.standardOutput = FileHandle.nullDevice
