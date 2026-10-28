@@ -24,16 +24,14 @@ enum TimelineItem: Identifiable {
 
 extension ServerSession {
     /// A thread is placed after the last message older than its creation: its `room_id` when that
-    /// is a log position, else its record's `log_id`.
-    func timelineItems(_ roomID: String, calendar: Calendar = .current) -> [TimelineItem] {
+    /// is a log position, else its record's `log_id`. The New line goes before `newLine`.
+    func timelineItems(_ roomID: String, newLine: LogID?, calendar: Calendar = .current) -> [TimelineItem] {
         let threads = threadIDs(in: roomID)
             .compactMap { id in (LogID(id) ?? store.room(id)?.logID).map { (position: $0, roomID: id) } }
             .sorted { $0.position < $1.position }
-        let cursor = readCursors[roomID]
         var items: [TimelineItem] = []
         var pendingThreads = threads[...]
         var previous: MessageSnapshot?
-        var placedUnreadLine = false
         var day: Date?
         for message in timeline(roomID) {
             while let thread = pendingThreads.first, thread.position < message.messageID {
@@ -47,9 +45,8 @@ extension ServerSession {
                 day = start
                 previous = nil
             }
-            if !placedUnreadLine, let cursor, message.messageID > cursor, message.from.userID != you?.userID {
+            if message.messageID == newLine {
                 items.append(.unreadLine)
-                placedUnreadLine = true
                 previous = nil
             }
             let continues = previous.map {
@@ -63,6 +60,25 @@ extension ServerSession {
         return items
     }
 
+    /// The message the New line goes before, as the web's `newDividerBefore`: the first message
+    /// after `after`, where you had read when the visit opened. None when that message is your
+    /// own, or when older messages are still to load and none loaded is at or before `after`,
+    /// since the first unread one may be among them.
+    func newLine(in roomID: String, after: LogID?) -> LogID? {
+        guard let after else { return nil }
+        let olderAvailable = histories[roomID]?.canLoadOlder == true
+        var reached = false
+        for message in timeline(roomID) {
+            if message.messageID <= after {
+                reached = true
+                continue
+            }
+            if !reached, olderAvailable { return nil }
+            return message.from.userID == you?.userID ? nil : message.messageID
+        }
+        return nil
+    }
+
     func threadIDs(in roomID: String) -> [String] {
         store.roomIDs.filter { store.room($0)?.parentRoomID == roomID }
     }
@@ -74,8 +90,11 @@ extension ServerSession {
 
     /// Unread messages from others that mention this user.
     func mentionCount(in roomID: String) -> Int {
-        guard let you, let cursor = readCursors[roomID] else { return 0 }
-        return timeline(roomID).filter { $0.messageID > cursor && $0.from.userID != you.userID && $0.mentions(you.userID) }.count
+        guard let you else { return 0 }
+        let read = readThrough(roomID)
+        return timeline(roomID).count { message in
+            message.from.userID != you.userID && message.mentions(you.userID) && read.map { $0 < message.messageID } ?? true
+        }
     }
 
     func isPrivate(_ roomID: String) -> Bool { store.room(roomID)?.isPrivate == true }
