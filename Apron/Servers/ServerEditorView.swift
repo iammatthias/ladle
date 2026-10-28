@@ -1,8 +1,8 @@
 import ApronKit
 import SwiftUI
 
-/// Adds a server, or edits one. The origin follows the address until the user changes it,
-/// because a token works only from the origin that obtained it.
+/// Adds a server, or edits one. The origin follows the address while it is still the address's
+/// default; a token works only from the origin that obtained it, so the user may change it.
 struct ServerEditorView: View {
     let record: ServerRecord?
     let onSave: (ServerRecord) -> Void
@@ -10,7 +10,6 @@ struct ServerEditorView: View {
     @State private var address = ""
     @State private var label = ""
     @State private var origin = ""
-    @State private var originEdited = false
 
     var body: some View {
         NavigationStack {
@@ -21,8 +20,10 @@ struct ServerEditorView: View {
                         .textContentType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .onChange(of: address) {
-                            if !originEdited, let url { origin = ServerRecord.defaultOrigin(for: url) }
+                        .onChange(of: address) { old, new in
+                            let previousDefault = Self.url(from: old).map(ServerRecord.defaultOrigin(for:)) ?? ""
+                            guard origin.isEmpty || origin == previousDefault else { return }
+                            origin = Self.url(from: new).map(ServerRecord.defaultOrigin(for:)) ?? ""
                         }
                     TextField("Name", text: $label, prompt: Text(url.map(ServerRecord.defaultLabel(for:)) ?? "Name"))
                 } header: {
@@ -35,7 +36,6 @@ struct ServerEditorView: View {
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                        .onChange(of: origin) { originEdited = true }
                 } header: {
                     Text("Origin")
                 } footer: {
@@ -54,7 +54,9 @@ struct ServerEditorView: View {
         }
     }
 
-    private var url: URL? {
+    private var url: URL? { Self.url(from: address) }
+
+    private static func url(from address: String) -> URL? {
         guard let url = URL(string: address.trimmingCharacters(in: .whitespaces)),
               ["ws", "wss"].contains(url.scheme?.lowercased() ?? ""), url.host() != nil
         else { return nil }
@@ -66,7 +68,6 @@ struct ServerEditorView: View {
         address = record.url.absoluteString
         label = record.label
         origin = record.origin
-        originEdited = origin != ServerRecord.defaultOrigin(for: record.url)
     }
 
     private func save() {

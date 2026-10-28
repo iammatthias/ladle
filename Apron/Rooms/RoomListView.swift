@@ -18,7 +18,14 @@ struct RoomListView: View {
 
     var body: some View {
         List {
-            if session.status != .signedIn {
+            switch session.status {
+            case .signedIn:
+                EmptyView()
+            case .offline, .stopped:
+                Section {
+                    Button("Reconnect") { session.start() }
+                }
+            default:
                 Section {
                     Button("Sign In") { signingIn = true }
                         .disabled(session.server == nil)

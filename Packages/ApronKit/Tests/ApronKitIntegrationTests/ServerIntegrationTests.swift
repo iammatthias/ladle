@@ -204,12 +204,18 @@ final class ServerIntegrationTests: XCTestCase {
 
     /// aprond lets an upgrade without `Origin` through, so a 403 here proves URLSession sent the
     /// header; the default origin of the same server connecting shows the check is the cause.
+    /// Fixing the record's origin reconnects a session that the server refused.
     func testTheServerSeesTheOriginHeader() async throws {
         let server = try await startServer()
         let foreign = makeSession(server, origin: "https://evil.example")
         foreign.start()
         try await waitFor("rejected") { foreign.status == .stopped(.rejected(status: 403)) }
         XCTAssertNil(foreign.server)
+
+        var fixed = foreign.record
+        fixed.origin = ServerRecord.defaultOrigin(for: server.url)
+        await foreign.update(fixed)
+        try await waitFor("reconnected after the origin was fixed") { foreign.status == .signedOut }
 
         let local = makeSession(server)
         XCTAssertEqual(local.record.origin, "https://127.0.0.1:\(server.port)")
