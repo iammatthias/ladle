@@ -2,7 +2,8 @@
 
 Native iOS client for the Apron chat protocol v9. Single-user: one identity per server, with
 several servers. Swift 6, SwiftUI, Apple frameworks only. Phase 1 is the scaffold and the
-protocol core behind the protocol's client conformance fixtures; there is no chat UI yet.
+protocol core behind the protocol's client conformance fixtures. Phase 2 adds the session layer
+(`ServerSession`, `SessionStore`) and a thin SwiftUI client over it.
 
 The spec is `PROTOCOL.md` in the protocol repository, checked out read-only at
 `/Users/iammatthias/Developer/forks/apron-server-go/testdata/apron`. Implement to the spec and
@@ -29,14 +30,44 @@ clone), which is only a worked example.
     on moves, and the README's logical projection. `ext` stays a `JSONValue`.
   - `Connection`: an actor over a `FrameTransport`. `connect()` returns the first `server` frame,
     `request` matches replies by `id`, `notifications` streams the rest, pings at `server.ping`.
-    `WebSocketTransport` is the URLSession implementation and sets the `Origin` header.
+    One writer task sends frames in call order; `send` queues a request and returns a `Reply` to
+    await later, which is how `room_list` is pipelined behind `auth`. An upgrade refused with an
+    HTTP status fails as `Failure.rejected(status:)`. `WebSocketTransport` is the URLSession
+    implementation and sets the `Origin` header.
+  - `ServerSession`: `@MainActor @Observable`, one per `ServerRecord`. Connection lifecycle,
+    sign-in, the stores, and every chat operation. Its `Environment` is the test seam
+    (transport factory, sleep, jitter, request IDs, proposal `state`, page size).
+    - Sign-in is `SignIn`: `.token`, `.guest`, `.emailProposal`, `.emailCode`. A sign-in sends
+      `auth` with `agent` and pipelines `room_list {filter: joined, members: true}` behind it.
+      A token in any result replaces the saved one; a `.token` sign-in without one keeps the
+      presented token; a guest result without one clears it. The email code goes on the
+      connection that proposed (§4.11.2); `pendingEmail` is cleared on every disconnect.
+    - Reconnect: pending requests fail with `Connection.Failure.closed` (no same-id resend),
+      then `backoff(attempt:jitter:)` = min(60 s, 0.5 s × 2^min(7, attempt − 1)) × [0.8, 1.2),
+      never below a `retry_after`. Attempts restart after 30 s signed in. An id-less `denied`
+      or a refused upgrade stops reconnecting (`Status.stopped`). A resume answered `denied` or
+      `invalid_params` clears the token and asks for sign-in.
+    - History: `open` loads the newest page once (`limit` = page size, no bounds), `loadOlder`
+      pages with `before = first_log_id − 1` until `more` is false or the floor
+      (`history_log_id`, else `latest_log_id + 1`). Each opened room keeps a checkpoint that live
+      records advance; after a reconnect it pages forward from `checkpoint + 1`.
+    - Results can resume before the notifications sent ahead of them are applied, so code and
+      tests wait for store state rather than assume it on return.
+  - `SessionStore`: every server's session, the saved list, and account persistence.
+  - `SignIn`, `TokenPayload` (a bare token or a §A.4 link with `token`), `UserDirectory` (one kept
+    user object per `user_id`, merge rules, `Name (@user_id)` on clashes).
   - `ServerRecord`, `ServerStore`, `TokenStore`: the saved servers (JSON, no secrets) and the seam
     for the bearer token. `InMemoryTokenStore` is for tests.
-- `Apron/`: the app. `App/` is a placeholder view. `Servers/KeychainStore.swift` is the only
-  place a secret is persisted (generic password, service `com.iammatthias.apron.token`, account =
-  server id).
-- `ApronTests/`: hermetic app tests (no network, no server). `ApronIntegrationTests/`: phase 2,
-  real server, its own scheme.
+- `Apron/`: the app, views only; logic belongs in ApronKit where `swift test` reaches it.
+  `Servers/` (list, editor), `SignIn/` (sheet, VisionKit QR scanner), `Rooms/`, `Timeline/`
+  (messages, composer). `Servers/KeychainStore.swift` is the only place a secret is persisted
+  (generic password, service `com.iammatthias.apron.token`, account = server id).
+- `ApronTests/`: hermetic app tests (no network, no server).
+- `Packages/ApronKit/Tests/ApronKitIntegrationTests/`: `ServerSession` against the real Rust
+  server. `Aprond` copies the binary to a temporary directory (its build tree may be rebuilding),
+  starts it per test with `--store memory --email.enable --email.sender log` on a free loopback
+  port, and reads email codes from stderr. The binary defaults to the sibling
+  `apron-server-rust/target/release/aprond`; `APROND` overrides it.
 - `Config/Domains.example.xcconfig`: template for the gitignored `Config/Domains.xcconfig`.
 - `scripts/sync-fixtures.sh`: copies the protocol's replay fixtures into the package's test
   resources; `--check` fails on drift.
@@ -49,11 +80,11 @@ clone), which is only a worked example.
 - `./build.sh test` runs the fixture drift check and then the `Apron` scheme's tests on the
   "Apron iPhone" simulator (create it once with `xcrun simctl create "Apron iPhone" <iPhone
   device type> <iOS runtime>`). Set `DEST` to override.
-- The phase 1 gate is `scripts/sync-fixtures.sh --check && swift test --package-path
+- The gate is `scripts/sync-fixtures.sh --check && swift test --package-path
   Packages/ApronKit`. It checks the fixture copies against the spec clone, then runs the fixture
-  gate below plus the unit tests. It needs no simulator.
-- Two schemes on purpose. `Apron` stays runnable with no network and no server.
-  `ApronIntegration` talks to a real server and is excluded from the default scheme.
+  gate below, the unit tests, and the integration tests. It needs no simulator. The integration
+  tests skip when `aprond` is missing; set `APRON_REQUIRE_SERVER=1` to make that a failure.
+- aprond has no page-size flag; the paging test passes `limit` through the session's page size.
 - Deployment target is iOS 27.1 because the newest installed SDK is iOS 27.1 (Xcode 27.1); a
   target cannot be newer than its SDK. Bump to 27.2 in `project.yml` and `Package.swift` once
   Xcode ships that SDK.
@@ -97,8 +128,10 @@ the `Origin` header on the upgrade request. Apple's reserved-header list for URL
 Content-Length, Authorization, Connection, Host, Proxy-Authenticate, Proxy-Authorization, and
 WWW-Authenticate; `Origin` is not on it
 (https://developer.apple.com/documentation/foundation/nsurlrequest, "Reserved HTTP headers").
-Apple does not state that a request-set `Origin` reaches the WebSocket handshake, so phase 2
-confirms it against a server that logs headers before relying on it.
+Apple does not state that a request-set `Origin` reaches the WebSocket handshake. Phase 2
+confirmed it on macOS: aprond admits an upgrade with no `Origin`, and refused
+`URLSessionWebSocketTask`'s upgrade with 403 when the record's origin was
+`https://evil.example` (`testTheServerSeesTheOriginHeader`). Not yet confirmed on a device.
 
 Fallbacks: email with a typed code (§4.11). Optional later paths, not implemented:
 
