@@ -239,7 +239,7 @@ struct RoomRow: View {
                     if let last = session.lastMessage(in: roomID) {
                         line(icon: "arrow.turn.down.right") {
                             let sender = Text(session.displayName(for: last.from)).fontWeight(.medium).foregroundStyle(Palette.ink)
-                            let text = Text(rendered(last.body)).foregroundStyle(unread > 0 ? Palette.ink : Palette.inkMuted)
+                            let text = Text(previewText(last.body)).foregroundStyle(unread > 0 ? Palette.ink : Palette.inkMuted)
                             Text("\(sender) \(text)")
                         }
                     }

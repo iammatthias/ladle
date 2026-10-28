@@ -280,9 +280,9 @@ struct AudioCard: View {
 
 /// An embed of another kind (§3.5.2), as the web's EmbedCard when it has `og`: the image when the
 /// server hosts it, the site, the title (else the embed's title or URL, else its kind), and two
-/// lines of description. Without `og`, the web's EmbedFallback: the kind, and the URL or text.
-/// `iframe` and `html`, which Ladle does not load, take the same two shapes. The card is the
-/// link; tapping it opens `url` in the browser.
+/// lines of description. Without `og`, the labeled fallback card: the kind, and its title, URL
+/// or text. `iframe` and `html`, which Ladle does not load, take the same two shapes. The card
+/// is the link; tapping it opens `url` in the browser.
 struct EmbedCard: View {
     let embed: Embed
     let policy: MediaPolicy
@@ -340,22 +340,19 @@ struct EmbedCard: View {
 
     private var fallback: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.s0_5) {
-            Text("kind: \(Text(embed.kind).foregroundStyle(Palette.ink))")
-                .apText(.ui).monospaced().foregroundStyle(Palette.inkMuted)
-            Group {
-                if let url = embed.url {
-                    Text(url.absoluteString).monospaced().foregroundStyle(Palette.denim)
-                } else {
-                    Text(embed.text ?? "This client can’t display this embed.").foregroundStyle(Palette.inkMuted)
-                }
+            Label(Self.kindLabel(embed), systemImage: "square.dashed")
+                .apText(.sm, .semibold).foregroundStyle(Palette.inkMuted)
+            if let title = embed.title {
+                Text(title).apText(.ui, .semibold).foregroundStyle(Palette.ink)
             }
-            .apText(.sm)
+            if let detail = embed.text ?? embed.url?.absoluteString {
+                Text(detail).apText(.ui).foregroundStyle(embed.url == nil ? Palette.ink : Palette.denim).lineLimit(3)
+            }
         }
-        .frame(minWidth: 240, alignment: .leading)
-        .padding(.vertical, Tokens.Space.s3)
-        .padding(.horizontal, Tokens.Space.s4)
-        .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.lg))
-        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.lg).strokeBorder(Palette.line))
+        .frame(maxWidth: Tokens.Size.embedMaxW, alignment: .leading)
+        .padding(Tokens.Space.s3)
+        .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
+        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.line))
     }
 
     static func kindLabel(_ embed: Embed) -> String {

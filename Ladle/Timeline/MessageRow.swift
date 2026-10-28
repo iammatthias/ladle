@@ -148,6 +148,14 @@ func rendered(_ body: JSONValue?, mentions: [String: String] = [:], you: String?
     return out
 }
 
+/// A one-line preview of a body inside a control (a reply quote, a room or thread row): the text
+/// without links, so a tap goes to the control and the line keeps its color.
+func previewText(_ body: JSONValue?) -> AttributedString {
+    var out = rendered(body)
+    out.link = nil
+    return out
+}
+
 /// The web's ReplyPreview: a bent line, the quoted sender's face and name, and one line of their
 /// text. Tapping it jumps to the message. A target this client does not have says so.
 struct ReplyQuote: View {
@@ -165,7 +173,7 @@ struct ReplyQuote: View {
                     Avatar(name: session.displayName(for: quoted.from), userID: quoted.from.userID, size: .xs,
                            image: session.avatarURL(of: quoted.from.userID))
                     Text(session.displayName(for: quoted.from)).fontWeight(.medium).foregroundStyle(Palette.ink)
-                    Text(quoted.isTombstone ? AttributedString("Message deleted") : rendered(quoted.body))
+                    Text(quoted.isTombstone ? AttributedString("Message deleted") : previewText(quoted.body))
                         .lineLimit(1)
                 } else {
                     Text("Message unavailable").italic()
