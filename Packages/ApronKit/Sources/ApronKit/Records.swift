@@ -98,7 +98,7 @@ public enum MessageFrame: Hashable, Sendable {
 
 extension Records {
     /// The records in a notification, or nil for a method that carries none.
-    public init?(notification: Notification) {
+    public init?(notification: WireNotification) {
         switch notification.method {
         case "message": self = Records(messageParams: notification.params)
         case "room_update": self = Records(roomUpdateParams: notification.params)

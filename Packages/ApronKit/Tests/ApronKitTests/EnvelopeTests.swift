@@ -4,8 +4,8 @@ import XCTest
 final class EnvelopeTests: XCTestCase {
     func testDecodesEachFrameShapeAndIgnoresJsonrpcAndUnknownKeys() throws {
         XCTAssertEqual(try Frame(parsing: #"{"jsonrpc":"2.0","method":"activity","params":{"room_id":"general","typing":8},"future":1}"#),
-                       .notification(Notification(method: "activity", params: ["room_id": "general", "typing": 8])))
-        XCTAssertEqual(try Frame(parsing: #"{"method":"ping"}"#), .notification(Notification(method: "ping")))
+                       .notification(WireNotification(method: "activity", params: ["room_id": "general", "typing": 8])))
+        XCTAssertEqual(try Frame(parsing: #"{"method":"ping"}"#), .notification(WireNotification(method: "ping")))
         XCTAssertEqual(try Frame(parsing: #"{"id":"c42","result":{"message_id":"1724803200042"},"jsonrpc":"2.0"}"#),
                        .response(Response(id: "c42", outcome: .success(["message_id": "1724803200042"]))))
         XCTAssertEqual(try Frame(parsing: #"{"id":"c43","error":{"code":-32002,"message":"Too Many Requests","data":{"retry_after":30}}}"#),
@@ -25,7 +25,7 @@ final class EnvelopeTests: XCTestCase {
     func testOutgoingFramesOmitJsonrpcAndCarryStringIDs() {
         XCTAssertEqual(Request(id: "c1", method: "auth", params: ["scheme": "guest"]).encoded.serialized(),
                        #"{"id":"c1","method":"auth","params":{"scheme":"guest"}}"#)
-        XCTAssertEqual(Notification(method: "ping").encoded.serialized(), #"{"method":"ping"}"#)
+        XCTAssertEqual(WireNotification(method: "ping").encoded.serialized(), #"{"method":"ping"}"#)
         XCTAssertEqual(Response(id: "c1", outcome: .failure(RPCError(code: RPCError.denied, message: "no"))).encoded.serialized(),
                        #"{"error":{"code":-32001,"message":"no"},"id":"c1"}"#)
     }
