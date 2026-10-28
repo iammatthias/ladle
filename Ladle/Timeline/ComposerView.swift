@@ -130,6 +130,7 @@ struct ComposerView: View {
             Button("Choose File", systemImage: "doc") { importingFiles = true }
             if takesVoiceNotes {
                 Button("Record Voice Note", systemImage: "mic") {
+                    recorder.onLimit = { clip in attach(contentType: "audio/mp4") { clip } }
                     Task { await recorder.start(maxBytes: audioLimit) }
                 }
             }

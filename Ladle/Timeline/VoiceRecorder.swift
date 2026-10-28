@@ -18,6 +18,8 @@ final class VoiceRecorder {
     @ObservationIgnored private var recorder: AVAudioRecorder?
     @ObservationIgnored private var file: URL?
     @ObservationIgnored private var limitTask: Task<Void, Never>?
+    /// Receives a clip stopped at the server's size limit, as if Add were tapped.
+    @ObservationIgnored var onLimit: ((URL) -> Void)?
 
     /// Asks for the microphone the first time, then records until `finish` or `cancel`.
     /// `maxBytes` stops it at 95% of the server's limit for audio.
@@ -47,7 +49,7 @@ final class VoiceRecorder {
                 let seconds = Double(maxBytes) * 0.95 / 8000
                 limitTask = Task { [weak self] in
                     try? await Task.sleep(for: .seconds(seconds))
-                    if !Task.isCancelled { self?.recorder?.stop() }
+                    if !Task.isCancelled, let self, let clip = self.finish() { self.onLimit?(clip) }
                 }
             }
         } catch {

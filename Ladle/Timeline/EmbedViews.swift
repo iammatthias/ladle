@@ -250,6 +250,9 @@ struct AudioCard: View {
         .onDisappear {
             player?.pause()
             playing = false
+            if let ended { NotificationCenter.default.removeObserver(ended) }
+            ended = nil
+            player = nil
         }
     }
 
