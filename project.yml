@@ -1,0 +1,80 @@
+name: Apron
+options:
+  bundleIdPrefix: com.iammatthias
+  deploymentTarget:
+    # The newest installed SDK is iOS 27.1 (Xcode 27.1). Bump to 27.2 once Xcode ships its SDK.
+    iOS: "27.1"
+  createIntermediateGroups: true
+configFiles:
+  Debug: Config/Domains.xcconfig
+  Release: Config/Domains.xcconfig
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    SWIFT_STRICT_CONCURRENCY: complete
+    SWIFT_DEFAULT_ACTOR_ISOLATION: nonisolated
+    TARGETED_DEVICE_FAMILY: "1"
+    DEVELOPMENT_TEAM: MP92RCAPRG
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+    CODE_SIGN_STYLE: Automatic
+targets:
+  Apron:
+    type: application
+    platform: iOS
+    sources:
+      - path: Apron
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.iammatthias.apron
+        PRODUCT_NAME: Apron
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Apron
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        ENABLE_PREVIEWS: YES
+  # Hermetic: no network, no server. Fixtures are bundled resources.
+  ApronTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ApronTests
+    resources:
+      - path: ApronTests/Fixtures
+    dependencies:
+      - target: Apron
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Apron.app/Apron"
+  # Talks to a real server (phase 2). Only in the ApronIntegration scheme.
+  ApronIntegrationTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: ApronIntegrationTests
+    dependencies:
+      - target: Apron
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        BUNDLE_LOADER: "$(TEST_HOST)"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Apron.app/Apron"
+schemes:
+  Apron:
+    build:
+      targets:
+        Apron: all
+        ApronTests: [test]
+    test:
+      targets:
+        - ApronTests
+  ApronIntegration:
+    build:
+      targets:
+        Apron: all
+        ApronIntegrationTests: [test]
+    test:
+      targets:
+        - ApronIntegrationTests
