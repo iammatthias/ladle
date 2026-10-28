@@ -413,7 +413,7 @@ struct ThreadCard: View {
             }
             if let last {
                 Label {
-                    Text("\(Text(session.displayName(for: last.from)).fontWeight(.semibold)) \(Text(rendered(last.body)))").lineLimit(1)
+                    Text("\(Text(session.displayName(for: last.from)).fontWeight(.semibold)) \(Text(previewText(last.body)))").lineLimit(1)
                 } icon: {
                     Image(systemName: "arrow.turn.down.right").foregroundStyle(Palette.inkMuted)
                 }
