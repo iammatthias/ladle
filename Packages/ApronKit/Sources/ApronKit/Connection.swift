@@ -12,7 +12,13 @@ public actor Connection {
         /// The WebSocket handshake was answered with this HTTP status instead of an upgrade, such
         /// as 403 for an `Origin` the server does not accept.
         case rejected(status: Int)
+        /// No reply within the request timeout. The server may still answer, or be working on it;
+        /// a retry with the same `id` is the safe way to find out (§1.2).
+        case timedOut
     }
+
+    /// How long a request waits for its reply, as apron-web's `REQUEST_TIMEOUT_MS`.
+    public static let defaultRequestTimeout = Duration.seconds(20)
 
     /// The latest `server` frame; each one fully replaces the previous (§3.1).
     public private(set) var server: ServerInfo?
@@ -21,8 +27,12 @@ public actor Connection {
 
     private let transport: any FrameTransport
     private let makeRequestID: @Sendable () -> String
+    private let requestTimeout: Duration
     private let notificationSink: AsyncStream<WireNotification>.Continuation
     private var pending: [String: Slot] = [:]
+    /// Which send of each request `id` is the latest, so an old timer cannot expire a retry.
+    private var attempts: [String: Int] = [:]
+    private var sent = 0
     private var serverWaiter: CheckedContinuation<ServerInfo, any Error>?
     private var reader: Task<Void, Never>?
     private var pinger: Task<Void, Never>?
@@ -57,9 +67,11 @@ public actor Connection {
     /// `retry_after` at capacity. The server may close the connection after it.
     public private(set) var connectionError: RPCError?
 
-    public init(transport: any FrameTransport, makeRequestID: @escaping @Sendable () -> String = { UUID().uuidString }) {
+    public init(transport: any FrameTransport, makeRequestID: @escaping @Sendable () -> String = { UUID().uuidString },
+                requestTimeout: Duration = Connection.defaultRequestTimeout) {
         self.transport = transport
         self.makeRequestID = makeRequestID
+        self.requestTimeout = requestTimeout
         (notifications, notificationSink) = AsyncStream.makeStream(of: WireNotification.self, bufferingPolicy: .unbounded)
         (outboxFrames, outbox) = AsyncStream.makeStream(of: Outbound.self, bufferingPolicy: .unbounded)
     }
@@ -73,18 +85,27 @@ public actor Connection {
         return try await withCheckedThrowingContinuation { serverWaiter = $0 }
     }
 
-    /// Sends a request and awaits its reply. An `error` reply throws its `RPCError`.
-    public func request(_ method: String, params: JSONValue? = nil) async throws -> JSONValue {
-        try await send(method, params: params).value
+    /// Sends a request and awaits its reply. An `error` reply throws its `RPCError`, and no reply
+    /// within the request timeout throws `Failure.timedOut`. `id` is for a retry that must keep
+    /// the first attempt's `id` (§1.2); by default each request gets a new one.
+    public func request(_ method: String, params: JSONValue? = nil, id: String? = nil) async throws -> JSONValue {
+        try await send(method, params: params, id: id).value
     }
 
     /// Queues a request without waiting for its reply. Requests reach the wire in the order of
     /// these calls, so a client can pipeline `room_list` right behind `auth` (§3.2.2).
-    public func send(_ method: String, params: JSONValue? = nil) throws -> Reply {
+    public func send(_ method: String, params: JSONValue? = nil, id: String? = nil) throws -> Reply {
         guard !isClosed else { throw Failure.closed }
-        let request = Request(id: makeRequestID(), method: method, params: params)
+        let request = Request(id: id ?? makeRequestID(), method: method, params: params)
         pending[request.id] = .waiting(nil)
         outbox.yield(Outbound(text: request.encoded.serialized(), requestID: request.id))
+        sent += 1
+        let (timeout, attempt) = (requestTimeout, sent)
+        attempts[request.id] = attempt
+        Task { [weak self] in
+            try? await Task.sleep(for: timeout)
+            await self?.expire(request.id, attempt: attempt)
+        }
         return Reply(id: request.id, connection: self)
     }
 
@@ -98,6 +119,12 @@ public actor Connection {
         case nil:
             throw Failure.closed
         }
+    }
+
+    /// Times out one send of `id`, not a later retry that reuses it.
+    private func expire(_ id: String, attempt: Int) {
+        guard attempts[id] == attempt else { return }
+        resolve(id, with: .failure(Failure.timedOut))
     }
 
     private func resolve(_ id: String, with outcome: Result<JSONValue, any Error>) {

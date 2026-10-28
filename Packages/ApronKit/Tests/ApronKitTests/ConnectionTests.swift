@@ -140,6 +140,27 @@ final class ConnectionTests: XCTestCase {
         await connection.close()
     }
 
+    func testAnUnansweredRequestTimesOutAndARetryKeepsItsID() async throws {
+        let transport = FakeTransport()
+        let connection = Connection(transport: transport, makeRequestID: { "c1" }, requestTimeout: .milliseconds(50))
+        await transport.deliver(greeting)
+        _ = try await connection.connect()
+        var outgoing = transport.sent.makeAsyncIterator()
+        do {
+            _ = try await connection.request("message", params: ["room_id": "general"])
+            XCTFail("expected a timeout")
+        } catch let error as Connection.Failure {
+            XCTAssertEqual(error, .timedOut)
+        }
+        let retry = Task { try await connection.request("message", params: ["room_id": "general"], id: "c1") }
+        _ = await outgoing.next()
+        let resent = await outgoing.next()
+        XCTAssertEqual(resent, #"{"id":"c1","method":"message","params":{"room_id":"general"}}"#)
+        await transport.deliver(["id": "c1", "result": ["message_id": "7"]])
+        let result = try await retry.value
+        XCTAssertEqual(result, ["message_id": "7"])
+    }
+
     func testErrorReplyThrowsTheRPCError() async throws {
         let (connection, transport) = makeConnection()
         await transport.deliver(greeting)
