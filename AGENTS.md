@@ -63,7 +63,11 @@ clone), which is only a worked example.
       after it, all of them when nothing is known. `markRead(_:through:)` moves the position,
       and with capability `activity` the cursor, sending the frame unless `ext:settings` says
       `read_cursors: false` (`ServerInfo.keepsReadCursors`). The timeline calls it when the
-      pane is on screen in the active app, at the bottom, loaded and landed at its New line.
+      pane is on screen in the active app, at the bottom and loaded.
+      A room opens at its latest message. apron-web's `landAtDivider` opens at the New line
+      (pages back up to `DIVIDER_PAGES`, then `until(..., JUMP_WAIT_MS)` waits for the divider
+      to render before scrolling to it); Ladle does not yet, because that scroll needs
+      on-device verification, and the Simulator does not run here.
   - `SessionStore`: every server's session, the saved list, and account persistence.
   - Uploads (§4.8.3, §4.8.4, §4.8.6), as apron-web does them. `Embed` parses an embed once;
     its `upload` is pending until `url`, then an image, video or audio from `og`, or a file.
