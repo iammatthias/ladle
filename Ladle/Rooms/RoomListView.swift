@@ -200,6 +200,9 @@ struct RoomRow: View {
                         .lineLimit(1)
                     if session.isPrivate(roomID) { Lock() }
                 }
+                if !isThread, let topic = session.roomDescription(roomID) {
+                    Text(topic).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
+                }
                 if isThread {
                     if let description = session.roomDescription(roomID) {
                         line(icon: "text.alignleft") { Text(description) }

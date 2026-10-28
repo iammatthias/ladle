@@ -176,7 +176,7 @@ public enum PreviewFixtures {
                 room("general", "general", members: ["sam", "ada", "bram", "chiara", "dev", "eunji"]),
                 room(releaseThread, "Release 0.2", parent: "general", members: ["sam", "ada", "bram"],
                      description: "Ship Friday, then freeze"),
-                room("design", "design", members: ["sam", "ada", "eunji"]),
+                room("design", "design", members: ["sam", "ada", "eunji"], description: "Icons, type and color"),
                 room(iconThread, "Icon sketches", parent: "design", members: ["sam", "eunji"]),
                 room("random", "random", members: ["sam", "ada", "bram", "chiara"]),
                 room("ops", "ops", members: ["sam", "dev"], isPrivate: true),

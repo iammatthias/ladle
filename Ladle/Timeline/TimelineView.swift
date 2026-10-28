@@ -349,7 +349,7 @@ struct ThreadCard: View {
                         Avatar(name: name, userID: id, size: .sm).overlay(Circle().stroke(ground, lineWidth: 2))
                     }
                 }
-                if session.isPrivate(threadID) { Lock() }
+                if session.isPrivate(threadID) { Lock(tint: Palette.private) }
                 Text(session.title(of: threadID)).fontWeight(.semibold)
                     .foregroundStyle(session.isPrivate(threadID) ? Palette.private : Palette.denim)
                     .lineLimit(1)
