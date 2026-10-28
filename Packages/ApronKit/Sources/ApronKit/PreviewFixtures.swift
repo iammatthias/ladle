@@ -53,7 +53,7 @@ public enum PreviewFixtures {
 
     private static let greeting: JSONValue = [
         "apron": 9, "auth": ["token", "guest"], "agent": "aprond/0.9",
-        "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity"],
+        "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity", "command", "embed:upload"],
     ]
 
     private static let people: [String: JSONValue] = [
@@ -125,6 +125,29 @@ public enum PreviewFixtures {
             "latest_log_id": .string(latest), "history_log_id": .string(message(lines.first?.minute ?? 0)),
         ]
     }
+
+    /// A finished upload hosted on the home server (§4.8.4).
+    private static func upload(_ n: Int, _ title: String, og: [String: JSONValue]? = nil) -> JSONValue {
+        var embed: [String: JSONValue] = ["embed_id": .string("embed_\(n)"), "kind": "upload", "title": .string(title), "url": .string(fileURL(n))]
+        if var og {
+            og["title"] = .string(title)
+            embed["og"] = .object(og)
+        }
+        return .object(embed)
+    }
+
+    private static func media(_ n: Int, _ type: String, _ width: Int? = nil, _ height: Int? = nil, alt: String? = nil) -> JSONValue {
+        var media: [String: JSONValue] = ["url": .string(fileURL(n)), "type": .string(type)]
+        if let width, let height { (media["width"], media["height"]) = (.number(String(width)), .number(String(height))) }
+        if let alt { media["alt"] = .string(alt) }
+        return .object(media)
+    }
+
+    /// Hosted files; LadleShots answers these URLs with generated media.
+    public static func fileURL(_ n: Int) -> String { "https://home.example/files/embed_\(n)/s\(n)" }
+
+    /// The room whose uploads the media screenshots show.
+    public static let mediaRoomID = "random"
 
     private static func room(_ id: String, _ title: String, parent: String? = nil, members: [String],
                              description: String? = nil, isPrivate: Bool = false) -> JSONValue {
@@ -204,6 +227,11 @@ public enum PreviewFixtures {
                 line(-90, "chiara", "Found a 1970s Dansk enamel pot at the flea market."),
                 line(-60, "bram", "Photos or it didn't happen."),
                 line(-58, "chiara", "Tomorrow, the light is bad now."),
+                line(-57, "chiara", "Fine, one with the flash.", embeds: [upload(1, "dansk-pot.jpg", og: ["image": media(1, "image/jpeg", 1600, 1200, alt: "A red enamel pot on a wooden table")])]),
+                line(-56, "chiara", "", embeds: [upload(2, "lid-handle.mov", og: ["video": media(2, "video/quicktime", 1920, 1080)])]),
+                line(-55, "bram", "The original catalogue page, for the record.", embeds: [upload(3, "Kobenstyle-catalogue-1972.pdf")]),
+                line(-54, "chiara", "And it whistles.", embeds: [upload(4, "kettle.m4a", og: ["audio": media(4, "audio/mp4")])]),
+                line(-53, "sam", "Mine is still uploading", embeds: [["embed_id": "embed_5", "kind": "upload", "title": "my-pot.jpg"]]),
             ]),
             "ops": history("ops", [
                 line(-300, "dev", "Rotated the TLS cert on home. Next renewal in 60 days."),
