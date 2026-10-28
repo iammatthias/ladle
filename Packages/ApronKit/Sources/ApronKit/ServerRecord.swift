@@ -63,9 +63,11 @@ public struct ServerRecord: Codable, Hashable, Identifiable, Sendable {
 
 /// `servers.json` in Application Support. Whole-file replace, written atomically.
 public struct ServerStore: Sendable {
+    public let directory: URL
     public let fileURL: URL
 
     public init(directory: URL) {
+        self.directory = directory
         fileURL = directory.appending(path: "servers.json")
     }
 
