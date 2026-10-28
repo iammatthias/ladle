@@ -12,3 +12,4 @@ Config/Domains.xcconfig
 *.log
 .env
 .env.*
+.build/

@@ -19,7 +19,7 @@ public struct Request: Hashable, Sendable {
     }
 }
 
-public struct Notification: Hashable, Sendable {
+public struct WireNotification: Hashable, Sendable {
     public var method: String
     public var params: JSONValue?
 
@@ -82,7 +82,7 @@ public struct Response: Hashable, Sendable {
 public enum Frame: Hashable, Sendable {
     case request(Request)
     case response(Response)
-    case notification(Notification)
+    case notification(WireNotification)
     /// An error without an `id`, such as "Server at capacity" (§1.1).
     case error(RPCError)
 }
@@ -101,7 +101,7 @@ extension Frame {
             if let id {
                 self = .request(Request(id: id, method: method, params: members["params"]))
             } else {
-                self = .notification(Notification(method: method, params: members["params"]))
+                self = .notification(WireNotification(method: method, params: members["params"]))
             }
             return
         }
