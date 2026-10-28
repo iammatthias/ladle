@@ -1,0 +1,14 @@
+.DS_Store
+build/
+DerivedData/
+*.xcodeproj
+*.xcworkspace
+xcuserdata/
+.swiftpm/
+
+# The owner's private server names (associated domains). Copy Domains.example.xcconfig.
+Config/Domains.xcconfig
+
+*.log
+.env
+.env.*
