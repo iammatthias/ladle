@@ -96,10 +96,9 @@ public final class ServerSession {
     /// Transient notices (§3.5.3), newest last. Never installed as snapshots.
     public private(set) var notices: [Notice] = []
     public private(set) var histories: [String: RoomHistory] = [:]
-    /// This user's read cursor per room, as the server last reported it (§4.6).
+    /// This user's read cursor per room (§4.6): the server's, or the one this device sent.
     public private(set) var readCursors: [String: LogID] = [:]
-    /// How far this user has read each room on this device, from `positions`; `readThrough`
-    /// combines it with the cursor and this user's own messages.
+    /// How far this user has read each room on this device.
     public private(set) var readPositions: [String: LogID] = [:]
     /// The fraction written of each of this user's uploads in flight, by `embed_id` (§4.8.3).
     public internal(set) var uploadProgress: [String: Double] = [:]
@@ -589,7 +588,7 @@ public final class ServerSession {
 
     public func displayName(for user: UserObject) -> String { users.displayName(for: user) }
 
-    /// This user read the room through `messageID`, as apron-web's `readAction`: the position
+    /// This user read the room through `messageID`, as apron-web's `markRead` and `readPositions.read`: the position
     /// kept on this device moves forward, and with capability `activity` so does the read cursor,
     /// which goes to the server (§4.6) when it keeps cursors, for this user's other devices.
     /// Neither ever moves back.

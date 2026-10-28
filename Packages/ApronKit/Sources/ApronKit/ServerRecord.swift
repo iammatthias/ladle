@@ -63,6 +63,7 @@ public struct ServerRecord: Codable, Hashable, Identifiable, Sendable {
 
 /// `servers.json` in Application Support. Whole-file replace, written atomically.
 public struct ServerStore: Sendable {
+    /// Where every file of this device's state lives; `read-positions.json` sits beside `servers.json`.
     public let directory: URL
     public let fileURL: URL
 

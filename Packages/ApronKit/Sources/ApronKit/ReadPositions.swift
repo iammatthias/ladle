@@ -41,6 +41,7 @@ public struct FileReadPositionStore: ReadPositionStore {
     }
 }
 
+/// For tests and previews.
 public final class InMemoryReadPositionStore: ReadPositionStore {
     private let kept = Mutex<[UUID: [String: [String: LogID]]]>([:])
 

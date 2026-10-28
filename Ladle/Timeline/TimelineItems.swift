@@ -24,8 +24,8 @@ enum TimelineItem: Identifiable {
 
 extension ServerSession {
     /// A thread is placed after the last message older than its creation: its `room_id` when that
-    /// is a log position, else its record's `log_id`. The New line goes before `newLine`.
-    func timelineItems(_ roomID: String, newLine: LogID?, calendar: Calendar = .current) -> [TimelineItem] {
+    /// is a log position, else its record's `log_id`.
+    func timelineItems(_ roomID: String, lineBefore: LogID?, calendar: Calendar = .current) -> [TimelineItem] {
         let threads = threadIDs(in: roomID)
             .compactMap { id in (LogID(id) ?? store.room(id)?.logID).map { (position: $0, roomID: id) } }
             .sorted { $0.position < $1.position }
@@ -45,7 +45,7 @@ extension ServerSession {
                 day = start
                 previous = nil
             }
-            if message.messageID == newLine {
+            if message.messageID == lineBefore {
                 items.append(.unreadLine)
                 previous = nil
             }
