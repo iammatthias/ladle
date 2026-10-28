@@ -121,11 +121,11 @@ public final class ServerSession {
         status = .offline
     }
 
-    /// Replaces the record; a changed address or origin reconnects.
+    /// Replaces the record; a changed address or origin reconnects, also after a refused upgrade.
     public func update(_ newRecord: ServerRecord) async {
         let reconnect = newRecord.url != record.url || newRecord.origin != record.origin
         record = newRecord
-        guard reconnect, runTask != nil else { return }
+        guard reconnect else { return }
         await stop()
         start()
     }

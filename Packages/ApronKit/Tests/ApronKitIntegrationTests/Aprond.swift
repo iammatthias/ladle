@@ -10,13 +10,8 @@ final class Aprond: @unchecked Sendable {
     static let binary: URL = {
         if let path = ProcessInfo.processInfo.environment["APROND"] { return URL(filePath: path) }
         return URL(filePath: #filePath)
-            .deletingLastPathComponent() // ApronKitIntegrationTests
-            .deletingLastPathComponent() // Tests
-            .deletingLastPathComponent() // ApronKit
-            .deletingLastPathComponent() // Packages
-            .deletingLastPathComponent() // apron-ios
-            .deletingLastPathComponent() // apron
-            .appending(path: "apron-server-rust/target/release/aprond")
+            .appending(path: "../../../../../../apron-server-rust/target/release/aprond")
+            .standardized
     }()
 
     let port: Int

@@ -15,7 +15,9 @@ struct TimelineView: View {
                 if session.histories[roomID]?.canLoadOlder == true {
                     ProgressView()
                         .frame(maxWidth: .infinity)
-                        .onAppear { perform { try await session.loadOlder(roomID) } }
+                        .task(id: session.timeline(roomID).count) {
+                            do { try await session.loadOlder(roomID) } catch { self.error = errorText(error) }
+                        }
                 }
                 ForEach(session.timeline(roomID), id: \.messageID) { message in
                     MessageRow(session: session, message: message) { emoji in
