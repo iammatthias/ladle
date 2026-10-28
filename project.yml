@@ -5,6 +5,9 @@ options:
     # The newest installed SDK is iOS 27.1 (Xcode 27.1). Bump to 27.2 once Xcode ships its SDK.
     iOS: "27.1"
   createIntermediateGroups: true
+packages:
+  ApronKit:
+    path: Packages/ApronKit
 configFiles:
   Debug: Config/Domains.xcconfig
   Release: Config/Domains.xcconfig
@@ -24,6 +27,8 @@ targets:
     platform: iOS
     sources:
       - path: Apron
+    dependencies:
+      - package: ApronKit
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.iammatthias.apron
@@ -33,14 +38,12 @@ targets:
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
         ENABLE_PREVIEWS: YES
-  # Hermetic: no network, no server. Fixtures are bundled resources.
+  # Hermetic: no network, no server. The protocol gate lives in Packages/ApronKit (swift test).
   ApronTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: ApronTests
-    resources:
-      - path: ApronTests/Fixtures
     dependencies:
       - target: Apron
     settings:
