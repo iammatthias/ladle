@@ -145,6 +145,7 @@ enum Tokens {
         static let memberListW: CGFloat = 240
         static let chipH: CGFloat = 26
         static let touchTarget: CGFloat = 44
+        static let embedCardW: CGFloat = 420
         static let railW: CGFloat = 64
     }
 

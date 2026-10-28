@@ -182,11 +182,13 @@ public enum PreviewFixtures {
         line(13, "dev", "", deleted: true),
         line(14, "sam", "I'll cut the build after lunch.", reactions: ["👍": ["ada"]]),
         line(15, "eunji", "@Sam can you review the icon PR before then? It's small, mostly the ladle glyph at 20 pt.",
+             // A link preview as a server that describes links would send it; aprond drops a sender's `og`.
              mentions: ["sam"], embeds: [[
                  "kind": "link", "url": "https://git.example/ladle/pull/42",
-                 "og": ["title": "Ladle glyph at small sizes #42", "description": "Bowl-only mark, 2 pt stroke, rounded caps.", "site_name": "git.example"],
+                 "og": ["title": "Ladle glyph at small sizes #42", "description": "Bowl-only mark, 2 pt stroke, rounded caps.", "site_name": "git.example",
+                        "image": media(6, "image/jpeg", 1200, 630, alt: "The ladle glyph at 20 pt")],
              ]]),
-        line(16, "bram", "On it", reply: 15),
+        line(16, "bram", "On it. Checklist is at https://git.example/ladle/wiki/Release-0.2", reply: 15),
         line(20, "dev", "Load test plan for Friday", embeds: [["kind": "poll", "url": "https://poll.example/p/7"]],
              movedFrom: "ops"),
     ]

@@ -25,7 +25,7 @@ WEB = Path(os.environ.get("APRON_WEB", Path.home() / "Developer/forks/apron-serv
 # orders by view tree), focus rings (iOS draws its own focus), web-only widths and the CSS filter.
 SKIP = re.compile(
     r"^(font-|z-|focus-ring|focus-offset|ap-|hover-lift|text-field-ios|nudge-w|toast-max-w|"
-    r"pref-|embed-card-w|iframe-max-h|timeline-max-w)"
+    r"pref-|iframe-max-h|timeline-max-w)"
 )
 
 
