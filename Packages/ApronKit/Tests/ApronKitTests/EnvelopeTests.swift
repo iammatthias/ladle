@@ -26,7 +26,7 @@ final class EnvelopeTests: XCTestCase {
         XCTAssertEqual(Request(id: "c1", method: "auth", params: ["scheme": "guest"]).encoded.serialized(),
                        #"{"id":"c1","method":"auth","params":{"scheme":"guest"}}"#)
         XCTAssertEqual(WireNotification(method: "ping").encoded.serialized(), #"{"method":"ping"}"#)
-        XCTAssertEqual(Response(id: "c1", outcome: .failure(RPCError(code: RPCError.denied, message: "no"))).encoded.serialized(),
+        XCTAssertEqual(Response(id: "c1", outcome: .failure(RPCError(code: RPCError.Code.denied, message: "no"))).encoded.serialized(),
                        #"{"error":{"code":-32001,"message":"no"},"id":"c1"}"#)
     }
 
