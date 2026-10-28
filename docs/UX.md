@@ -740,6 +740,30 @@ The review is ranked by how much each gap costs a person using the app. Paths ar
 16. **Silent persistence errors.** `ApronApp.swift:8` drops `store.load()` errors with `try?`. `SessionStore.saveError` is never shown. Show a one-line notice in Rooms when the server list cannot be read or saved.
 17. **Copy that says "we" or uses jargon.** For example, "Sent as the Origin header" appears without context, and the token footer names `/invite-bot`. Spec 3.2 and 3.3 give the replacement strings ([writing], [inclusion]).
 
+### 5.1 Status on the `design` branch
+
+The web-parity pass (2026-10-28) closed most of the list. "Partial" names what is left.
+
+| Gap | Status |
+|---|---|
+| 1. Outbox | Closed in memory: `ServerSession.post` queues with one request `id` per message, resends it across reconnects and timeouts, and shows "Sending…" or "Not sent" with Retry and Delete. Partial: the outbox is not saved across launches, and `too_large` marks the message "Not sent" instead of returning the text to the composer. |
+| 2. Modal errors and sign-in | Closed. Failures are inline banners; sign-in is a banner with **Sign In**, never a sheet that opens itself. |
+| 3. iPad, rotation, restoration, links | Partial. iPad split view, landscape, `@SceneStorage` for the open server and room, and `apron:` and link.apron.chat links are in. The on-disk cache is not, so a relaunch still waits for the socket. |
+| 4. Unread and mentions | Closed. Counts, `@` counts, the New line, and the jump bar. |
+| 5. Notices and commands | Closed. Notices show as callouts; `/` sends a `command`, `//` a message. |
+| 6. Rendering bugs | Closed. |
+| 7. Mentions | Closed. |
+| 8. Accessibility | Closed for the listed items. Rotors are not added. |
+| 9. Add Server and Sign In | Closed. One Connect sheet. |
+| 10. Confirmations | Closed. |
+| 11. Identity, status, mute, profile | Open. |
+| 12. Lifecycle | Partial. Sessions stop in the background and start in the foreground, and a returning network reconnects. `status {idle: 0}` before backgrounding is not sent. |
+| 13. Threads | Partial. Posting into an unjoined room joins first. No Threads list, "Other threads", or unjoined-thread preview. |
+| 14. Reactions | Closed. Frequent six plus the system emoji keyboard; who reacted on long press and in VoiceOver. |
+| 15. Haptics and keyboard | Partial. Return sends and Shift-Return is a new line with a hardware keyboard; a light haptic on send. The other shortcuts and haptics in 4.5 and 4.7 are not added, and swipe to reply (principle 3) is not built. |
+| 16. Persistence errors | Closed. A callout on the server list. |
+| 17. Copy | Partial. The token footer is 3.3's string. The origin footer is new plain wording ("A token works only from the website that gave it to you…"), not 3.2's, and the rest of 3.2 and 3.3's error strings are not all in. |
+
 ## HIG pages read
 
 All pages were fetched on 2026-10-27 from `https://developer.apple.com/tutorials/data/design/human-interface-guidelines/<page>.json`. The human-readable URL is `https://developer.apple.com/design/human-interface-guidelines/<page>`.

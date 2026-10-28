@@ -439,8 +439,7 @@ struct ConnectionState {
             return nil
         case .connecting, .signingIn:
             (symbol, isProblem, canRetry, words) = ("arrow.triangle.2.circlepath", false, false, { _ in "Connecting…" })
-        case .reconnecting(let attempt, let delay) where attempt <= 3:
-            _ = delay
+        case .reconnecting(let attempt, _) where attempt <= 3:
             (symbol, isProblem, canRetry, words) = ("arrow.triangle.2.circlepath", false, false, { _ in "Reconnecting…" })
         case .reconnecting(_, let delay):
             let seconds = Int(delay.components.seconds) + 1
