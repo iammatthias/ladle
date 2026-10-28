@@ -98,7 +98,8 @@ clone), which is only a worked example.
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
   mention list, reaction picker, member list, `TimelineItems`: day pills, messages, the New
   line, thread cards at the thread's creation position, and queued messages; `EmbedViews`:
-  upload embeds as a picture, an inline video, an audio player, a file card that opens in
+  `og` embeds as the web's EmbedCard (a hosted image, site, title, two lines), others as its
+  fallback card, upload embeds as a picture, an inline video, an audio player, a file card that opens in
   Quick Look, or a pending card with progress; `Attachments`: the draft's tiles, staging in
   the temporary directory (cleared at launch), the camera; `VoiceRecorder`: voice notes as
   `audio/mp4`), `Media/` (`MediaLoader`: images decoded at their shown size and files for Quick

@@ -18,7 +18,7 @@ struct EmbedView: View {
         if let upload = embed.upload {
             UploadEmbedView(session: session, embed: embed, upload: upload, mediaID: mediaID)
         } else {
-            EmbedCard(embed: embed)
+            EmbedCard(embed: embed, policy: session.mediaPolicy)
         }
     }
 }
@@ -278,46 +278,84 @@ struct AudioCard: View {
     }
 }
 
-/// An embed of another kind (§3.5.2): OpenGraph renders as the web's LinkCard. Every other kind,
-/// including `iframe` and `html`, which Ladle does not load, renders as the labeled fallback card:
-/// the kind, and its title, URL or text.
+/// An embed of another kind (§3.5.2), as the web's EmbedCard when it has `og`: the image when the
+/// server hosts it, the site, the title (else the embed's title or URL, else its kind), and two
+/// lines of description. Without `og`, the web's EmbedFallback: the kind, and the URL or text.
+/// `iframe` and `html`, which Ladle does not load, take the same two shapes. The card is the
+/// link; tapping it opens `url` in the browser.
 struct EmbedCard: View {
     let embed: Embed
+    let policy: MediaPolicy
 
     var body: some View {
-        let og = embed.og
-        let url = embed.url
-        let card = VStack(alignment: .leading, spacing: Tokens.Space.s0_5) {
-            if let og, og.title != nil || og.description != nil {
-                if let site = og.siteName ?? url?.host() {
-                    Text(site).apText(.sm).foregroundStyle(Palette.inkMuted)
+        if let url = embed.url {
+            Link(destination: url) { card }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Link(destination: url) { Label("Open Link", systemImage: "arrow.up.right.square") }
+                    Button("Copy Link", systemImage: "doc.on.doc") { UIPasteboard.general.url = url }
+                    ShareLink(item: url)
                 }
-                if let title = og.title {
-                    Text(title).apText(.ui, .semibold).foregroundStyle(Palette.denim)
-                }
-                if let description = og.description {
-                    Text(description).apText(.ui).foregroundStyle(Palette.ink).lineLimit(3)
-                }
-            } else {
-                Label(Self.kindLabel(embed), systemImage: "square.dashed")
-                    .apText(.sm, .semibold).foregroundStyle(Palette.inkMuted)
-                if let title = embed.title {
-                    Text(title).apText(.ui, .semibold).foregroundStyle(Palette.ink)
-                }
-                if let detail = embed.text ?? url?.absoluteString {
-                    Text(detail).apText(.ui).foregroundStyle(url == nil ? Palette.ink : Palette.denim).lineLimit(3)
-                }
-            }
-        }
-        .frame(maxWidth: Tokens.Size.embedMaxW, alignment: .leading)
-        .padding(Tokens.Space.s3)
-        .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
-        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.line))
-        if let url {
-            Link(destination: url) { card }.buttonStyle(.plain)
         } else {
             card
         }
+    }
+
+    @ViewBuilder
+    private var card: some View {
+        if let og = embed.og {
+            openGraph(og)
+        } else {
+            fallback
+        }
+    }
+
+    private func openGraph(_ og: OpenGraph) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if let image = og.image, policy.allowsMedia(image.url) {
+                RemoteImage(url: image.url)
+                    .aspectRatio(1.91, contentMode: .fit)
+                    .accessibilityLabel(image.alt ?? "")
+                    .accessibilityHidden(image.alt == nil)
+            }
+            VStack(alignment: .leading, spacing: Tokens.Space.s0_5) {
+                if let site = og.siteName {
+                    Text(site).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
+                }
+                Text(og.title ?? embed.title ?? embed.url?.absoluteString ?? embed.kind)
+                    .apText(.body, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
+                if let description = og.description {
+                    Text(description).apText(.ui).foregroundStyle(Palette.inkMuted).lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, Tokens.Space.s3)
+            .padding(.horizontal, Tokens.Space.s4)
+        }
+        .frame(maxWidth: Tokens.Size.embedCardW)
+        .background(Palette.raised)
+        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.lg))
+        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.lg).strokeBorder(Palette.line))
+    }
+
+    private var fallback: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.s0_5) {
+            Text("kind: \(Text(embed.kind).foregroundStyle(Palette.ink))")
+                .apText(.ui).monospaced().foregroundStyle(Palette.inkMuted)
+            Group {
+                if let url = embed.url {
+                    Text(url.absoluteString).monospaced().foregroundStyle(Palette.denim)
+                } else {
+                    Text(embed.text ?? "This client can’t display this embed.").foregroundStyle(Palette.inkMuted)
+                }
+            }
+            .apText(.sm)
+        }
+        .frame(minWidth: 240, alignment: .leading)
+        .padding(.vertical, Tokens.Space.s3)
+        .padding(.horizontal, Tokens.Space.s4)
+        .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.lg))
+        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.lg).strokeBorder(Palette.line))
     }
 
     static func kindLabel(_ embed: Embed) -> String {

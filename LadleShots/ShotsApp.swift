@@ -158,11 +158,17 @@ final class FixtureMedia: URLProtocol {
 
     override func startLoading() {
         let path = request.url?.path() ?? ""
-        let data = path.contains("embed_1") ? Self.photo(CGSize(width: 1600, height: 1200), hue: 0.02) : Data("fixture".utf8)
+        let photo: Data? = if path.contains("embed_1/") {
+            Self.photo(CGSize(width: 1600, height: 1200), hue: 0.02)
+        } else if path.contains("embed_6/") {
+            Self.photo(CGSize(width: 1200, height: 630), hue: 0.58)
+        } else {
+            nil
+        }
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
-                                       headerFields: ["Content-Type": path.contains("embed_1") ? "image/jpeg" : "application/octet-stream"])!
+                                       headerFields: ["Content-Type": photo == nil ? "application/octet-stream" : "image/jpeg"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocol(self, didLoad: photo ?? Data("fixture".utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 
