@@ -8,7 +8,7 @@ Phase 1 is the protocol core, `Packages/ApronKit`, gated by the protocol's clien
 fixtures. The app itself is a placeholder until phase 2.
 
 ```sh
-swift test --package-path Packages/ApronKit   # protocol core and fixture gate, no simulator
+scripts/sync-fixtures.sh --check && swift test --package-path Packages/ApronKit   # the gate
 ./build.sh build                               # the iOS app
 ./build.sh test                                # app tests on the "Apron iPhone" simulator
 ```
