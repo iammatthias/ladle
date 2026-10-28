@@ -41,6 +41,8 @@ public struct MessageSnapshot: Hashable, Sendable {
     public var from: UserObject
     public var body: JSONValue?
     public var replyTo: LogID?
+    /// The room this message was in before a move (§4.4); set by the server.
+    public var prevRoomID: String?
     public var deleted: Bool?
     public var ext: JSONValue?
 
@@ -188,6 +190,7 @@ extension MessageFrame {
         var snapshot = MessageSnapshot(messageID: messageID, logID: logID, roomID: roomID, from: from)
         snapshot.body = params["body"]
         snapshot.ext = params["ext"]
+        snapshot.prevRoomID = OpaqueID.validated(params["prev_room_id"])
         if let deleted = params["deleted"] { snapshot.deleted = deleted.boolValue }
         var embedded: [MessageSnapshot] = []
         if let reference = params["reply_to"], let target = LogID(reference["message_id"]) {

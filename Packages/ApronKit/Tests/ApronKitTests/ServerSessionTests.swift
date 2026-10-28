@@ -410,6 +410,74 @@ final class ServerSessionTests: XCTestCase {
                          reply: ["room_id": "300"]) { try await self.session.createRoom(title: "Deploy", parentRoomID: "general") }
     }
 
+    func testMentionsCommandsAndDoubleSlashMessages() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        let mention = Task { try await session.send("hi @Bob", in: "general", mentions: ["bob"]) }
+        let sent1 = await frame(socket, 2)
+        XCTAssertEqual(sent1, #"{"id":"c3","method":"message","params":{"body":{"format":"plain","mentions":["bob"],"text":"hi @Bob"},"room_id":"general"}}"#)
+        await socket.deliver(["id": "c3", "result": ["message_id": "300"]])
+        let posted = try await mention.value
+        XCTAssertEqual(posted, LogID("300"))
+        let command = Task { try await session.send("/help", in: "general") }
+        let sent2 = await frame(socket, 3)
+        XCTAssertEqual(sent2, #"{"id":"c4","method":"command","params":{"body":{"format":"plain","text":"/help"},"room_id":"general"}}"#)
+        await socket.deliver(["id": "c4", "result": [:]])
+        let ran = try await command.value
+        XCTAssertNil(ran)
+        let slash = Task { try await session.send("//shrug", in: "general") }
+        let sent3 = await frame(socket, 4)
+        XCTAssertEqual(sent3, #"{"id":"c5","method":"message","params":{"body":{"format":"plain","text":"/shrug"},"room_id":"general"}}"#)
+        await socket.deliver(["id": "c5", "result": ["message_id": "301"]])
+        _ = try await slash.value
+    }
+
+    func testTheOutboxHoldsAMessageUntilSignInAndResendsItWithTheSameID() async throws {
+        session.start()
+        let first = await transport(0)
+        try await signInAsGuest(on: first)
+        await first.dropFromServer()
+        await eventually("reconnecting") { if case .reconnecting = session.status { true } else { false } }
+        session.post("queued", in: "general")
+        XCTAssertEqual(session.outbox.map(\.text), ["queued"])
+        XCTAssertEqual(session.outbox.first?.state, .sending)
+
+        let resent = #"{"id":"q-c3","method":"message","params":{"body":{"format":"plain","text":"queued"},"room_id":"general"}}"#
+        clock.release()
+        let second = await transport(1)
+        _ = await frames(second, count: 2)
+        await second.deliver(["id": "c4", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await second.deliver(["id": "c5", "result": ["joined": [["room_id": "general"]]]])
+        let sent4 = await frame(second, 2)
+        XCTAssertEqual(sent4, resent)
+        await second.dropFromServer()
+        await eventually("reconnecting again") { if case .reconnecting = session.status { true } else { false } }
+        XCTAssertEqual(session.outbox.count, 1, "a dropped connection leaves it queued")
+
+        clock.release()
+        let third = await transport(2)
+        _ = await frames(third, count: 2)
+        await third.deliver(["id": "c6", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await third.deliver(["id": "c7", "result": ["joined": [["room_id": "general"]]]])
+        let sent5 = await frame(third, 2)
+        XCTAssertEqual(sent5, resent, "the same id across reconnects")
+        await third.deliver(["id": "q-c3", "result": ["message_id": "400"]])
+        await eventually("sent and removed") { session.outbox.isEmpty }
+    }
+
+    func testARefusedQueuedMessageStaysAsNotSent() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        session.post("too much", in: "general")
+        _ = await frame(socket, 2)
+        await socket.deliver(["id": "q-c3", "error": ["code": -32003, "message": "Too large"]])
+        await eventually("failed") { session.outbox.first?.state == .failed("Too long for this server.") }
+        session.discard(session.outbox[0].id)
+        XCTAssertTrue(session.outbox.isEmpty)
+    }
+
     func testOperationsNeedASignedInConnection() async throws {
         do {
             try await session.send("hi", in: "general")
