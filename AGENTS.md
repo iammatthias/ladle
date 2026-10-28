@@ -6,7 +6,7 @@ protocol core behind the protocol's client conformance fixtures. Phase 2 adds th
 (`ServerSession`, `SessionStore`) and a thin SwiftUI client over it.
 
 The spec is `PROTOCOL.md` in the protocol repository, checked out read-only at
-`/Users/iammatthias/Developer/forks/apron-server-go/testdata/apron`. Implement to the spec and
+`~/Developer/forks/apron-server-go/testdata/apron`. Implement to the spec and
 its fixtures, not to the TypeScript reference client (`.apron-web/src/lib/protocol/` in the same
 clone), which is only a worked example.
 
@@ -77,7 +77,7 @@ clone), which is only a worked example.
   (`Tokens.swift`, generated; `Apron`: colors by job, text roles, motion; `People`: avatars and
   StatusDot; `Components`: the web's UnreadCount, Callout, ActionBanner, EmptyState, buttons).
   `Servers/KeychainStore.swift` is the only place a secret is persisted (generic password,
-  service `com.iammatthias.ladle.token`, account = server id).
+  service `app.ladle.ios.token`, account = server id).
 - `LadleTests/`: hermetic app tests (no network, no server).
 - `LadleShots/`: the design-review renderer (see "Design review").
 - `Packages/ApronKit/Tests/ApronKitIntegrationTests/`: `ServerSession` against the real Rust
@@ -108,7 +108,7 @@ clone), which is only a worked example.
 
 ## Design
 
-Ladle follows apron-web (`/Users/iammatthias/Developer/forks/apron-server-go/.apron-web`),
+Ladle follows apron-web (`~/Developer/forks/apron-server-go/.apron-web`),
 translated through the HIG. Its narrow layout (under 720 px) is the iPhone reference; its wide
 layout (960 px and wider) is the iPad split view.
 
@@ -230,7 +230,7 @@ Fallbacks: email with a typed code (§4.11). Optional later paths, not implement
   domains. Constraints, from Apple's docs unless marked:
   - The app needs a `webcredentials:<domain>` associated domain, and the server must serve
     `https://<domain>/.well-known/apple-app-site-association` over https with a valid certificate
-    and no redirects, listing `MP92RCAPRG.com.iammatthias.ladle` under `webcredentials.apps`
+    and no redirects, listing `MP92RCAPRG.app.ladle.ios` under `webcredentials.apps`
     (https://developer.apple.com/documentation/xcode/supporting-associated-domains). "You need to
     have an associated domain with the webcredentials service type when making a registration
     or assertion request; otherwise, the request returns an error"

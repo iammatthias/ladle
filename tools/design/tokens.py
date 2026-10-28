@@ -19,7 +19,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PIN = ROOT / "tools/design/UPSTREAM"
 OUT = ROOT / "Ladle/Design/Tokens.swift"
-WEB = Path(os.environ.get("APRON_WEB", "/Users/iammatthias/Developer/forks/apron-server-go/.apron-web"))
+WEB = Path(os.environ.get("APRON_WEB", Path.home() / "Developer/forks/apron-server-go/.apron-web"))
 
 # Tokens the app has no use for: font stacks (the app uses SF and SF Mono), stacking order (SwiftUI
 # orders by view tree), focus rings (iOS draws its own focus), web-only widths and the CSS filter.

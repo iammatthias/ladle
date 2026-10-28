@@ -2,14 +2,14 @@ import ApronKit
 import Foundation
 import Security
 
-/// Bearer tokens in the Keychain as generic passwords: service `com.iammatthias.ladle.token`,
+/// Bearer tokens in the Keychain as generic passwords: service `app.ladle.ios.token`,
 /// account = the server's id. The only place a secret is persisted.
 struct KeychainStore: TokenStore {
     struct Failure: Error, Equatable {
         let status: OSStatus
     }
 
-    private static let service = "com.iammatthias.ladle.token"
+    private static let service = "app.ladle.ios.token"
 
     func token(for serverID: UUID) throws -> String? {
         var query = Self.query(for: serverID)
