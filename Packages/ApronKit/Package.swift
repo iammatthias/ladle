@@ -19,5 +19,12 @@ let package = Package(
             resources: [.copy("Fixtures")],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
+        // Runs the real Rust server (aprond); skips without its binary unless
+        // APRON_REQUIRE_SERVER=1.
+        .testTarget(
+            name: "ApronKitIntegrationTests",
+            dependencies: ["ApronKit"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
     ]
 )
