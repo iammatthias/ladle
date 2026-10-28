@@ -43,7 +43,7 @@ struct TimelineView: View {
                                 do { try await session.loadOlder(roomID) } catch { problem = errorText(error) }
                             }
                     }
-                    ForEach(session.timelineItems(roomID, newLine: session.newLine(in: roomID, after: visit.after))) { item in
+                    ForEach(session.timelineItems(roomID, lineBefore: session.newLine(in: roomID, after: visit.after))) { item in
                         row(item).id(item.id)
                     }
                     ForEach(Array(session.notices.enumerated()).filter { $0.element.roomID == roomID }, id: \.offset) { _, notice in
@@ -129,8 +129,6 @@ struct TimelineView: View {
         }
     }
 
-    /// Reading the latest message, as the web's `readAction` decides it: this pane is on screen in
-    /// the active app, at its latest message, loaded and landed at its New line, on a live session.
     private var isReading: Bool {
         visible && scenePhase == .active && atBottom && visit.isLanded && session.status == .signedIn
     }
@@ -337,10 +335,9 @@ struct Draft {
 }
 
 /// One look at a room, as the web's `newDivider`: where you had read when it opened fixes the New
-/// line for the visit, and reading counts only once the pane has landed there.
+/// line for the visit.
 enum Visit: Equatable {
     case opening
-    /// `after` is `readThrough` as the room opened; nil when nothing was known.
     case landed(after: LogID?)
 
     var after: LogID? {
@@ -354,7 +351,6 @@ enum Visit: Equatable {
     }
 }
 
-/// What reading marks: whether this pane is being read, and its latest message.
 struct ReadMark: Equatable {
     var reading: Bool
     var through: LogID?
