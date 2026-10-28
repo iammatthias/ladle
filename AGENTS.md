@@ -76,7 +76,9 @@ clone), which is only a worked example.
     deleted message, presence). The design screenshots render from it; `PreviewFixturesTests`
     pins what it holds. Message ids are server-wide, so no two rooms share a minute in the
     script.
-  - `SignIn`, `TokenPayload` (a bare token or a §A.4 link with `token`), `UserDirectory` (one kept
+  - `SignIn`, `TokenPayload` (a bare token or a §A.4 link with `token`), `SignInFill` (what a
+    scanned or pasted sign-in fills in: server and token when adding a server, the token alone
+    otherwise, or the other server a saved server's link names), `UserDirectory` (one kept
     user object per `user_id`, merge rules, `Name (@user_id)` on clashes).
   - `ServerRecord`, `ServerStore`, `TokenStore`: the saved servers (JSON, no secrets) and the seam
     for the bearer token. `InMemoryTokenStore` is for tests.
