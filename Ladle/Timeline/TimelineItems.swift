@@ -50,7 +50,7 @@ extension ServerSession {
                 previous = nil
             }
             let continues = previous.map {
-                $0.from.userID == message.from.userID && !$0.isTombstone && message.date.timeIntervalSince($0.date) < 300
+                $0.from.userID == message.from.userID && message.date.timeIntervalSince($0.date) < 300
             } ?? false
             items.append(.message(message, continues: continues))
             previous = message
@@ -62,11 +62,6 @@ extension ServerSession {
 
     func threadIDs(in roomID: String) -> [String] {
         store.roomIDs.filter { store.room($0)?.parentRoomID == roomID }
-    }
-
-    /// The newest message in a room, for list previews.
-    func lastMessage(in roomID: String) -> MessageSnapshot? {
-        timeline(roomID).last { !$0.isTombstone }
     }
 
     /// Unread messages from others that mention this user.
@@ -100,7 +95,7 @@ extension MessageSnapshot {
 
     /// `log_id == message_id` marks the creation (§2.2); a later snapshot is an edit or a move.
     /// A move carries `prev_room_id`, so it is not an edit.
-    var isEdited: Bool { !isTombstone && logID != messageID && prevRoomID == nil }
+    var isEdited: Bool { logID != messageID && prevRoomID == nil }
 
     var plainText: String { body?["text"]?.stringValue ?? "" }
 

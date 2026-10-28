@@ -180,7 +180,7 @@ public enum PreviewFixtures {
         line(9, "chiara", "nice"),
         line(12, "ada", "Confirmed on my phone. Scrolled all the way back to August.", reply: 8),
         line(13, "dev", "", deleted: true),
-        line(14, "sam", "I'll cut the build after lunch.", reactions: ["👍": ["ada"]]),
+        line(14, "sam", "I'll cut the build after lunch.", reply: 13, reactions: ["👍": ["ada"]]),
         line(15, "eunji", "@Sam can you review the icon PR before then? It's small, mostly the ladle glyph at 20 pt.",
              // A link preview as a server that describes links would send it; aprond drops a sender's `og`.
              mentions: ["sam"], embeds: [[

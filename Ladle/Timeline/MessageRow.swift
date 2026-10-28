@@ -21,7 +21,7 @@ struct MessageRow: View {
         let compact = (fixedTypeSize ?? typeSize).isAccessibilitySize
         let mentionsYou = session.you.map { message.mentions($0.userID) && message.from.userID != $0.userID } ?? false
         VStack(alignment: .leading, spacing: 0) {
-            if let target = message.replyTo, !message.isTombstone {
+            if let target = message.replyTo {
                 ReplyQuote(session: session, target: target, onJump: onJump)
                     .padding(.leading, compact ? 0 : Tokens.AvatarSize.md + Tokens.Space.s3 - Tokens.Space.s1)
             }
@@ -73,45 +73,41 @@ struct MessageRow: View {
 
     @ViewBuilder
     private var content: some View {
-        if message.isTombstone {
-            Text("Message deleted").apText(.body).italic().foregroundStyle(Palette.inkMuted)
-        } else {
-            if !message.plainText.isEmpty {
-                Text(rendered(message.body, mentions: mentionNames, you: session.you?.userID))
-                    .apText(.body)
-                    .foregroundStyle(Palette.ink)
-                    .tint(Palette.denim)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            if let room = message.prevRoomID {
-                Text("Moved from \(Text(session.title(of: room)).foregroundStyle(Palette.denim))")
-                    .apText(.sm).italic().foregroundStyle(Palette.inkMuted)
-                    .padding(.top, Tokens.Space.s1)
-            }
-            let unfurl = message.unfurlURL
-            let embeds = message.embedList
-            // A fetched preview takes the place of the `link` embed for the same URL, if any.
-            let unfurledEmbed = unfurl.flatMap { url in embeds.firstIndex { $0.kind == "link" && $0.url == url } }
-            if !embeds.isEmpty {
-                VStack(alignment: .leading, spacing: Tokens.Space.s2) {
-                    ForEach(Array(embeds.enumerated()), id: \.offset) { index, embed in
-                        let view = EmbedView(session: session, embed: embed, mediaID: MediaItem.id(message, index))
-                        if let unfurl, index == unfurledEmbed {
-                            FetchedLinkCard(url: unfurl) { view }
-                        } else {
-                            view
-                        }
+        if !message.plainText.isEmpty {
+            Text(rendered(message.body, mentions: mentionNames, you: session.you?.userID))
+                .apText(.body)
+                .foregroundStyle(Palette.ink)
+                .tint(Palette.denim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if let room = message.prevRoomID {
+            Text("Moved from \(Text(session.title(of: room)).foregroundStyle(Palette.denim))")
+                .apText(.sm).italic().foregroundStyle(Palette.inkMuted)
+                .padding(.top, Tokens.Space.s1)
+        }
+        let unfurl = message.unfurlURL
+        let embeds = message.embedList
+        // A fetched preview takes the place of the `link` embed for the same URL, if any.
+        let unfurledEmbed = unfurl.flatMap { url in embeds.firstIndex { $0.kind == "link" && $0.url == url } }
+        if !embeds.isEmpty {
+            VStack(alignment: .leading, spacing: Tokens.Space.s2) {
+                ForEach(Array(embeds.enumerated()), id: \.offset) { index, embed in
+                    let view = EmbedView(session: session, embed: embed, mediaID: MediaItem.id(message, index))
+                    if let unfurl, index == unfurledEmbed {
+                        FetchedLinkCard(url: unfurl) { view }
+                    } else {
+                        view
                     }
                 }
-                .padding(.top, Tokens.Space.s2)
             }
-            if let unfurl, unfurledEmbed == nil {
-                FetchedLinkCard(url: unfurl, inset: Tokens.Space.s2) { EmptyView() }
-            }
-            if let reactions = session.store.reactions(on: message.messageID) {
-                ReactionBar(session: session, reactions: reactions, onReact: onReact, onAdd: onAddReaction)
-                    .padding(.top, Tokens.Space.s1)
-            }
+            .padding(.top, Tokens.Space.s2)
+        }
+        if let unfurl, unfurledEmbed == nil {
+            FetchedLinkCard(url: unfurl, inset: Tokens.Space.s2) { EmptyView() }
+        }
+        if let reactions = session.store.reactions(on: message.messageID) {
+            ReactionBar(session: session, reactions: reactions, onReact: onReact, onAdd: onAddReaction)
+                .padding(.top, Tokens.Space.s1)
         }
     }
 
@@ -125,16 +121,16 @@ struct MessageRow: View {
     private func accessibilityText(name: String, mentionsYou: Bool) -> String {
         var parts = [name]
         if mentionsYou { parts.append("mentions you") }
-        if message.replyTo != nil, !message.isTombstone {
+        if message.replyTo != nil {
             let target = message.replyTo.flatMap(session.store.message)
-            parts.append("replying to " + (target.map { session.displayName(for: $0.from) } ?? "an unavailable message"))
+            parts.append("replying to " + (target.map { $0.isTombstone ? "a deleted message" : session.displayName(for: $0.from) } ?? "an unavailable message"))
         }
-        parts.append(message.isTombstone ? "Message deleted" : message.plainText)
+        parts.append(message.plainText)
         if let room = message.prevRoomID { parts.append("moved from \(session.title(of: room))") }
         for embed in message.embedList { parts.append(EmbedCard.summary(embed)) }
         if message.isEdited { parts.append("edited") }
         parts.append(message.date.formatted(date: .omitted, time: .shortened))
-        if let reactions = session.store.reactions(on: message.messageID), !message.isTombstone {
+        if let reactions = session.store.reactions(on: message.messageID) {
             parts.append(reactions.map { "\($0.emoji) \($0.userIDs.count)" }.joined(separator: ", "))
         }
         return parts.joined(separator: ", ")
@@ -169,14 +165,17 @@ func previewText(_ body: JSONValue?) -> AttributedString {
 }
 
 /// The web's ReplyPreview: a bent line, the quoted sender's face and name, and one line of their
-/// text. Tapping it jumps to the message. A target this client does not have says so.
+/// text. Tapping it jumps to the message. A target this client does not have, or one deleted
+/// since, says so and leaves out who wrote it, as the timeline leaves the message out.
 struct ReplyQuote: View {
     let session: ServerSession
     let target: LogID
     var onJump: (LogID) -> Void = { _ in }
 
     var body: some View {
-        let quoted = session.store.message(target)
+        let stored = session.store.message(target)
+        let quoted = stored?.isTombstone == true ? nil : stored
+        let missing = stored == nil ? "Message unavailable" : "Original message deleted"
         Button { onJump(target) } label: {
             HStack(spacing: Tokens.Space.s1) {
                 Image(systemName: "arrow.turn.up.right").imageScale(.small).foregroundStyle(Palette.lineStrong)
@@ -185,10 +184,9 @@ struct ReplyQuote: View {
                     Avatar(name: session.displayName(for: quoted.from), userID: quoted.from.userID, size: .xs,
                            image: session.avatarURL(of: quoted.from.userID))
                     Text(session.displayName(for: quoted.from)).fontWeight(.medium).foregroundStyle(Palette.ink)
-                    Text(quoted.isTombstone ? AttributedString("Message deleted") : previewText(quoted.body))
-                        .lineLimit(1)
+                    Text(previewText(quoted.body)).lineLimit(1)
                 } else {
-                    Text("Message unavailable").italic()
+                    Text(missing).italic()
                 }
             }
             .apText(.ui)
@@ -197,7 +195,7 @@ struct ReplyQuote: View {
         }
         .buttonStyle(.plain)
         .disabled(quoted == nil)
-        .accessibilityLabel("In reply to " + (quoted.map { session.displayName(for: $0.from) } ?? "a message that is unavailable"))
+        .accessibilityLabel("In reply to " + (quoted.map { session.displayName(for: $0.from) } ?? missing.lowercased()))
         .accessibilityHint(quoted == nil ? "" : "Shows the message")
     }
 }

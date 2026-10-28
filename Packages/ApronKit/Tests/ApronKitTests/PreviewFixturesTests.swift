@@ -15,10 +15,13 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.roomTree.map { $0.threadIDs.map(home.title(of:)) }, [["Icon sketches"], ["Release 0.2"], [], []])
 
         let general = home.timeline(PreviewFixtures.busyRoomID)
-        XCTAssertEqual(general.count, 14)
-        XCTAssertEqual(general.filter(\.isTombstone).count, 1)
-        XCTAssertEqual(general.filter { !$0.isTombstone && $0.logID != $0.messageID }.count, 1, "one edit")
-        XCTAssertEqual(general.compactMap(\.replyTo).count, 3)
+        XCTAssertEqual(general.count, 13)
+        let deleted = home.store.messages(in: PreviewFixtures.busyRoomID).filter(\.isTombstone)
+        XCTAssertEqual(deleted.count, 1, "one deleted message, left out of the timeline")
+        XCTAssertEqual(general.filter { $0.logID != $0.messageID }.count, 1, "one edit")
+        XCTAssertEqual(general.compactMap(\.replyTo).count, 4)
+        XCTAssertEqual(general.compactMap(\.replyTo).filter { home.store.message($0)?.isTombstone == true }, deleted.map(\.messageID),
+                       "one reply quotes the deleted message")
         let notes = try XCTUnwrap(general.first { $0.body?["text"]?.stringValue?.hasPrefix("Notes from the sync") == true })
         XCTAssertEqual(home.store.reactions(on: notes.messageID)?.map(\.emoji), ["🎉", "👍"], "code point order")
         XCTAssertEqual(home.store.reactions(on: notes.messageID)?.last?.userIDs, ["bram", "chiara", "sam"])
