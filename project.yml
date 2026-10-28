@@ -40,6 +40,11 @@ targets:
             CFBundleURLSchemes: [apron]
         # Only standard TLS (HTTPS and WSS), which is exempt from export documentation.
         ITSAppUsesNonExemptEncryption: false
+    # link.apron.chat lists this app ID in its association file once the app is in its registry.
+    entitlements:
+      path: Config/Ladle.entitlements
+      properties:
+        com.apple.developer.associated-domains: [applinks:link.apron.chat]
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.ladle.ios
