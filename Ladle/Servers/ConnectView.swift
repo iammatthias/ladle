@@ -119,6 +119,7 @@ struct ConnectView: View {
                 .ignoresSafeArea()
             }
             .onAppear(perform: load)
+            .onChange(of: methods) { _, offered in if !offered.contains(method), let first = offered.first { method = first } }
         }
         .presentationBackground(Palette.chrome)
     }

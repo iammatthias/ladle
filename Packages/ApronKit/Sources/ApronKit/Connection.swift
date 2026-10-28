@@ -113,6 +113,7 @@ public actor Connection {
         switch pending[id] {
         case .replied(let outcome):
             pending[id] = nil
+            attempts[id] = nil
             return try outcome.get()
         case .waiting:
             return try await withCheckedThrowingContinuation { pending[id] = .waiting($0) }
@@ -131,6 +132,7 @@ public actor Connection {
         switch pending[id] {
         case .waiting(let waiter?):
             pending[id] = nil
+            attempts[id] = nil
             waiter.resume(with: outcome)
         case .waiting(nil):
             pending[id] = .replied(outcome)
