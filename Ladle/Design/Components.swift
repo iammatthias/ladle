@@ -19,12 +19,15 @@ struct UnreadCount: View {
     }
 }
 
-/// A private room's lock (§4.2.4), always beside the private color.
+/// A private room's lock (§4.2.4). Muted beside a room's name, as the web's `ap-lock`; in the
+/// private color on a private thread's card, so that color never shows without it.
 struct Lock: View {
+    var tint = Palette.inkMuted
+
     var body: some View {
         Image(systemName: "lock.fill")
             .imageScale(.small)
-            .foregroundStyle(Palette.private)
+            .foregroundStyle(tint)
             .accessibilityLabel("Private")
     }
 }
