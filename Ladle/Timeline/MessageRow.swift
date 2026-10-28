@@ -129,25 +129,19 @@ struct MessageRow: View {
     }
 }
 
-/// `markdown` bodies render inline CommonMark; raw HTML shows as text (§3.5.2). Mentions show as
-/// the web's chips: denim on denim-soft, and accent with on-accent for you.
+/// The body as `MessageText` renders it, links included. Mentions outside links show as the
+/// web's chips: denim on denim-soft, and accent with on-accent for you.
 func rendered(_ body: JSONValue?, mentions: [String: String] = [:], you: String? = nil) -> AttributedString {
-    let text = body?["text"]?.stringValue ?? ""
-    var out: AttributedString
-    if body?["format"]?.stringValue == "markdown" {
-        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-        out = (try? AttributedString(markdown: text, options: options)) ?? AttributedString(text)
-    } else {
-        out = AttributedString(text)
-    }
+    var out = MessageText.attributed(body)
     for (id, name) in mentions {
         for token in Set(["@" + name, "@" + id]) {
             var search = out.startIndex ..< out.endIndex
             while let range = out[search].range(of: token) {
+                search = range.upperBound ..< out.endIndex
+                if out[range].runs.contains(where: { $0.link != nil }) { continue }
                 out[range].backgroundColor = id == you ? Palette.accent : Palette.denimSoft
                 out[range].foregroundColor = id == you ? Palette.onAccent : Palette.denim
                 out[range].inlinePresentationIntent = .stronglyEmphasized
-                search = range.upperBound ..< out.endIndex
             }
         }
     }
