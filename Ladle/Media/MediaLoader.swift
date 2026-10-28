@@ -64,7 +64,7 @@ final class MediaLoader {
         let digest = SHA256.hash(data: Data(url.absoluteString.utf8)).prefix(12).map { String(format: "%02x", $0) }.joined()
         let folder = URL.cachesDirectory.appending(path: "Media/\(digest)", directoryHint: .isDirectory)
         let destination = folder.appending(path: name.replacingOccurrences(of: "/", with: "-"))
-        if FileManager.default.fileExists(atPath: destination.path()) { return destination }
+        if FileManager.default.fileExists(atPath: destination.path(percentEncoded: false)) { return destination }
         let (temporary, response) = try await session.download(from: url)
         if let http = response as? HTTPURLResponse, !(200 ..< 300).contains(http.statusCode) { throw URLError(.badServerResponse) }
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

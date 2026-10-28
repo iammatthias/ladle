@@ -5,7 +5,8 @@ final class ServerRecordTests: XCTestCase {
     private var directory: URL!
 
     override func setUpWithError() throws {
-        directory = FileManager.default.temporaryDirectory.appending(path: "ApronKitTests-\(UUID().uuidString)")
+        // A space, as in iOS's "Application Support", so a percent-encoded path would miss the file.
+        directory = FileManager.default.temporaryDirectory.appending(path: "ApronKit Tests-\(UUID().uuidString)")
     }
 
     override func tearDownWithError() throws {
