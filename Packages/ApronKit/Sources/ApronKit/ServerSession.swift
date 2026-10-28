@@ -475,6 +475,11 @@ public struct RoomNode: Hashable, Sendable, Identifiable {
     public var roomID: String
     public var threadIDs: [String]
     public var id: String { roomID }
+
+    public init(roomID: String, threadIDs: [String]) {
+        self.roomID = roomID
+        self.threadIDs = threadIDs
+    }
 }
 
 /// Paging state of one opened room (§4.3.2, §4.3.5).
