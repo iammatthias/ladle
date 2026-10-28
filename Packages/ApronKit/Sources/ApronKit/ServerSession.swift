@@ -33,6 +33,8 @@ public final class ServerSession {
         case notConnected
         case notSignedIn
         case unsupported(capability: String)
+        /// The result listed no `write_url` for an attachment (§4.8.3).
+        case attachmentNotAccepted
     }
 
     /// The seams tests replace: the transport, the clock, and the random parts.
@@ -49,6 +51,8 @@ public final class ServerSession {
         public var pageSize: Int
         /// How long a signed-in connection must last before backoff starts over.
         public var stableAfter: Duration
+        /// The HTTP `PUT` of an attachment to its `write_url` (§4.8.3).
+        public var writeEmbed: EmbedWrite
 
         public init(
             makeTransport: @escaping @Sendable (ServerRecord) -> any FrameTransport,
@@ -58,7 +62,8 @@ public final class ServerSession {
             makeState: @escaping @Sendable () -> String = { UUID().uuidString + UUID().uuidString },
             agent: String = "ladle-ios/0.1",
             pageSize: Int = 50,
-            stableAfter: Duration = .seconds(30)
+            stableAfter: Duration = .seconds(30),
+            writeEmbed: @escaping EmbedWrite = EmbedWriter.live
         ) {
             self.makeTransport = makeTransport
             self.sleep = sleep
@@ -68,6 +73,7 @@ public final class ServerSession {
             self.agent = agent
             self.pageSize = pageSize
             self.stableAfter = stableAfter
+            self.writeEmbed = writeEmbed
         }
 
         public static let live = Environment(makeTransport: { record in
@@ -92,12 +98,14 @@ public final class ServerSession {
     public private(set) var histories: [String: RoomHistory] = [:]
     /// How far this user has read each room: the latest own `read_message_id` (§4.6).
     public private(set) var readCursors: [String: LogID] = [:]
+    /// The fraction written of each of this user's uploads in flight, by `embed_id` (§4.8.3).
+    public internal(set) var uploadProgress: [String: Double] = [:]
 
     /// Called when the account on `record` changes, so the owner can persist it.
     public var onRecordChange: (@MainActor (ServerRecord) -> Void)?
 
     private let tokens: any TokenStore
-    private let environment: Environment
+    let environment: Environment
     private var connection: Connection?
     private var runTask: Task<Void, Never>?
 
@@ -388,17 +396,25 @@ public final class ServerSession {
     /// `command`, and `//` sends a message that starts with `/`. Returns the new `message_id`, or
     /// nil for a command or when the server logged nothing. A post into a room this user has
     /// not joined joins it first, or the message would never come back (§4.2.2).
+    ///
+    /// Each attachment goes as an `upload` embed titled with its name (§4.8.4), and is written to
+    /// the `write_url` the result lists for it once the result arrives. The writes run on their
+    /// own; `uploadProgress` follows them, and a failed one comes back as a Not sent item in the
+    /// outbox, since the server drops the embed from the message (§4.8.3).
     @discardableResult
-    public func send(_ text: String, in roomID: String, replyTo: LogID? = nil, mentions: [String] = [], id: String? = nil) async throws -> LogID? {
+    public func send(_ text: String, in roomID: String, replyTo: LogID? = nil, mentions: [String] = [], attachments: [Attachment] = [],
+                     id: String? = nil) async throws -> LogID? {
         let draft = Draft(text: text)
         if !draft.isCommand, !joinedRoomIDs.contains(roomID), server?.has("rooms") == true, connection != nil, status == .signedIn {
             try await join(roomID)
         }
         var body: [String: JSONValue] = ["text": .string(draft.text), "format": "plain"]
         if !mentions.isEmpty { body["mentions"] = .array(mentions.map(JSONValue.string)) }
+        if !attachments.isEmpty { body["embeds"] = .array(attachments.map(Self.uploadEmbed)) }
         var params: [String: JSONValue] = ["room_id": .string(roomID), "body": .object(body)]
         if let replyTo { params["reply_to"] = ["message_id": replyTo.json] }
         let result = try await request(draft.isCommand ? "command" : "message", .object(params), id: id)
+        startWrites(for: attachments, listedIn: result, roomID: roomID)
         return draft.isCommand ? nil : LogID(result["message_id"])
     }
 
@@ -435,6 +451,7 @@ public final class ServerSession {
         public let text: String
         public let replyTo: LogID?
         public let mentions: [String]
+        public let attachments: [Attachment]
         /// Who queued it; it sends only as that user.
         public let userID: String?
         public let queuedAt: Date
@@ -442,14 +459,14 @@ public final class ServerSession {
     }
 
     /// Queued messages in send order, across rooms.
-    public private(set) var outbox: [PendingMessage] = []
+    public internal(set) var outbox: [PendingMessage] = []
     private var drainingOutbox = false
 
     /// Queues a message and sends it now if signed in, or on the next sign-in as the same user.
     /// Commands are not queued: they need a connection (UX spec 4.2).
-    public func post(_ text: String, in roomID: String, replyTo: LogID? = nil, mentions: [String] = []) {
+    public func post(_ text: String, in roomID: String, replyTo: LogID? = nil, mentions: [String] = [], attachments: [Attachment] = []) {
         outbox.append(PendingMessage(id: "q-" + environment.makeRequestID(), roomID: roomID, text: text, replyTo: replyTo,
-                                     mentions: mentions, userID: you?.userID, queuedAt: Date(), state: .sending))
+                                     mentions: mentions, attachments: attachments, userID: you?.userID, queuedAt: Date(), state: .sending))
         Task { await drainOutbox() }
     }
 
@@ -475,13 +492,14 @@ public final class ServerSession {
                 continue
             }
             do {
-                try await send(item.text, in: item.roomID, replyTo: item.replyTo, mentions: item.mentions, id: item.id)
+                try await send(item.text, in: item.roomID, replyTo: item.replyTo, mentions: item.mentions, attachments: item.attachments,
+                               id: item.id)
                 outbox.removeAll { $0.id == item.id }
             } catch let error as RPCError {
                 if let wait = error.retryAfter {
                     try? await environment.sleep(wait)
                 } else if error.code == RPCError.Code.tooLarge {
-                    mark(item.id, .failed("Too long for this server."))
+                    mark(item.id, .failed(item.attachments.isEmpty ? "Too long for this server." : "Too large for this server."))
                 } else {
                     mark(item.id, .failed(error.message.isEmpty ? "The server refused it (\(error.code))." : error.message))
                 }
@@ -546,11 +564,11 @@ public final class ServerSession {
         return (result["not_joined"]?.arrayValue ?? []).compactMap { $0["room_id"]?.stringValue }
     }
 
-    private func require(_ capability: String) throws {
+    func require(_ capability: String) throws {
         guard server?.has(capability) == true else { throw Failure.unsupported(capability: capability) }
     }
 
-    private func request(_ method: String, _ params: JSONValue, id: String? = nil) async throws -> JSONValue {
+    func request(_ method: String, _ params: JSONValue, id: String? = nil) async throws -> JSONValue {
         guard let connection else { throw Failure.notConnected }
         guard status == .signedIn else { throw Failure.notSignedIn }
         return try await connection.request(method, params: params, id: id)
