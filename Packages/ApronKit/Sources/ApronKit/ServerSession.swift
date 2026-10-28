@@ -618,6 +618,25 @@ public final class ServerSession {
         return [readPositions[roomID], readCursors[roomID], newestOwn].compactMap { $0 }.max()
     }
 
+    /// The message the New line goes before, as the web's `newDividerBefore`: the first message
+    /// after `after`, where you had read when the visit opened. None when that message is your
+    /// own, or when older messages are still to load and none loaded is at or before `after`,
+    /// since the first unread one may be among them.
+    public func newLine(in roomID: String, after: LogID?) -> LogID? {
+        guard let after else { return nil }
+        let olderAvailable = histories[roomID]?.canLoadOlder == true
+        var reached = false
+        for message in timeline(roomID) {
+            if message.messageID <= after {
+                reached = true
+                continue
+            }
+            if !reached, olderAvailable { return nil }
+            return message.from.userID == you?.userID ? nil : message.messageID
+        }
+        return nil
+    }
+
     /// Loaded messages from others after `readThrough`, or all of them when nothing is known.
     public func unreadCount(in roomID: String) -> Int {
         guard let you else { return 0 }

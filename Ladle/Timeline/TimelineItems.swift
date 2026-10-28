@@ -60,25 +60,6 @@ extension ServerSession {
         return items
     }
 
-    /// The message the New line goes before, as the web's `newDividerBefore`: the first message
-    /// after `after`, where you had read when the visit opened. None when that message is your
-    /// own, or when older messages are still to load and none loaded is at or before `after`,
-    /// since the first unread one may be among them.
-    func newLine(in roomID: String, after: LogID?) -> LogID? {
-        guard let after else { return nil }
-        let olderAvailable = histories[roomID]?.canLoadOlder == true
-        var reached = false
-        for message in timeline(roomID) {
-            if message.messageID <= after {
-                reached = true
-                continue
-            }
-            if !reached, olderAvailable { return nil }
-            return message.from.userID == you?.userID ? nil : message.messageID
-        }
-        return nil
-    }
-
     func threadIDs(in roomID: String) -> [String] {
         store.roomIDs.filter { store.room($0)?.parentRoomID == roomID }
     }
