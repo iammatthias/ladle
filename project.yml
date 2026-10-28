@@ -37,26 +37,15 @@ targets:
         INFOPLIST_KEY_CFBundleDisplayName: Apron
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_NSCameraUsageDescription: Apron uses the camera to scan a sign-in QR code.
         ENABLE_PREVIEWS: YES
-  # Hermetic: no network, no server. The protocol gate lives in Packages/ApronKit (swift test).
+  # Hermetic: no network, no server. The protocol and server integration tests live in
+  # Packages/ApronKit (swift test).
   ApronTests:
     type: bundle.unit-test
     platform: iOS
     sources:
       - path: ApronTests
-    dependencies:
-      - target: Apron
-    settings:
-      base:
-        GENERATE_INFOPLIST_FILE: YES
-        BUNDLE_LOADER: "$(TEST_HOST)"
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Apron.app/Apron"
-  # Talks to a real server (phase 2). Only in the ApronIntegration scheme.
-  ApronIntegrationTests:
-    type: bundle.unit-test
-    platform: iOS
-    sources:
-      - path: ApronIntegrationTests
     dependencies:
       - target: Apron
     settings:
@@ -73,11 +62,3 @@ schemes:
     test:
       targets:
         - ApronTests
-  ApronIntegration:
-    build:
-      targets:
-        Apron: all
-        ApronIntegrationTests: [test]
-    test:
-      targets:
-        - ApronIntegrationTests
