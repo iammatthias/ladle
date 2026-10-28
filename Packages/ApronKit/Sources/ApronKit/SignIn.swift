@@ -86,3 +86,25 @@ public struct TokenPayload: Hashable, Sendable {
         return components.queryItems ?? []
     }
 }
+
+/// What a scanned or pasted sign-in fills in on the Connect sheet, which never signs in by itself
+/// (link.apron.chat SPEC §6). `signingInTo` is the saved server the sheet signs in to, or nil
+/// when it adds one; a link may name a new server only then.
+public enum SignInFill: Hashable, Sendable {
+    case serverAndToken(server: URL, token: String)
+    case token(String)
+    /// A link for a server other than the saved one the sheet signs in to.
+    case otherServer(URL)
+
+    /// Nil when the text is neither a token nor a sign-in link. A token is opaque, so any other
+    /// URI (a web page, `WIFI:…`, `mailto:…`) would otherwise pass as a bare one.
+    public init?(_ text: String, signingInTo current: URL?) {
+        guard let payload = TokenPayload(parsing: text) else { return nil }
+        if payload.server == nil, payload.token.prefixMatch(of: /[A-Za-z][A-Za-z0-9+.\-]*:/) != nil { return nil }
+        switch (payload.server, current) {
+        case (nil, _): self = .token(payload.token)
+        case (let server?, nil): self = .serverAndToken(server: server, token: payload.token)
+        case (let server?, let current?): self = server == current ? .token(payload.token) : .otherServer(server)
+        }
+    }
+}

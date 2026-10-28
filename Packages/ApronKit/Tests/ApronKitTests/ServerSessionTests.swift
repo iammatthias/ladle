@@ -499,6 +499,20 @@ final class SignInValueTests: XCTestCase {
         XCTAssertNil(TokenPayload(parsing: ""))
     }
 
+    func testAScannedSignInFillsTheServerOnlyWhenAddingOne() {
+        let link = "https://link.apron.chat/#server=wss://chat.example/ws&token=inv_Qm7x"
+        let saved = URL(string: "wss://chat.example/ws")!
+        XCTAssertEqual(SignInFill(link, signingInTo: nil), .serverAndToken(server: saved, token: "inv_Qm7x"))
+        XCTAssertEqual(SignInFill(link, signingInTo: saved), .token("inv_Qm7x"))
+        XCTAssertEqual(SignInFill("st_abc123", signingInTo: nil), .token("st_abc123"))
+        XCTAssertEqual(SignInFill("st_abc123", signingInTo: saved), .token("st_abc123"))
+        XCTAssertEqual(SignInFill("apron:?token=Hk41", signingInTo: nil), .token("Hk41"))
+        XCTAssertEqual(SignInFill(link, signingInTo: URL(string: "wss://other.example/ws")!),
+                       .otherServer(saved))
+        XCTAssertNil(SignInFill("https://example.com/menu", signingInTo: nil))
+        XCTAssertNil(SignInFill("WIFI:S:Cafe;T:WPA;P:hunter2;;", signingInTo: nil))
+    }
+
     func testDisplayNamesMergeCurrentObjectsAndDisambiguate() {
         var users = UserDirectory()
         users.replace(with: UserObject(["user_id": "ada", "name": "Ada", "avatar": "https://a.example/a.png"])!)
