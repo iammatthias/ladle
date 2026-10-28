@@ -206,9 +206,11 @@ The primary v1 sign-in is a bearer token (`scheme: "token"`, §3.2.1), pasted in
 scanned from a QR code, obtained from another client. This works today with no server changes:
 the web client has a "sign in with a token the server gave you" mode, the public demo issues
 tokens through `/invite-bot` (a bot identity), and the protocol allows a command that issues
-more tokens; the owner's Rust server will add `/add-device` for the signed-in account.
+more tokens. The Rust server's `/invite-device <name>` (after apron-server-cloudflare's) mints a
+device token for the signed-in account that signs in from any origin, or with none; its `auth`
+result carries no `token`, so the device keeps the one it presented.
 
-Tokens are bound to the origin of the client that obtained them (§3.2.1, §4.10). So each
+Other tokens are bound to the origin of the client that obtained them (§3.2.1, §4.10). So each
 `ServerRecord` stores an `origin` (for example `https://web.apron.chat`), defaulted to
 `https://<host>` of the server URL and editable by the user, and `WebSocketTransport` sends it as
 the `Origin` header on the upgrade request. Apple's reserved-header list for URLSession is
