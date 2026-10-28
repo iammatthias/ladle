@@ -145,7 +145,7 @@ never restart its services or kill its processes). Screens are reviewed on this 
 
 `LadleShots` is a debug-only Mac Catalyst app target built from `Ladle/` (minus `LadleApp.swift`)
 plus `LadleShots/ShotsApp.swift`. It seeds `PreviewFixtures` and renders, at 390x844 pt
-(compact width) in dark and light: the server list, Connect, the room list, the busy room, the
+(compact width) in dark and light: the first run (no servers), the server list, Connect, the room list, the busy room, the
 mention list, the member list and the reaction picker; the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with

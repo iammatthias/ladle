@@ -1,8 +1,9 @@
 import ApronKit
 import SwiftUI
 
-/// Adds a server and signs in to it in one sheet, as the web's ConnectScreen: the server's
-/// address, "Sign in with" Token, Email or Guest, and the fields for that method. Opened for a
+/// Adds a server and signs in to it in one sheet, as the web's ConnectScreen: the Apron
+/// project's demo server as one tap or any server's address with a pointer to hosting your own,
+/// "Sign in with" Token, Email or Guest, and the fields for that method. Opened for a
 /// saved server, it signs in again and can change the name and origin. A pasted or scanned link
 /// that names a server fills in the address too.
 struct ConnectView: View {
@@ -45,7 +46,13 @@ struct ConnectView: View {
                     if let reason = existing?.signInNeeded {
                         ActionBanner(symbol: "person.crop.circle.badge.exclamationmark", title: "Signed out", detail: reason, tone: Palette.warn) { EmptyView() }
                     }
-                    field("Server") {
+                    if record == nil {
+                        VStack(alignment: .leading, spacing: Tokens.Space.s1) {
+                            Text("Official server").apText(.sm, .semibold).foregroundStyle(Palette.inkMuted)
+                            officialServer
+                        }
+                    }
+                    field(record == nil ? "Or your own server" : "Server") {
                         TextField("", text: $address, prompt: Text("wss://chat.example/ws").foregroundStyle(Palette.inkMuted))
                             .apText(.ui, mono: true)
                             .keyboardType(.URL)
@@ -59,6 +66,7 @@ struct ConnectView: View {
                             }
                     } hint: {
                         if !address.isEmpty, url == nil { Text("Enter a ws:// or wss:// address.").foregroundStyle(Palette.danger) }
+                        if record == nil { HostYourOwnLink().padding(.leading, -Tokens.Space.s3) }
                     }
                     VStack(alignment: .leading, spacing: Tokens.Space.s1) {
                         Text("Sign in with").apText(.sm, .semibold).foregroundStyle(Palette.inkMuted)
@@ -179,6 +187,35 @@ struct ConnectView: View {
                 Text("No token needed; the server picks a guest identity. Signing out of a guest account loses it.")
             }
         }
+    }
+
+    /// The Apron project's demo server as one tap, styled as the web's recent-backend row: it
+    /// fills in the address (the origin follows) and picks Guest, which needs nothing else.
+    private var officialServer: some View {
+        let chosen = url == OfficialServer.url
+        return Button {
+            address = OfficialServer.url.absoluteString
+            method = .guest
+        } label: {
+            HStack(spacing: Tokens.Space.s3) {
+                RailTile(label: OfficialServer.label, active: chosen)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(OfficialServer.label).apText(.body, .medium).foregroundStyle(Palette.ink)
+                    Text("Public demo, run by the Apron project").apText(.sm).foregroundStyle(Palette.inkMuted)
+                    Text(OfficialServer.url.host() ?? "").apText(.sm, mono: true).foregroundStyle(Palette.inkMuted)
+                }
+                Spacer(minLength: Tokens.Space.s2)
+                if chosen { Image(systemName: "checkmark").foregroundStyle(Palette.accent).accessibilityHidden(true) }
+            }
+            .padding(Tokens.Space.s2)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(chosen ? Palette.selected : Palette.timeline, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
+            .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(chosen ? Palette.accent : Palette.lineStrong))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 
     /// The web's `ap-fieldlabel` over an `ap-field`.
@@ -314,4 +351,13 @@ struct ConnectView: View {
         }
         return store.add(saved)
     }
+}
+
+/// The public demo server the Apron project runs: apron-web's default server
+/// (`VITE_DEFAULT_SERVER_URL` in its `.env.production`). Ladle runs no server of its own.
+enum OfficialServer {
+    static let url = URL(string: "wss://server.apron.chat/")!
+    static let label = "Apron Demo"
+    /// The Apron project's server, for hosting your own.
+    static let selfHosting = URL(string: "https://github.com/apron-chat/apron-server-go")!
 }

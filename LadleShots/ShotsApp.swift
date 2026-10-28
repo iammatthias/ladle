@@ -3,9 +3,9 @@ import SwiftUI
 import UIKit
 
 /// The design-review renderer. With `LADLE_SHOTS_DIR` set, it seeds `PreviewFixtures`, renders
-/// each screen the web-parity pairs compare at iPhone size (390x844) in dark and light, the
-/// timeline at AX3, and the iPad split view (1180x820) in dark and light, writes a PNG per shot
-/// and `contrast.json`, and quits. AGENTS.md, "Design review", has the commands.
+/// the first run (no servers) and each screen the web-parity pairs compare at iPhone size
+/// (390x844) in dark and light, the timeline at AX3, and the iPad split view (1180x820) in dark
+/// and light, writes a PNG per shot and `contrast.json`, and quits. AGENTS.md, "Design review", has the commands.
 @main
 struct ShotsApp: App {
     @State private var shot = AnyView(Color.clear)
@@ -18,7 +18,7 @@ struct ShotsApp: App {
 }
 
 enum Screen: String, CaseIterable {
-    case servers, connect, rooms, timeline, mention, members, reaction, ipad
+    case firstRun = "first-run", servers, connect, rooms, timeline, mention, members, reaction, ipad
 }
 
 @MainActor
@@ -67,10 +67,14 @@ enum Renderer {
 
     static func view(_ screen: Screen, store: SessionStore, home: ServerSession) -> AnyView {
         switch screen {
+        case .firstRun:
+            AnyView(NavigationStack {
+                ServerListView(store: SessionStore(serverStore: nil, tokens: InMemoryTokenStore()), open: { _ in }, connecting: .constant(nil))
+            })
         case .servers:
             AnyView(NavigationStack { ServerListView(store: store, open: { _ in }, connecting: .constant(nil)) })
         case .connect:
-            AnyView(ConnectView(store: store, prefill: TokenPayload(token: "", server: URL(string: "wss://chat.example/ws"))))
+            AnyView(ConnectView(store: store))
         case .rooms:
             AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
         case .timeline:

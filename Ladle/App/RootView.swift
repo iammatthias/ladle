@@ -177,10 +177,7 @@ struct SplitLayout: View {
                                      onSignIn: { connecting = ConnectRequest(record: session.record) })
                     }
                 } else {
-                    EmptyState(title: "No server open", detail: "Add a server to start.") {
-                        Button("Add Server") { connecting = ConnectRequest() }.buttonStyle(PrimaryButtonStyle())
-                    }
-                    .background(Palette.chrome)
+                    NoServers(connecting: $connecting).background(Palette.chrome)
                 }
             }
             .navigationSplitViewColumnWidth(Tokens.Size.railW + Tokens.Size.sidebarW + Tokens.Space.s8)

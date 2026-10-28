@@ -178,7 +178,7 @@ Rows stay in title order with `codePointLess`. They do not move by recency. **Ju
 
 **States.**
 
-- No servers. `ContentUnavailableView` "No Servers", with the description "Add an Apron server with a link, a QR code, or its address." It has three buttons: **Scan QR Code** (prominent), **Paste Link**, and **Enter Address**. There is no onboarding tour ([onboarding]: "fast, fun, and optional").
+- No servers. "No servers yet", with the description "Ladle connects to Apron chat servers. Try the public demo server run by the Apron project, or host your own." It has **Add Server** (prominent) and a **Host Your Own Server** link to the Apron project's server, apron-chat/apron-server-go. Ladle runs no server, so these are the two places it points a new user. There is no onboarding tour ([onboarding]: "fast, fun, and optional").
 - A server is signed in but has no rooms. One row, "No rooms yet", with the **Browse Rooms** row below it.
 - A server is signed out. One row, **Sign In to chat.example**, plus the server's message if a resume was refused.
 - Server status `stopped`. The section shows the reason and one action (4.1).
@@ -223,6 +223,7 @@ Leave asks for confirmation only for a private room. You cannot rejoin a private
 
 **Layout.** A sheet at the large detent with a `NavigationStack`, so the sign-in step is pushed inside it, not stacked as a second sheet ([sheets], [modality]: "avoid creating a modal experience that feels like an app within your app"). Cancel is at the leading edge, and **Connect** at the trailing edge.
 
+- **Official server.** One row for the Apron project's public demo server, `wss://server.apron.chat/`, the default server of the Apron web client. Tapping it fills in the address, which sets the origin to its default, and picks Guest, the one sign-in that needs nothing else there. The row says the Apron project runs it. Under the address field, **Host Your Own Server** links to apron-chat/apron-server-go.
 - **Body top.** Two large buttons in one row, **Scan QR Code** (`qrcode.viewfinder`) and a `PasteButton`. `PasteButton` reads the pasteboard without the paste prompt.
 - **Below them.** An **Address** field (`.keyboardType(.URL)`, `.textContentType(.URL)`, no autocapitalization or autocorrection) and a **Name** field with the host as its placeholder.
 - **Advanced** (a `DisclosureGroup`, collapsed). **Origin**, with the footer "Sent as the Origin header. A token signs in only from the origin of the client that issued it, such as https://web.apron.chat."
