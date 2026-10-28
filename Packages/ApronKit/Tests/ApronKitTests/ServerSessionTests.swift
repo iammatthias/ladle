@@ -362,6 +362,23 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.readCursors, ["general": LogID("200")!])
     }
 
+    // MARK: Reading
+
+    func testUnreadCountsOthersMessagesWithoutAServerCursor() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        for id in ["101", "102", "103"] { await socket.deliver(["method": "message", "params": message(id, "hi")]) }
+        await socket.deliver(["method": "message", "params": [
+            "message_id": "104", "log_id": "104", "room_id": "general", "from": ["user_id": "ada"], "body": ["text": "mine"],
+        ]])
+        await socket.deliver(["method": "message", "params": message("105", "after yours")])
+        await eventually("messages applied") { session.timeline("general").count == 5 }
+        XCTAssertEqual(session.unreadCount(in: "general"), 1, "your own message at 104 says you had read through it")
+        let sent = await socket.sentLog
+        XCTAssertEqual(sent.count, 2, "nothing was sent after auth and room_list: \(sent)")
+    }
+
     // MARK: Operations
 
     func testOperationsSendTheirFramesAndResendClientFieldsOnEdit() async throws {
