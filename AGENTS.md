@@ -95,6 +95,14 @@ clone), which is only a worked example.
     system action); Apron links go to `DeepLink`. Neither reference server describes links:
     both drop a sender's `og`, so a `link` embed arrives as its kind and URL and shows the
     fallback card, as on the web.
+  - `LinkPreviews`: previews this device fetches for links the server did not describe (the
+    user's choice over §4.8.1's "clients don't fetch third-party pages"). `unfurlURL` picks one
+    link per message, the first `mayFetch` allows among its first three (text links, then `link`
+    embeds without `og`), and none once any embed carries the server's `og`. `mayFetch` allows
+    only `http(s)`, and refuses `link.apron.chat`, `localhost`, `.local` and single-label
+    names, and non-public address literals; a public name that redirects inward is not caught. Previews are
+    cached in memory and as JSON in `Caches/LinkPreviews` (7 days, 1 day for a failure; the
+    fetch time is in the file, not its timestamp), with at most 3 fetches at once.
   - `SignIn`, `TokenPayload` (a bare token or a §A.4 link with `token`), `SignInFill` (what a
     scanned or pasted sign-in fills in: server and token when adding a server, the token alone
     otherwise, or the other server a saved server's link names), `UserDirectory` (one kept
@@ -112,7 +120,10 @@ clone), which is only a worked example.
   mention list, reaction picker, member list, `TimelineItems`: day pills, messages, the New
   line, thread cards at the thread's creation position, and queued messages; `EmbedViews`:
   `og` embeds as the web's EmbedCard (a hosted image, site, title, two lines), others as a
-  labeled fallback card, upload embeds as a picture, an inline video, an audio player, a file card that opens in
+  labeled fallback card; `FetchedLinkCard`: a fetched preview as the same card, fetched with
+  LinkPresentation's `LPMetadataProvider` when the row appears, while Show Link Previews (Ladle's
+  page in the Settings app, `Settings.bundle`, on by default) is on; it replaces a bare `link` embed's
+  fallback card; upload embeds as a picture, an inline video, an audio player, a file card that opens in
   Quick Look, or a pending card with progress; `Attachments`: the draft's tiles, staging in
   the temporary directory (cleared at launch), the camera; `VoiceRecorder`: voice notes as
   `audio/mp4`), `Media/` (`MediaLoader`: images decoded at their shown size and files for Quick
@@ -187,7 +198,7 @@ never restart its services or kill its processes). Screens are reviewed on this 
 ```
 
 `LadleShots` is a debug-only Mac Catalyst app target built from `Ladle/` (minus `LadleApp.swift`)
-plus `LadleShots/ShotsApp.swift`. It seeds `PreviewFixtures` and renders, at 390x844 pt
+plus `LadleShots/ShotsApp.swift`. It seeds `PreviewFixtures` (and a fetched preview for the busy room's wiki link) and renders, at 390x844 pt
 (compact width) in dark and light: the first run (no servers), the server list, Connect, Connect after a scanned sign-in, the room list, the busy room, the
 mention list, the member list and the reaction picker, the composer with attachments, a room
 of uploads (image, video, file, audio, pending), and the media viewer; the busy room at AX3; and the iPad
@@ -248,8 +259,10 @@ clone. Run it before `swift test` (the gate line above does), and `./build.sh te
   returns), VisionKit (the sign-in QR scanner, not on Mac Catalyst), and for attachments PhotosUI, AVFoundation, AVKit, QuickLook, ImageIO,
   UniformTypeIdentifiers and CryptoKit (cache file names). PhotosPicker and the document
   picker run out of process and need no usage string; the camera and the microphone (voice
-  notes) have theirs in `project.yml`; the camera's names scanning too. Nothing in them is a required-reason API, so
-  `PrivacyInfo.xcprivacy` is unchanged: files go only to the server the user sends them to. A third-party package needs a justified entry here. None so far. No bundled fonts:
+  notes) have theirs in `project.yml`; the camera's names scanning too. Nothing in them is a required-reason API: files go only to the server the user sends them to.
+  LinkPresentation fetches link previews; it is not a required-reason API either, and a
+  preview goes nowhere but the screen and the cache. The Show Link Previews setting is read
+  from `UserDefaults`, which is, so `PrivacyInfo.xcprivacy` declares it with reason `CA92.1`. A third-party package needs a justified entry here. None so far. No bundled fonts:
   the web ships none either.
 - Replay rule: a record replaces only on a numerically greater `log_id`, or a tombstone at an
   equal one; a room record without `log_id` always replaces; replacement is whole. Compare
