@@ -90,6 +90,8 @@ public final class ServerSession {
     /// Transient notices (§3.5.3), newest last. Never installed as snapshots.
     public private(set) var notices: [Notice] = []
     public private(set) var histories: [String: RoomHistory] = [:]
+    /// How far this user has read each room: the latest own `read_message_id` (§4.6).
+    public private(set) var readCursors: [String: LogID] = [:]
 
     /// Called when the account on `record` changes, so the owner can persist it.
     public var onRecordChange: (@MainActor (ServerRecord) -> Void)?
@@ -262,6 +264,7 @@ public final class ServerSession {
         joinedRoomIDs = []
         notices = []
         histories = [:]
+        readCursors = [:]
     }
 
     // MARK: Frames
@@ -287,6 +290,12 @@ public final class ServerSession {
                 if current.userID == you?.userID, let kept = users.user(current.userID) { you = UserObject(kept) }
             }
             if let current = UserObject(params?["new"]) { users.merge(current) }
+        case "activity":
+            if let you, params?["from"]?["user_id"]?.stringValue == you.userID,
+               let roomID = OpaqueID.validated(params?["room_id"]), let read = LogID(params?["read_message_id"]),
+               readCursors[roomID].map({ $0 < read }) ?? true {
+                readCursors[roomID] = read
+            }
         default:
             break
         }
@@ -449,6 +458,12 @@ public final class ServerSession {
     public func timeline(_ roomID: String) -> [MessageSnapshot] { store.messages(in: roomID) }
 
     public func displayName(for user: UserObject) -> String { users.displayName(for: user) }
+
+    /// Loaded messages from others after this user's read cursor; 0 without a cursor.
+    public func unreadCount(in roomID: String) -> Int {
+        guard let cursor = readCursors[roomID] else { return 0 }
+        return timeline(roomID).count(where: { $0.messageID > cursor && !$0.isTombstone && $0.from.userID != you?.userID })
+    }
 
     public func title(of roomID: String) -> String {
         store.room(roomID)?.title?.stringValue.flatMap { $0.isEmpty ? nil : $0 } ?? roomID

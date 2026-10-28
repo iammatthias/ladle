@@ -1,10 +1,12 @@
 // swift-tools-version: 6.0
 import PackageDescription
 
-// The protocol core, free of UIKit and SwiftUI so `swift test` runs it on the Mac.
+// The protocol core, free of UIKit and SwiftUI so `swift test` runs it on the Mac. iOS 27.0 is a
+// floor, not the app's target: the LadleShots renderer runs on this Mac, whose iOS support
+// version is 27.0, and a package cannot require more than its consumers.
 let package = Package(
     name: "ApronKit",
-    platforms: [.iOS("27.1"), .macOS("27.0")],
+    platforms: [.iOS("27.0"), .macOS("27.0")],
     products: [
         .library(name: "ApronKit", targets: ["ApronKit"]),
     ],
