@@ -1,6 +1,6 @@
 // Copy to Config/Domains.xcconfig (gitignored) and list the servers that may use native passkeys.
 // Each entry is a webcredentials associated domain; the server must publish
-// /.well-known/apple-app-site-association for app ID MP92RCAPRG.com.iammatthias.apron.
+// /.well-known/apple-app-site-association for app ID MP92RCAPRG.com.iammatthias.ladle.
 // Leave empty to sign in through ASWebAuthenticationSession, email codes, or a pasted token.
 // Phase 2 reads this; phase 1 does not use it.
 APRON_ASSOCIATED_DOMAINS =

@@ -1,4 +1,4 @@
-name: Apron
+name: Ladle
 options:
   bundleIdPrefix: com.iammatthias
   deploymentTarget:
@@ -22,43 +22,43 @@ settings:
     CURRENT_PROJECT_VERSION: "1"
     CODE_SIGN_STYLE: Automatic
 targets:
-  Apron:
+  Ladle:
     type: application
     platform: iOS
     sources:
-      - path: Apron
+      - path: Ladle
     dependencies:
       - package: ApronKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.iammatthias.apron
-        PRODUCT_NAME: Apron
+        PRODUCT_BUNDLE_IDENTIFIER: com.iammatthias.ladle
+        PRODUCT_NAME: Ladle
         GENERATE_INFOPLIST_FILE: YES
-        INFOPLIST_KEY_CFBundleDisplayName: Apron
+        INFOPLIST_KEY_CFBundleDisplayName: Ladle
         INFOPLIST_KEY_UILaunchScreen_Generation: YES
         INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
-        INFOPLIST_KEY_NSCameraUsageDescription: Apron uses the camera to scan a sign-in QR code.
+        INFOPLIST_KEY_NSCameraUsageDescription: Ladle uses the camera to scan a sign-in QR code.
         ENABLE_PREVIEWS: YES
   # Hermetic: no network, no server. The protocol and server integration tests live in
   # Packages/ApronKit (swift test).
-  ApronTests:
+  LadleTests:
     type: bundle.unit-test
     platform: iOS
     sources:
-      - path: ApronTests
+      - path: LadleTests
     dependencies:
-      - target: Apron
+      - target: Ladle
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
         BUNDLE_LOADER: "$(TEST_HOST)"
-        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Apron.app/Apron"
+        TEST_HOST: "$(BUILT_PRODUCTS_DIR)/Ladle.app/Ladle"
 schemes:
-  Apron:
+  Ladle:
     build:
       targets:
-        Apron: all
-        ApronTests: [test]
+        Ladle: all
+        LadleTests: [test]
     test:
       targets:
-        - ApronTests
+        - LadleTests

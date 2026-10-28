@@ -56,7 +56,7 @@ public final class ServerSession {
             jitter: @escaping @Sendable () -> Double = { Double.random(in: 0.8 ..< 1.2) },
             makeRequestID: @escaping @Sendable () -> String = { UUID().uuidString },
             makeState: @escaping @Sendable () -> String = { UUID().uuidString + UUID().uuidString },
-            agent: String = "apron-ios/0.1",
+            agent: String = "ladle-ios/0.1",
             pageSize: Int = 50,
             stableAfter: Duration = .seconds(30)
         ) {
