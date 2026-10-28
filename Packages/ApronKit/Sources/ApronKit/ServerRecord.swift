@@ -76,7 +76,7 @@ public struct ServerStore: Sendable {
     }
 
     public func load() throws -> [ServerRecord] {
-        guard FileManager.default.fileExists(atPath: fileURL.path()) else { return [] }
+        guard FileManager.default.fileExists(atPath: fileURL.path(percentEncoded: false)) else { return [] }
         return try JSONDecoder().decode([ServerRecord].self, from: Data(contentsOf: fileURL))
     }
 

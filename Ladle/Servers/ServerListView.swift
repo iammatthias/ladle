@@ -43,7 +43,7 @@ struct ServerListView: View {
         .scrollContentBackground(.hidden)
         .background(Palette.chrome)
         .overlay {
-            if store.records.isEmpty { NoServers(connecting: $connecting) }
+            if store.records.isEmpty, loadError == nil { NoServers(connecting: $connecting) }
         }
         .navigationTitle("Servers")
         .navigationBarTitleDisplayMode(.inline)
