@@ -76,6 +76,13 @@ clone), which is only a worked example.
     deleted message, presence). The design screenshots render from it; `PreviewFixturesTests`
     pins what it holds. Message ids are server-wide, so no two rooms share a minute in the
     script.
+  - `MessageText`: a body as apron-web renders it (§3.5.2): `markdown` as inline CommonMark, then
+    bare `http(s)` URLs and `apron:?` links linked in either format outside code and existing
+    links, with apron-web's trimming of trailing punctuation; links on schemes apron-web's
+    sanitizer refuses are dropped. Web links open in the default browser (`OpenURLAction`'s
+    system action); Apron links go to `DeepLink`. Neither reference server describes links:
+    both drop a sender's `og`, so a `link` embed arrives as its kind and URL and shows the
+    fallback card, as on the web.
   - `SignIn`, `TokenPayload` (a bare token or a §A.4 link with `token`), `SignInFill` (what a
     scanned or pasted sign-in fills in: server and token when adding a server, the token alone
     otherwise, or the other server a saved server's link names), `UserDirectory` (one kept

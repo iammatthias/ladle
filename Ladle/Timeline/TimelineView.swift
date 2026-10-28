@@ -20,6 +20,7 @@ struct TimelineView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openRoom) private var openRoom
+    @Environment(\.openURL) private var openURL
 
     init(session: ServerSession, roomID: String, draft: Draft = Draft(), showingMembers: Bool = false) {
         self.session = session
@@ -222,6 +223,13 @@ struct TimelineView: View {
             }
             Button("Reply", systemImage: "arrowshape.turn.up.left") { draft = Draft(mode: .reply(message), attachments: draft.attachments) }
             Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.plainText }
+            ForEach(MessageText.links(message.body).prefix(3), id: \.self) { url in
+                Menu(url.host() ?? url.absoluteString, systemImage: "link") {
+                    Button("Open Link", systemImage: "arrow.up.right.square") { openURL(url) }
+                    Button("Copy Link", systemImage: "doc.on.doc") { UIPasteboard.general.url = url }
+                    ShareLink(item: url)
+                }
+            }
             if session.status == .signedIn, message.from.userID == session.you?.userID, session.server?.has("edit") == true {
                 Button("Edit", systemImage: "pencil") { draft = Draft(mode: .edit(message), text: message.plainText) }
                 Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
