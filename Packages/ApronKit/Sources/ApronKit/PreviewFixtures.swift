@@ -1,0 +1,227 @@
+import Foundation
+
+/// A reproducible two-server world for previews and design screenshots: rooms and threads, unread
+/// rooms, replies, reactions, an edit, a deleted message, long and short messages, and presence.
+/// Every session is a real `ServerSession` driven by a `PreviewServer`, so the views read the
+/// same stores they read in the app.
+public enum PreviewFixtures {
+    public static let homeID = UUID(uuidString: "6C61646C-0000-4000-8000-000000000001")!
+    public static let demoID = UUID(uuidString: "6C61646C-0000-4000-8000-000000000002")!
+    /// The busy room and the reply the composer screenshot answers.
+    public static let busyRoomID = "general"
+    public static let replyTargetID = LogID(message(15))!
+
+    /// 2026-10-27 09:00 UTC; message `n` is `n` minutes later. Message ids are server-wide, so no
+    /// two rooms on one server share a minute.
+    private static let start: Int64 = 1_793_091_600_000
+
+    private static func message(_ minute: Int) -> String { String(start + Int64(minute) * 60_000) }
+
+    /// Signs both servers in and opens every joined room. Returns once the stores hold it all.
+    @MainActor
+    public static func makeStore() async -> SessionStore {
+        let tokens = InMemoryTokenStore()
+        let scripts = [homeID: home, demoID: demo]
+        let environment = ServerSession.Environment(
+            makeTransport: { record in PreviewServer(script: scripts[record.id] ?? home) },
+            sleep: { _ in try await Task.sleep(for: .seconds(3600)) },
+            jitter: { 1 }
+        )
+        let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment)
+        for (id, url, label) in [(homeID, "wss://home.example/ws", "Home"), (demoID, "wss://demo.apron.example/ws", "Apron Demo")] {
+            try? tokens.setToken("preview", for: id)
+            store.add(ServerRecord(id: id, url: URL(string: url)!, label: label))
+        }
+        for (id, script) in scripts {
+            guard let session = store.session(for: id) else { continue }
+            await until { session.status == .signedIn && session.readCursors.count == script.readCursors.count }
+            for roomID in script.histories.keys.sorted(by: codePointLess) {
+                try? await session.open(roomID)
+            }
+        }
+        return store
+    }
+
+    @MainActor
+    private static func until(_ condition: () -> Bool) async {
+        for _ in 0 ..< 500 where !condition() {
+            try? await Task.sleep(for: .milliseconds(5))
+        }
+    }
+
+    // MARK: Scripts
+
+    private static let greeting: JSONValue = [
+        "apron": 9, "auth": ["token", "guest"], "agent": "aprond/0.9",
+        "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity"],
+    ]
+
+    private static let people: [String: JSONValue] = [
+        "sam": ["user_id": "sam", "name": "Sam", "status": "online"],
+        "ada": ["user_id": "ada", "name": "Ada Okafor", "status": "online"],
+        "bram": ["user_id": "bram", "name": "Bram", "status": "idle"],
+        "chiara": ["user_id": "chiara", "name": "Chiara", "status": "dnd"],
+        "dev": ["user_id": "dev", "name": "Dev", "status": "offline"],
+        "eunji": ["user_id": "eunji", "name": "Eun-ji", "status": "online"],
+    ]
+
+    private struct Line {
+        var minute: Int
+        var from: String
+        var text: String
+        var reply: Int?
+        var editedAt: Int?
+        var deleted = false
+        var reactions: [String: [String]] = [:]
+    }
+
+    private static func line(_ minute: Int, _ from: String, _ text: String, reply: Int? = nil, editedAt: Int? = nil,
+                             deleted: Bool = false, reactions: [String: [String]] = [:]) -> Line {
+        Line(minute: minute, from: from, text: text, reply: reply, editedAt: editedAt, deleted: deleted, reactions: reactions)
+    }
+
+    private static func history(_ roomID: String, _ lines: [Line]) -> JSONValue {
+        var messages: [JSONValue] = []
+        var reactions: [JSONValue] = []
+        for line in lines {
+            let id = message(line.minute)
+            var snapshot: [String: JSONValue] = [
+                "message_id": .string(id), "room_id": .string(roomID), "from": people[line.from] ?? ["user_id": .string(line.from)],
+            ]
+            if line.deleted {
+                snapshot["log_id"] = .string(String(start + Int64(line.minute) * 60_000 + 30_000))
+                snapshot["deleted"] = true
+            } else {
+                snapshot["log_id"] = .string(line.editedAt.map(message) ?? id)
+                snapshot["body"] = ["text": .string(line.text), "format": "markdown"]
+            }
+            if let reply = line.reply { snapshot["reply_to"] = ["message_id": .string(message(reply))] }
+            messages.append(.object(snapshot))
+            var byUser: [String: [String]] = [:]
+            for (emoji, users) in line.reactions.sorted(by: { codePointLess($0.key, $1.key) }) {
+                for user in users { byUser[user, default: []].append(emoji) }
+            }
+            for (offset, user) in byUser.keys.sorted().enumerated() {
+                reactions.append([
+                    "log_id": .string(String(start + Int64(line.minute) * 60_000 + 1_000 + Int64(offset))),
+                    "message_id": .string(id), "room_id": .string(roomID),
+                    "reactions": [["from": ["user_id": .string(user)], "emojis": .array(byUser[user]!.map(JSONValue.string))]],
+                ])
+            }
+        }
+        let latest = lines.map { $0.editedAt ?? $0.minute }.max().map(message) ?? message(0)
+        return [
+            "messages": .array(messages), "reactions": .array(reactions), "more": false,
+            "first_log_id": .string(message(lines.first?.minute ?? 0)), "last_log_id": .string(latest),
+            "latest_log_id": .string(latest), "history_log_id": .string(message(lines.first?.minute ?? 0)),
+        ]
+    }
+
+    private static func room(_ id: String, _ title: String, parent: String? = nil, members: [String]) -> JSONValue {
+        var room: [String: JSONValue] = [
+            "room_id": .string(id), "log_id": .string(parent == nil ? message(-600) : id), "title": .string(title),
+            "members": .array(members.map { ["user_id": .string($0)] }),
+        ]
+        if let parent { room["parent_room_id"] = .string(parent) }
+        return .object(room)
+    }
+
+    /// The Release thread opens off #general after minute 8.
+    private static let releaseThread = String(start + 8 * 60_000 + 45_000)
+    private static let iconThread = String(start + 3 * 60_000 + 45_000)
+
+    private static let general = [
+        line(0, "ada", "morning! coffee's on ☕️"),
+        line(1, "bram", "Did anyone look at the reconnect bug from yesterday? The socket still drops when the phone wakes from a long sleep, and it takes a full minute to come back.",
+             reactions: ["👀": ["chiara"]]),
+        line(2, "sam", "Yes. The backoff never starts over after the app returns to the foreground. Writing it up now.",
+             reactions: ["🙏": ["bram"]]),
+        line(3, "chiara", "Seeing it too on cellular.", reply: 1),
+        line(5, "ada", "Notes from the sync: **ship 0.2 on Friday**, then freeze. The release checklist lives in the thread. Please add anything I missed, especially the passkey and origin work, since that touches the server config on both boxes.",
+             reactions: ["👍": ["bram", "chiara", "sam"], "🎉": ["eunji"]]),
+        line(6, "eunji", "🎉"),
+        line(8, "bram", "Pushed a fix for the paging floor. Older history now stops in the right place.", editedAt: 11,
+             reactions: ["❤️": ["ada", "sam"]]),
+        line(9, "chiara", "nice"),
+        line(12, "ada", "Confirmed on my phone. Scrolled all the way back to August.", reply: 8),
+        line(13, "dev", "", deleted: true),
+        line(14, "sam", "I'll cut the build after lunch.", reactions: ["👍": ["ada"]]),
+        line(15, "eunji", "Can someone review the icon PR before then? It's small, mostly the ladle glyph at 20 pt."),
+        line(16, "bram", "On it", reply: 15),
+    ]
+
+    private static let home = PreviewServer.Script(
+        greeting: greeting,
+        you: people["sam"]!,
+        roomList: [
+            "joined": [
+                room("general", "general", members: ["sam", "ada", "bram", "chiara", "dev", "eunji"]),
+                room(releaseThread, "Release 0.2", parent: "general", members: ["sam", "ada", "bram"]),
+                room("design", "design", members: ["sam", "ada", "eunji"]),
+                room(iconThread, "Icon sketches", parent: "design", members: ["sam", "eunji"]),
+                room("random", "random", members: ["sam", "ada", "bram", "chiara"]),
+                room("ops", "ops", members: ["sam", "dev"]),
+            ],
+            "users": .array(people.keys.sorted().map { people[$0]! }),
+        ],
+        histories: [
+            "general": history("general", general),
+            releaseThread: history(releaseThread, [
+                line(10, "ada", "Checklist: version bump, origin check on both servers, passkey AASA file, release notes."),
+                line(17, "bram", "AASA is live on home. Demo still serves the old app ID.", reactions: ["👀": ["ada"]]),
+                line(18, "ada", "I'll fix demo tonight."),
+                line(19, "dev", "Release notes draft is in the doc."),
+            ]),
+            "design": history("design", [
+                line(-40, "eunji", "Three takes on the app icon: a ladle in profile, a ladle from above, and just the bowl."),
+                line(-38, "ada", "From above reads best at small sizes."),
+                line(-30, "sam", "Agree. The profile one turns into a spoon below 40 pt."),
+            ]),
+            iconThread: history(iconThread, [
+                line(-20, "eunji", "Bowl-only, 2 pt stroke, rounded caps."),
+                line(-18, "sam", "Love it.", reactions: ["❤️": ["eunji"]]),
+            ]),
+            "random": history("random", [
+                line(-90, "chiara", "Found a 1970s Dansk enamel pot at the flea market."),
+                line(-60, "bram", "Photos or it didn't happen."),
+                line(-58, "chiara", "Tomorrow, the light is bad now."),
+            ]),
+            "ops": history("ops", [
+                line(-300, "dev", "Rotated the TLS cert on home. Next renewal in 60 days."),
+                line(-290, "sam", "Thanks!"),
+            ]),
+        ],
+        readCursors: [
+            "general": message(9), releaseThread: message(17), "design": message(-30),
+            iconThread: message(-18), "random": message(-90), "ops": message(-290),
+        ]
+    )
+
+    private static let demo = PreviewServer.Script(
+        greeting: greeting,
+        you: ["user_id": "sam-7f3", "name": "Sam", "status": "online"],
+        roomList: [
+            "joined": [
+                room("lobby", "lobby", members: ["sam-7f3", "host", "wren"]),
+                room("help", "help", members: ["sam-7f3", "host"]),
+            ],
+            "users": [
+                ["user_id": "sam-7f3", "name": "Sam", "status": "online"],
+                ["user_id": "host", "name": "Demo Host", "status": "online"],
+                ["user_id": "wren", "name": "Wren", "status": "idle"],
+            ],
+        ],
+        histories: [
+            "lobby": history("lobby", [
+                line(-120, "host", "Welcome to the Apron demo server. Be kind; history resets nightly."),
+                line(-15, "wren", "Anyone tried the Rust server with email sign-in?"),
+                line(-14, "host", "Yes, `--email.enable` and a sender. Works fine."),
+                line(-5, "wren", "Thanks!"),
+            ]),
+            "help": history("help", [
+                line(-200, "host", "Ask here. Logs help: include your client and server versions."),
+            ]),
+        ],
+        readCursors: ["lobby": message(-120), "help": message(-200)]
+    )
+}

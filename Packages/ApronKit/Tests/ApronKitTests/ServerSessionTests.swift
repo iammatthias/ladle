@@ -347,6 +347,21 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["104", "107", "109"])
     }
 
+    func testOwnReadCursorOnlyMovesForwardAndOthersAreIgnored() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        func activity(_ from: String, _ read: String) -> JSONValue {
+            ["method": "activity", "params": ["room_id": "general", "from": ["user_id": .string(from)], "read_message_id": .string(read)]]
+        }
+        await socket.deliver(activity("ada", "200"))
+        await socket.deliver(activity("bob", "300"))
+        await socket.deliver(activity("ada", "150"))
+        await socket.deliver(["method": "message", "params": message("199", "x")])
+        await eventually("frames applied") { session.timeline("general").count == 1 }
+        XCTAssertEqual(session.readCursors, ["general": LogID("200")!])
+    }
+
     // MARK: Operations
 
     func testOperationsSendTheirFramesAndResendClientFieldsOnEdit() async throws {
