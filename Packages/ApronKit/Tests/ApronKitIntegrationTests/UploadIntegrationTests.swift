@@ -107,7 +107,7 @@ final class UploadIntegrationTests: XCTestCase {
     func testAnAvatarUploadSetsTheAvatarOnYou() async throws {
         let session = try await signedInGuest()
         XCTAssertTrue(session.canSetAvatar)
-        let image = try AttachmentPreparer.prepare(try png(width: 64, height: 64), title: "me.png", limits: nil, into: directory)
+        let image = try AttachmentPreparer.prepareAvatar(try png(width: 640, height: 480), limits: session.mediaLimits?.avatar, into: directory)
         try await session.setAvatar(image)
         let me = try XCTUnwrap(session.you?.userID)
         try await waitFor("avatar set", timeout: .seconds(10)) { session.avatarURL(of: me) != nil }

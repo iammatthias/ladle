@@ -146,6 +146,19 @@ final class AttachmentPreparerTests: XCTestCase {
         XCTAssertLessThanOrEqual(max(attachment.pixelWidth ?? 0, attachment.pixelHeight ?? 0), 800)
     }
 
+    func testAnAvatarIsTheMiddleSquareAt512Pixels() throws {
+        let source = try photo(width: 1200, height: 800, type: .heic)
+        let avatar = try AttachmentPreparer.prepareAvatar(source, limits: nil, into: directory)
+        XCTAssertEqual(avatar.contentType, "image/jpeg")
+        XCTAssertEqual([avatar.pixelWidth, avatar.pixelHeight], [512, 512])
+        XCTAssertLessThanOrEqual(avatar.byteCount, 262_144)
+        let written = try properties(avatar.fileURL)
+        XCTAssertEqual(written[kCGImagePropertyPixelWidth] as? Int, 512)
+        XCTAssertNil(written[kCGImagePropertyGPSDictionary])
+        let small = try AttachmentPreparer.prepareAvatar(source, limits: ["image/*": .init(maxSide: 128)], into: directory)
+        XCTAssertEqual(small.pixelWidth, 128)
+    }
+
     func testAPNGWithinTheLimitsGoesAsItIs() throws {
         let source = try photo(width: 300, height: 200, type: .png)
         let attachment = try AttachmentPreparer.prepare(source, title: "Screenshot.png", limits: nil, into: directory)

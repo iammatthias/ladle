@@ -76,6 +76,51 @@ public enum AttachmentPreparer {
                           pixelWidth: pixels?.width, pixelHeight: pixels?.height)
     }
 
+    /// An avatar (§4.8.6) as apron-web makes one (EXT.md §6.1): the middle square of the image,
+    /// 512 px or the server's `max_side` if smaller, as JPEG within `max_bytes` or 256 KB, and
+    /// 256 px when 512 does not fit.
+    public static func prepareAvatar(_ source: URL, limits: MediaLimits.Category?, into directory: URL) throws -> Attachment {
+        guard let image = CGImageSourceCreateWithURL(source as CFURL, nil),
+              let full = CGImageSourceCreateThumbnailAtIndex(image, 0, [
+                  kCGImageSourceCreateThumbnailFromImageAlways: true, kCGImageSourceCreateThumbnailWithTransform: true,
+                  kCGImageSourceThumbnailMaxPixelSize: 4096,
+              ] as CFDictionary)
+        else { throw AttachmentError.unreadable }
+        let stated: MediaLimits.Limits
+        switch MediaLimits.verdict(for: "image/jpeg", in: limits) {
+        case .refused: throw AttachmentError.refused("This server doesn't take photos as avatars.")
+        case .unknown: stated = MediaLimits.Limits()
+        case .allowed(let limits): stated = limits
+        }
+        let side = min(full.width, full.height)
+        guard let square = full.cropping(to: CGRect(x: (full.width - side) / 2, y: (full.height - side) / 2, width: side, height: side)) else {
+            throw AttachmentError.unreadable
+        }
+        let maxBytes = stated.maxBytes ?? 262_144
+        for target in [512, 256].map({ min($0, stated.maxSide ?? $0, side) }) {
+            guard let scaled = scale(square, to: target) else { throw AttachmentError.unreadable }
+            for quality in [0.85, 0.7, 0.55] {
+                guard let data = jpeg(scaled, quality: quality) else { throw AttachmentError.unreadable }
+                guard data.count <= maxBytes else { continue }
+                let folder = directory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                let destination = folder.appending(path: "avatar.jpg")
+                try data.write(to: destination)
+                return Attachment(fileURL: destination, title: "avatar.jpg", contentType: "image/jpeg", byteCount: data.count,
+                                  pixelWidth: target, pixelHeight: target)
+            }
+        }
+        throw AttachmentError.refused("This image can't be made small enough for an avatar.")
+    }
+
+    private static func scale(_ image: CGImage, to side: Int) -> CGImage? {
+        guard let context = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue) else { return nil }
+        context.interpolationQuality = .high
+        context.draw(image, in: CGRect(x: 0, y: 0, width: side, height: side))
+        return context.makeImage()
+    }
+
     /// Nil when the file can go as it is: a PNG within the limits.
     private static func reencodeIfNeeded(_ source: URL, type: UTType, title: String, limits: MediaLimits.Category?,
                                          into folder: URL) throws -> Attachment? {

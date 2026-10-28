@@ -31,7 +31,18 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.store.room("ops")?.isPrivate, true)
         XCTAssertEqual(home.notices.map(\.roomID), ["general"])
         XCTAssertEqual(home.store.room(home.roomTree[1].threadIDs[0])?.description?.stringValue, "Ship Friday, then freeze")
-        XCTAssertEqual(home.unreadCount(in: "random"), 2)
+        XCTAssertEqual(home.unreadCount(in: "random"), 6)
+        let uploads = home.timeline(PreviewFixtures.mediaRoomID).flatMap(\.embedList).compactMap(\.upload)
+        XCTAssertEqual(uploads.map { upload -> String in
+            switch upload {
+            case .pending: "pending"
+            case .image(let media): "image \(media.width ?? 0)x\(media.height ?? 0)"
+            case .video: "video"
+            case .audio: "audio"
+            case .file: "file"
+            }
+        }, ["image 1600x1200", "video", "file", "audio", "pending"])
+        XCTAssertTrue(home.canAttach)
         XCTAssertEqual(home.timeline(home.roomTree[1].threadIDs[0]).count, 4, "Release 0.2")
         XCTAssertEqual(home.unreadCount(in: home.roomTree[1].threadIDs[0]), 2)
         XCTAssertEqual(home.unreadCount(in: "design"), 0)
