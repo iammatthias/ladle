@@ -125,7 +125,7 @@ final class ServerIntegrationTests: XCTestCase {
         try await waitFor("tombstone installed") { session.store.message(first)?.isTombstone == true }
         XCTAssertNil(session.store.message(first)?.body)
         XCTAssertNil(session.store.reactions(on: first), "a tombstone hides its reactions")
-        XCTAssertEqual(session.timeline("general").map(\.messageID), [first, reply])
+        XCTAssertEqual(session.timeline("general").map(\.messageID), [reply], "the deleted message leaves the timeline")
     }
 
     func testHistoryPagesBackPastOnePage() async throws {

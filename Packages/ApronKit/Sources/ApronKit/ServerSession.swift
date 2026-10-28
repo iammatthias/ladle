@@ -584,7 +584,9 @@ public final class ServerSession {
 
     // MARK: Reading
 
-    public func timeline(_ roomID: String) -> [MessageSnapshot] { store.messages(in: roomID) }
+    /// The room's messages as the timeline shows them: deleted ones are left out. The store keeps
+    /// their tombstones for the replay rule and the projection.
+    public func timeline(_ roomID: String) -> [MessageSnapshot] { store.messages(in: roomID).filter { !$0.isTombstone } }
 
     public func displayName(for user: UserObject) -> String { users.displayName(for: user) }
 
@@ -609,28 +611,29 @@ public final class ServerSession {
 
     /// How far this user has read a room, as apron-web's `readPositions.through`: the furthest
     /// of the position kept on this device, the server's cursor, and this user's newest loaded
-    /// message, since one sent from another device says the room was read up to it. Nil when
-    /// nothing is known.
+    /// message, since one sent from another device says the room was read up to it, even if it
+    /// was deleted since. Nil when nothing is known.
     public func readThrough(_ roomID: String) -> LogID? {
         guard let you else { return nil }
-        let newestOwn = timeline(roomID).last { $0.from.userID == you.userID }?.messageID
+        let newestOwn = store.messages(in: roomID).last { $0.from.userID == you.userID }?.messageID
         return [readPositions[roomID], readCursors[roomID], newestOwn].compactMap { $0 }.max()
     }
 
-    /// The message the New line goes before, as the web's `newDividerBefore`: the first message
-    /// after `after`, where you had read when the visit opened. None when that message is your
-    /// own, or when older messages are still to load and none loaded is at or before `after`,
-    /// since the first unread one may be among them.
+    /// The message the New line goes before, as the web's `newDividerBefore`: the first shown
+    /// message after `after`, where you had read when the visit opened. None when that message is
+    /// your own, or when older messages are still to load and none loaded, deleted or not, is at
+    /// or before `after`, since the first unread one may be among them.
     public func newLine(in roomID: String, after: LogID?) -> LogID? {
         guard let after else { return nil }
         let olderAvailable = histories[roomID]?.canLoadOlder == true
         var reached = false
-        for message in timeline(roomID) {
+        for message in store.messages(in: roomID) {
             if message.messageID <= after {
                 reached = true
                 continue
             }
             if !reached, olderAvailable { return nil }
+            if message.isTombstone { continue }
             return message.from.userID == you?.userID ? nil : message.messageID
         }
         return nil
@@ -641,7 +644,7 @@ public final class ServerSession {
         guard let you else { return 0 }
         let read = readThrough(roomID)
         return timeline(roomID).count { message in
-            !message.isTombstone && message.from.userID != you.userID && read.map { $0 < message.messageID } ?? true
+            message.from.userID != you.userID && read.map { $0 < message.messageID } ?? true
         }
     }
 

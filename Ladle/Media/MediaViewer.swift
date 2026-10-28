@@ -22,7 +22,7 @@ extension ServerSession {
     /// Every loadable image upload in a room, oldest first, as the web's viewer pages them.
     func mediaItems(in roomID: String) -> [MediaItem] {
         let policy = mediaPolicy
-        return timeline(roomID).filter { !$0.isTombstone }.flatMap { message in
+        return timeline(roomID).flatMap { message in
             message.embedList.enumerated().compactMap { index, embed -> MediaItem? in
                 guard case .image(let image) = embed.upload, policy.allowsMedia(image.url) else { return nil }
                 return MediaItem(id: MediaItem.id(message, index), media: image.url,

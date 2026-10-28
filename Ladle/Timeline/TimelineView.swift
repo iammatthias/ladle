@@ -39,7 +39,7 @@ struct TimelineView: View {
                     if session.histories[roomID]?.canLoadOlder == true {
                         ProgressView()
                             .frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget)
-                            .task(id: session.timeline(roomID).count) {
+                            .task(id: session.histories[roomID]?.olderBefore) {
                                 do { try await session.loadOlder(roomID) } catch { problem = errorText(error) }
                             }
                     }
@@ -228,29 +228,27 @@ struct TimelineView: View {
 
     @ViewBuilder
     private func actions(for message: MessageSnapshot) -> some View {
-        if !message.isTombstone {
-            if session.status == .signedIn, session.server?.has("reactions") == true {
-                ControlGroup {
-                    ForEach(ReactionPicker.quick.prefix(4), id: \.self) { emoji in
-                        Button(emoji) { perform { try await session.toggleReaction(emoji, on: message.messageID) } }
-                    }
-                    Button("More Reactions", systemImage: "face.smiling") { reacting = message }
+        if session.status == .signedIn, session.server?.has("reactions") == true {
+            ControlGroup {
+                ForEach(ReactionPicker.quick.prefix(4), id: \.self) { emoji in
+                    Button(emoji) { perform { try await session.toggleReaction(emoji, on: message.messageID) } }
                 }
-                .controlGroupStyle(.compactMenu)
+                Button("More Reactions", systemImage: "face.smiling") { reacting = message }
             }
-            Button("Reply", systemImage: "arrowshape.turn.up.left") { draft = Draft(mode: .reply(message), attachments: draft.attachments) }
-            Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.plainText }
-            ForEach(MessageText.links(message.body).prefix(3), id: \.self) { url in
-                Menu(url.host() ?? url.absoluteString, systemImage: "link") {
-                    Button("Open Link", systemImage: "arrow.up.right.square") { openURL(url) }
-                    Button("Copy Link", systemImage: "doc.on.doc") { UIPasteboard.general.url = url }
-                    ShareLink(item: url)
-                }
+            .controlGroupStyle(.compactMenu)
+        }
+        Button("Reply", systemImage: "arrowshape.turn.up.left") { draft = Draft(mode: .reply(message), attachments: draft.attachments) }
+        Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.plainText }
+        ForEach(MessageText.links(message.body).prefix(3), id: \.self) { url in
+            Menu(url.host() ?? url.absoluteString, systemImage: "link") {
+                Button("Open Link", systemImage: "arrow.up.right.square") { openURL(url) }
+                Button("Copy Link", systemImage: "doc.on.doc") { UIPasteboard.general.url = url }
+                ShareLink(item: url)
             }
-            if session.status == .signedIn, message.from.userID == session.you?.userID, session.server?.has("edit") == true {
-                Button("Edit", systemImage: "pencil") { draft = Draft(mode: .edit(message), text: message.plainText) }
-                Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
-            }
+        }
+        if session.status == .signedIn, message.from.userID == session.you?.userID, session.server?.has("edit") == true {
+            Button("Edit", systemImage: "pencil") { draft = Draft(mode: .edit(message), text: message.plainText) }
+            Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
         }
     }
 
@@ -423,7 +421,7 @@ struct ThreadCard: View {
     let threadID: String
 
     var body: some View {
-        let messages = session.timeline(threadID).filter { !$0.isTombstone }
+        let messages = session.timeline(threadID)
         let last = messages.last
         let unread = session.unreadCount(in: threadID)
         let faces = Array(NSOrderedSet(array: messages.reversed().map(\.from.userID)).array.compactMap { $0 as? String }.prefix(3))

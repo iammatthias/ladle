@@ -51,6 +51,10 @@ clone), which is only a worked example.
       pages with `before = first_log_id − 1` until `more` is false or the floor
       (`history_log_id`, else `latest_log_id + 1`). Each opened room keeps a checkpoint that live
       records advance; after a reconnect it pages forward from `checkpoint + 1`.
+    - `timeline` leaves deleted messages out, so the rows, day pills, grouping, the New line,
+      unread and mention counts, room previews and thread cards never see one. The store and
+      the projection keep the tombstones for the replay rule; a reply quoting one reads
+      "Original message deleted". `readThrough` still counts this user's deleted messages.
     - Results can resume before the notifications sent ahead of them are applied, so code and
       tests wait for store state rather than assume it on return.
     - Reading, as apron-web's `readAction`, `markRead` and `readPositions`: `readCursors` keeps

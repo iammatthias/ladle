@@ -461,6 +461,73 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.newLine(in: "general", after: LogID("140")!), LogID("150"))
     }
 
+    // MARK: Deleted messages
+
+    private func tombstone(_ id: String, from: String = "bob") -> JSONValue {
+        ["message_id": .string(id), "log_id": .string(id), "room_id": "general", "from": ["user_id": .string(from)], "deleted": true]
+    }
+
+    func testADeletedMessageLeavesTheTimelineAndItsCountsButNotTheStore() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        for id in ["101", "102", "103"] { await socket.deliver(["method": "message", "params": message(id, "hi")]) }
+        await eventually("messages applied") { session.timeline("general").count == 3 }
+        XCTAssertEqual(session.unreadCount(in: "general"), 3)
+        XCTAssertEqual(session.newLine(in: "general", after: LogID("101")!), LogID("102"))
+
+        await socket.deliver(["method": "message", "params": tombstone("102")])
+        await eventually("deletion applied") { session.timeline("general").count == 2 }
+        XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["101", "103"])
+        XCTAssertEqual(session.unreadCount(in: "general"), 2)
+        XCTAssertEqual(session.newLine(in: "general", after: LogID("101")!), LogID("103"), "the line skips the deleted message")
+        XCTAssertEqual(session.store.message(LogID("102")!)?.isTombstone, true, "the store keeps the tombstone for the replay rule")
+        let projected = session.store.projection()["rooms"]?.arrayValue?.first?["messages"]?.arrayValue ?? []
+        XCTAssertEqual(projected.map { $0["deleted"]?.boolValue }, [nil, true, nil])
+    }
+
+    func testDeletingYourOwnMessageDoesNotUnreadWhatCameBeforeIt() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        await socket.deliver(["method": "message", "params": message("101", "hi")])
+        await socket.deliver(["method": "message", "params": [
+            "message_id": "102", "log_id": "102", "room_id": "general", "from": ["user_id": "ada"], "body": ["text": "mine"],
+        ]])
+        await eventually("messages applied") { session.timeline("general").count == 2 }
+        XCTAssertEqual(session.unreadCount(in: "general"), 0)
+
+        await socket.deliver(["method": "message", "params": tombstone("102", from: "ada")])
+        await eventually("deletion applied") { session.timeline("general").count == 1 }
+        XCTAssertEqual(session.readThrough("general"), LogID("102"))
+        XCTAssertEqual(session.unreadCount(in: "general"), 0)
+    }
+
+    func testAPageOfOnlyDeletedMessagesStillMovesPagingBack() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        let open = Task { try await session.open("general") }
+        _ = await frame(socket, 2)
+        await socket.deliver(["id": "c3", "result": [
+            "messages": [tombstone("120"), message("130", "b")], "first_log_id": "120", "last_log_id": "130", "more": true,
+            "latest_log_id": "130", "history_log_id": "100",
+        ]])
+        try await open.value
+        XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["130"])
+        XCTAssertEqual(session.newLine(in: "general", after: LogID("125")!), LogID("130"), "the loaded tombstone at 120 shows nothing unread is older")
+
+        let older = Task { try await session.loadOlder("general") }
+        _ = await frame(socket, 3)
+        await socket.deliver(["id": "c4", "result": [
+            "messages": [tombstone("110")], "first_log_id": "110", "last_log_id": "110", "more": true,
+            "latest_log_id": "130", "history_log_id": "100",
+        ]])
+        try await older.value
+        XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["130"])
+        XCTAssertEqual(session.histories["general"]?.olderBefore, LogID("109"), "the timeline shows the same messages, so the view pages on this")
+    }
+
     func testTheReadCursorsSettingCountsOnlyUnderItsCapability() {
         func info(_ capabilities: [String], ext: JSONValue? = nil) -> ServerInfo {
             var params: [String: JSONValue] = ["apron": 9, "auth": ["token"], "capabilities": .array(capabilities.map(JSONValue.string))]

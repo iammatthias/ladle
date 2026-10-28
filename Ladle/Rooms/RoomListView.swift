@@ -236,7 +236,7 @@ struct RoomRow: View {
                     if let description = session.roomDescription(roomID) {
                         line(icon: "text.alignleft") { Text(description) }
                     }
-                    if let last = session.lastMessage(in: roomID) {
+                    if let last = session.timeline(roomID).last {
                         line(icon: "arrow.turn.down.right") {
                             let sender = Text(session.displayName(for: last.from)).fontWeight(.medium).foregroundStyle(Palette.ink)
                             let text = Text(previewText(last.body)).foregroundStyle(unread > 0 ? Palette.ink : Palette.inkMuted)
