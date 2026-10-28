@@ -13,6 +13,8 @@ public actor PreviewServer: FrameTransport {
         public var histories: [String: JSONValue]
         /// `read_message_id` per `room_id`.
         public var readCursors: [String: String]
+        /// Notices (§3.5.3) sent after `room_list`.
+        public var notices: [JSONValue] = []
     }
 
     private let script: Script
@@ -43,6 +45,7 @@ public actor PreviewServer: FrameTransport {
                     "room_id": .string(roomID), "from": ["user_id": script.you["user_id"] ?? nil], "read_message_id": .string(read),
                 ]])
             }
+            for notice in script.notices { deliver(["method": "message", "params": notice]) }
         case "history":
             let roomID = params?["room_id"]?.stringValue ?? ""
             deliver(["id": id, "result": script.histories[roomID] ?? ["messages": [], "more": false]])

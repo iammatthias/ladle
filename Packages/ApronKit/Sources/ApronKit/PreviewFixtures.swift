@@ -73,11 +73,16 @@ public enum PreviewFixtures {
         var editedAt: Int?
         var deleted = false
         var reactions: [String: [String]] = [:]
+        var mentions: [String] = []
+        var embeds: [JSONValue] = []
+        var prevRoom: String?
     }
 
     private static func line(_ minute: Int, _ from: String, _ text: String, reply: Int? = nil, editedAt: Int? = nil,
-                             deleted: Bool = false, reactions: [String: [String]] = [:]) -> Line {
-        Line(minute: minute, from: from, text: text, reply: reply, editedAt: editedAt, deleted: deleted, reactions: reactions)
+                             deleted: Bool = false, reactions: [String: [String]] = [:], mentions: [String] = [],
+                             embeds: [JSONValue] = [], movedFrom: String? = nil) -> Line {
+        Line(minute: minute, from: from, text: text, reply: reply, editedAt: editedAt, deleted: deleted, reactions: reactions,
+             mentions: mentions, embeds: embeds, prevRoom: movedFrom)
     }
 
     private static func history(_ roomID: String, _ lines: [Line]) -> JSONValue {
@@ -93,8 +98,12 @@ public enum PreviewFixtures {
                 snapshot["deleted"] = true
             } else {
                 snapshot["log_id"] = .string(line.editedAt.map(message) ?? id)
-                snapshot["body"] = ["text": .string(line.text), "format": "markdown"]
+                var body: [String: JSONValue] = ["text": .string(line.text), "format": "markdown"]
+                if !line.mentions.isEmpty { body["mentions"] = .array(line.mentions.map(JSONValue.string)) }
+                if !line.embeds.isEmpty { body["embeds"] = .array(line.embeds) }
+                snapshot["body"] = .object(body)
             }
+            if let prevRoom = line.prevRoom { snapshot["prev_room_id"] = .string(prevRoom) }
             if let reply = line.reply { snapshot["reply_to"] = ["message_id": .string(message(reply))] }
             messages.append(.object(snapshot))
             var byUser: [String: [String]] = [:]
@@ -117,12 +126,15 @@ public enum PreviewFixtures {
         ]
     }
 
-    private static func room(_ id: String, _ title: String, parent: String? = nil, members: [String]) -> JSONValue {
+    private static func room(_ id: String, _ title: String, parent: String? = nil, members: [String],
+                             description: String? = nil, isPrivate: Bool = false) -> JSONValue {
         var room: [String: JSONValue] = [
             "room_id": .string(id), "log_id": .string(parent == nil ? message(-600) : id), "title": .string(title),
             "members": .array(members.map { ["user_id": .string($0)] }),
         ]
         if let parent { room["parent_room_id"] = .string(parent) }
+        if let description { room["description"] = .string(description) }
+        if isPrivate { room["private"] = true }
         return .object(room)
     }
 
@@ -146,8 +158,14 @@ public enum PreviewFixtures {
         line(12, "ada", "Confirmed on my phone. Scrolled all the way back to August.", reply: 8),
         line(13, "dev", "", deleted: true),
         line(14, "sam", "I'll cut the build after lunch.", reactions: ["👍": ["ada"]]),
-        line(15, "eunji", "Can someone review the icon PR before then? It's small, mostly the ladle glyph at 20 pt."),
+        line(15, "eunji", "@Sam can you review the icon PR before then? It's small, mostly the ladle glyph at 20 pt.",
+             mentions: ["sam"], embeds: [[
+                 "kind": "link", "url": "https://git.example/ladle/pull/42",
+                 "og": ["title": "Ladle glyph at small sizes #42", "description": "Bowl-only mark, 2 pt stroke, rounded caps.", "site_name": "git.example"],
+             ]]),
         line(16, "bram", "On it", reply: 15),
+        line(20, "dev", "Load test plan for Friday", embeds: [["kind": "poll", "url": "https://poll.example/p/7"]],
+             movedFrom: "ops"),
     ]
 
     private static let home = PreviewServer.Script(
@@ -156,11 +174,12 @@ public enum PreviewFixtures {
         roomList: [
             "joined": [
                 room("general", "general", members: ["sam", "ada", "bram", "chiara", "dev", "eunji"]),
-                room(releaseThread, "Release 0.2", parent: "general", members: ["sam", "ada", "bram"]),
+                room(releaseThread, "Release 0.2", parent: "general", members: ["sam", "ada", "bram"],
+                     description: "Ship Friday, then freeze"),
                 room("design", "design", members: ["sam", "ada", "eunji"]),
                 room(iconThread, "Icon sketches", parent: "design", members: ["sam", "eunji"]),
                 room("random", "random", members: ["sam", "ada", "bram", "chiara"]),
-                room("ops", "ops", members: ["sam", "dev"]),
+                room("ops", "ops", members: ["sam", "dev"], isPrivate: true),
             ],
             "users": .array(people.keys.sorted().map { people[$0]! }),
         ],
@@ -194,7 +213,11 @@ public enum PreviewFixtures {
         readCursors: [
             "general": message(9), releaseThread: message(17), "design": message(-30),
             iconThread: message(-18), "random": message(-90), "ops": message(-290),
-        ]
+        ],
+        notices: [[
+            "room_id": "general", "from": ["user_id": "~room", "name": "general"],
+            "body": ["text": "Release freeze starts Friday at 18:00 UTC. Type /help for the commands here.", "format": "plain"],
+        ]]
     )
 
     private static let demo = PreviewServer.Script(

@@ -15,7 +15,7 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.roomTree.map { $0.threadIDs.map(home.title(of:)) }, [["Icon sketches"], ["Release 0.2"], [], []])
 
         let general = home.timeline(PreviewFixtures.busyRoomID)
-        XCTAssertEqual(general.count, 13)
+        XCTAssertEqual(general.count, 14)
         XCTAssertEqual(general.filter(\.isTombstone).count, 1)
         XCTAssertEqual(general.filter { !$0.isTombstone && $0.logID != $0.messageID }.count, 1, "one edit")
         XCTAssertEqual(general.compactMap(\.replyTo).count, 3)
@@ -24,7 +24,13 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.store.reactions(on: notes.messageID)?.last?.userIDs, ["bram", "chiara", "sam"])
         XCTAssertNotNil(home.store.message(PreviewFixtures.replyTargetID))
 
-        XCTAssertEqual(home.unreadCount(in: "general"), 3, "minutes 12, 15 and 16; 14 is Sam's own")
+        XCTAssertEqual(home.unreadCount(in: "general"), 4, "minutes 12, 15, 16 and 20; 14 is Sam's own")
+        XCTAssertEqual(general.filter { $0.body?["mentions"]?.arrayValue?.contains("sam") == true }.count, 1, "one mention of you")
+        XCTAssertEqual(general.compactMap(\.prevRoomID), ["ops"], "one moved message")
+        XCTAssertEqual(general.compactMap { $0.body?["embeds"]?.arrayValue?.first?["kind"]?.stringValue }, ["link", "poll"])
+        XCTAssertEqual(home.store.room("ops")?.isPrivate, true)
+        XCTAssertEqual(home.notices.map(\.roomID), ["general"])
+        XCTAssertEqual(home.store.room(home.roomTree[1].threadIDs[0])?.description?.stringValue, "Ship Friday, then freeze")
         XCTAssertEqual(home.unreadCount(in: "random"), 2)
         XCTAssertEqual(home.timeline(home.roomTree[1].threadIDs[0]).count, 4, "Release 0.2")
         XCTAssertEqual(home.unreadCount(in: home.roomTree[1].threadIDs[0]), 2)
