@@ -30,7 +30,9 @@ struct RootView: View {
         .background(Palette.chrome)
         .apronStyle()
         .sheet(item: $connecting) { request in
-            ConnectView(store: store, record: request.record, prefill: request.prefill)
+            ConnectView(store: store, record: request.record, prefill: request.prefill) { id in
+                if request.record == nil { open(id, room: request.room) }
+            }
         }
         .onOpenURL(perform: handle)
         .environment(\.openURL, OpenURLAction { url in
@@ -102,7 +104,7 @@ struct RootView: View {
         if let record = store.records.first(where: { $0.url == server }) {
             open(record.id, room: link.room)
         } else {
-            connecting = ConnectRequest(prefill: link.token.map { TokenPayload(token: $0, server: server) } ?? TokenPayload(token: "", server: server))
+            connecting = ConnectRequest(prefill: TokenPayload(token: link.token ?? "", server: server), room: link.room)
         }
     }
 

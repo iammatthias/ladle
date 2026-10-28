@@ -85,7 +85,8 @@ clone), which is only a worked example.
 - `Ladle/`: the app, views only; logic belongs in ApronKit where `swift test` reaches it. The
   design follows apron-web, the official web client (see "Design").
   `App/` (`RootView`: one pane at a time in compact width, a split view with the server rail,
-  rooms, room and member column in regular width; `@SceneStorage` restoration; `apron:` links),
+  rooms, room and member column in regular width; `@SceneStorage` restoration; `apron:` links;
+  a server added through the Connect sheet opens once its sign-in succeeds),
   `Servers/` (the server list and iPad rail, `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
   mention list, reaction picker, member list, `TimelineItems`: day pills, messages, the New

@@ -197,10 +197,12 @@ struct HostYourOwnLink: View {
     }
 }
 
-/// What the Connect sheet opens with: a new server, a saved one, or a link's contents.
+/// What the Connect sheet opens with: a new server, a saved one, or a link's contents. A new
+/// server opens once signed in, at the link's room when it named one.
 struct ConnectRequest: Identifiable {
     var record: ServerRecord?
     var prefill: TokenPayload?
+    var room: String?
     let id = UUID()
 }
 

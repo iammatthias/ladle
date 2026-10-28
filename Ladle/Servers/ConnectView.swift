@@ -13,6 +13,8 @@ struct ConnectView: View {
     var prefill: TokenPayload?
     /// Whether the camera can scan; the design-review renderer sets it, the app never does.
     var canScan = QRScanner.isAvailable
+    /// Called with the server's id once a sign-in succeeds, just before the sheet closes.
+    var onSignedIn: (UUID) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
     @State private var address = ""
     @State private var label = ""
@@ -396,7 +398,10 @@ struct ConnectView: View {
                 case .guest:
                     outcome = try await session.signIn(.guest(name: guestName))
                 }
-                if case .signedIn = outcome { dismiss() }
+                if case .signedIn = outcome {
+                    onSignedIn(session.record.id)
+                    dismiss()
+                }
             } catch {
                 self.error = errorText(error)
             }
