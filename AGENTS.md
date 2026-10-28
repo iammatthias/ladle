@@ -66,13 +66,16 @@ clone), which is only a worked example.
     user object per `user_id`, merge rules, `Name (@user_id)` on clashes).
   - `ServerRecord`, `ServerStore`, `TokenStore`: the saved servers (JSON, no secrets) and the seam
     for the bearer token. `InMemoryTokenStore` is for tests.
-- `Ladle/`: the app, views only; logic belongs in ApronKit where `swift test` reaches it.
-  `Servers/` (list, editor), `SignIn/` (sheet, VisionKit QR scanner), `Rooms/`, `Timeline/`
-  (messages, composer, `TimelineItems`: messages, the read line, and thread cards placed at the
-  thread's creation position), `Design/` (`Theme`: the three directions under review, their
-  color tokens as light and dark hex pairs, faces, and density; `People`: avatars and presence
-  glyphs; `Fonts/`: Nunito under the SIL OFL, license beside it). Debug builds switch direction
-  from the palette menu on the server list (`@AppStorage("debug.direction")`).
+- `Ladle/`: the app, views only; logic belongs in ApronKit where `swift test` reaches it. The
+  design follows apron-web, the official web client (see "Design").
+  `App/` (`RootView`: one pane at a time in compact width, a split view with the server rail,
+  rooms, room and member column in regular width; `@SceneStorage` restoration; `apron:` links),
+  `Servers/` (the server list and iPad rail, `ConnectView`: add a server and sign in in one
+  sheet), `SignIn/` (VisionKit QR scanner), `Rooms/`, `Timeline/` (messages, composer with the
+  mention list, reaction picker, member list, `TimelineItems`: day pills, messages, the New
+  line, thread cards at the thread's creation position, and queued messages), `Design/`
+  (`Tokens.swift`, generated; `Apron`: colors by job, text roles, motion; `People`: avatars and
+  StatusDot; `Components`: the web's UnreadCount, Callout, ActionBanner, EmptyState, buttons).
   `Servers/KeychainStore.swift` is the only place a secret is persisted (generic password,
   service `com.iammatthias.ladle.token`, account = server id).
 - `LadleTests/`: hermetic app tests (no network, no server).
@@ -103,35 +106,58 @@ clone), which is only a worked example.
   target cannot be newer than its SDK. Bump to 27.2 in `project.yml` once Xcode ships that SDK.
   `Package.swift` says iOS 27.0: a floor for the `LadleShots` renderer, not the app's target.
 
+## Design
+
+Ladle follows apron-web (`/Users/iammatthias/Developer/forks/apron-server-go/.apron-web`),
+translated through the HIG. Its narrow layout (under 720 px) is the iPhone reference; its wide
+layout (960 px and wider) is the iPad split view.
+
+- Tokens are generated, never copied: `tools/design/tokens.py` reads `tokens.css` and
+  `rail.css` at the apron-web commit in `tools/design/UPSTREAM` and writes
+  `Ladle/Design/Tokens.swift`. `tools/design/tokens.py --check` (run by `./build.sh test`)
+  fails when the file differs from a fresh generation and says when apron-web has moved past
+  the pin. To follow a newer apron-web, review its design changes, move the pin, regenerate.
+- Colors, grounds by depth, spacing, radii, avatar sizes, durations and easing are verbatim in
+  both themes. Accent (rust) is what you can do; denim is where you can go; every status color
+  carries a word or shape; the private color always comes with its lock (`Palette`'s doc).
+- Text uses the web's roles (`TextRole`: caps, xs, sm, ui, field, body, title). Each role's web
+  px value is its size at the Large Dynamic Type setting and scales from there with the HIG's
+  table. System faces only (SF, SF Mono), as the web.
+- Anything tappable takes 44 pt (`touchTarget()`, the web's `--touch-target`). Native controls
+  where the HIG expects them (navigation stacks, sheets, swipe actions, context menus,
+  confirmation dialogs, the segmented control, the emoji keyboard), styled with the tokens.
+- Reduce Motion turns the web's motion off (`Motion`); Increase Contrast swaps `line` for
+  `line-strong` and `ink-muted` for `ink`, which the web has no counterpart for.
+
 ## Design review
 
 The iOS Simulator does not run here (CoreSimulator 1171.7 is older than Xcode 27.1's 1174.9;
 never restart its services or kill its processes). Screens are reviewed on this Mac instead:
 
 ```sh
-./build.sh shots /path/to/out      # PNGs of every direction and screen, plus contrast.json
+./build.sh shots /path/to/out      # PNGs of every screen, plus contrast.json
 ```
 
 `LadleShots` is a debug-only Mac Catalyst app target built from `Ladle/` (minus `LadleApp.swift`)
-plus `LadleShots/ShotsApp.swift`. It seeds `PreviewFixtures`, pins its window to 393x852 pt
-(iPhone width, compact size class), and for each direction renders the server list, the room
-list, the busy room, and the composer replying to a message, in light and dark, plus the busy
-room at AX3. It captures in process with `UIView.drawHierarchy` at 3x, writes `contrast.json`
-(WCAG ratios of every text token pair), and quits. `TZ=UTC` keeps the times reproducible; two
-runs are byte-identical except the blinking caret in the composer shots.
+plus `LadleShots/ShotsApp.swift`. It seeds `PreviewFixtures` and renders, at 390x844 pt
+(compact width) in dark and light: the server list, Connect, the room list, the busy room, the
+mention list, the member list and the reaction picker; the busy room at AX3; and the iPad
+split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
+because `drawHierarchy` does not see a sheet's window. It captures in process with
+`UIView.drawHierarchy` at 2x, writes `contrast.json` (WCAG ratios of the text tokens on their
+grounds), and quits. `TZ=UTC` keeps the times reproducible.
 
 Limits of the Mac render, each checked on this machine:
 
 - Mac Catalyst ignores Dynamic Type: `UIFontMetrics` returns 17 pt for body at AX XXL. The
-  renderer sets `Theme.fixedTypeSize`, which sizes theme text from the HIG's iOS Dynamic Type
-  table. The app never sets it and uses live text styles. System chrome (navigation bar
-  buttons, list chevrons) stays at its default size in the AX3 shots.
-- Mac Catalyst falls back to SF Pro for `design: .rounded`, even with SF Pro Rounded
-  registered. That is one reason the Enamel direction bundles Nunito.
-- The software keyboard never appears on a Mac, so the composer shot shows the focused field
-  and reply banner without a keyboard. Hardware-keyboard hints do show, since a keyboard is
-  attached.
-- Gestures (swipe to reply) and haptics cannot be shown in a still.
+  renderer sets the `fixedTypeSize` environment value, which sizes text roles from the HIG's
+  iOS Dynamic Type table. The app never sets it. System chrome (navigation bar buttons, list
+  chevrons) stays at its default size in the AX3 shot.
+- Large navigation titles do not draw on Catalyst, so every screen uses inline titles, which
+  also match the web's 48 px header.
+- The software keyboard never appears on a Mac, so the reaction picker shows its field without
+  the emoji keyboard.
+- Gestures (swipe actions) and haptics cannot be shown in a still.
 
 Why not the other routes: running the iOS app as "Designed for iPad" on this Mac fails twice.
 First, `xcodebuild -destination 'platform=macOS,variant=Designed for iPad,arch=arm64'` says "My
@@ -162,9 +188,9 @@ clone. Run it before `swift test` (the gate line above does), and `./build.sh te
   default in `init(from:)`, so older files keep loading. Adding a non-optional field without a
   default breaks saved files.
 - Apple frameworks only: Foundation, URLSession WebSockets, AuthenticationServices,
-  Security, SwiftUI, Observation, CoreText (registers the bundled font), GameController (tells
-  whether a hardware keyboard is attached). A third-party package needs a justified entry here.
-  None so far. Bundled fonts are SIL OFL only, each with its license file beside it: Nunito.
+  Security, SwiftUI, Observation, Network (`NWPathMonitor` reconnects when the network
+  returns). A third-party package needs a justified entry here. None so far. No bundled fonts:
+  the web ships none either.
 - Replay rule: a record replaces only on a numerically greater `log_id`, or a tombstone at an
   equal one; a room record without `log_id` always replaces; replacement is whole. Compare
   `log_id`s with `LogID`, never as strings.

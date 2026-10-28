@@ -1,70 +1,88 @@
 import ApronKit
-import GameController
 import SwiftUI
 
+/// The web's Composer: one raised box with a strong edge that turns accent on focus, the field,
+/// and Send. A reply or edit shows its line above the box. Typing `@` opens the mention list
+/// above it (the web's MentionPicker). With a hardware keyboard, Return sends and Shift-Return
+/// starts a new line; Escape cancels a reply or edit.
 struct ComposerView: View {
     let session: ServerSession
+    let roomID: String
     @Binding var draft: Draft
-    let onSend: (String) -> Void
+    let onSend: (String, [String]) -> Void
     @FocusState private var focused: Bool
-    @Environment(\.theme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let palette = theme.palette
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 0) {
+            if let query = mentionQuery, !candidates(query).isEmpty {
+                MentionPicker(session: session, people: candidates(query), pick: pick)
+                    .padding(.horizontal, Tokens.Space.s4)
+                    .padding(.bottom, Tokens.Space.s1)
+            }
             if let target {
-                HStack(spacing: 8) {
-                    Image(systemName: isEdit ? "pencil" : "arrowshape.turn.up.left.fill")
-                        .foregroundStyle(palette.accent.color)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(isEdit ? "Editing your message" : "Replying to \(session.displayName(for: target.from))")
-                            .font(theme.font(.caption, theme.metaFace, weight: .semibold))
-                            .foregroundStyle(palette.text.color)
-                        Text(target.plainText)
-                            .font(theme.font(.caption))
-                            .foregroundStyle(palette.secondary.color)
-                            .lineLimit(1)
-                    }
+                HStack(spacing: Tokens.Space.s2) {
+                    let who = Text(session.displayName(for: target.from)).fontWeight(.semibold).foregroundStyle(Palette.ink)
+                    (isEdit ? Text("Editing your message") : Text("Replying to \(who)"))
+                        .apText(.ui)
+                        .foregroundStyle(Palette.inkMuted)
+                        .lineLimit(1)
                     Spacer(minLength: 0)
-                    Button("Cancel", systemImage: "xmark.circle.fill") { draft = Draft() }
+                    Button("Cancel", systemImage: "xmark") { draft = Draft() }
                         .labelStyle(.iconOnly)
-                        .font(.title3)
-                        .foregroundStyle(palette.secondary.color)
-                        .frame(minWidth: 44, minHeight: 44)
+                        .foregroundStyle(Palette.inkMuted)
+                        .touchTarget()
                         .keyboardShortcut(.cancelAction)
                 }
+                .padding(.leading, Tokens.Space.s4)
+                .padding(.trailing, Tokens.Space.s2)
             }
-            HStack(alignment: .bottom, spacing: 8) {
-                TextField("Message", text: $draft.text, axis: .vertical)
-                    .font(theme.font(.body))
-                    .foregroundStyle(palette.text.color)
-                    .lineLimit(1 ... 6)
+            HStack(alignment: .bottom, spacing: Tokens.Space.s2) {
+                TextField(placeholder, text: $draft.text, axis: .vertical)
+                    .apText(.field)
+                    .foregroundStyle(Palette.ink)
+                    .lineLimit(1 ... 8)
                     .focused($focused)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .frame(minHeight: 44)
-                    .background(palette.surface.color, in: RoundedRectangle(cornerRadius: theme.layout == .dense ? 8 : 22, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: theme.layout == .dense ? 8 : 22, style: .continuous).strokeBorder(focused ? palette.accent.color : palette.separator.color, lineWidth: focused ? 1.5 : 1))
-                    .onSubmit(send)
-                Button("Send", systemImage: "arrow.up") { send() }
-                    .labelStyle(.iconOnly)
-                    .font(.body.weight(.bold))
-                    .foregroundStyle(palette.onAccent.color)
-                    .frame(width: 44, height: 44)
-                    .background(canSend ? palette.accent.color : palette.secondary.color.opacity(0.4), in: Circle())
+                    .disabled(!canWrite)
+                    .padding(.vertical, Tokens.Space.s1 + 3)
+                    .padding(.horizontal, Tokens.Space.s1)
+                    .frame(minHeight: Tokens.Control.md + Tokens.Space.s2 * 2 - Tokens.Space.s2, alignment: .center)
+                    .onKeyPress(.return, phases: .down) { press in
+                        guard !press.modifiers.contains(.shift) else { return .ignored }
+                        send()
+                        return .handled
+                    }
+                Button("Send") { send() }
+                    .buttonStyle(PrimaryButtonStyle())
                     .disabled(!canSend)
                     .keyboardShortcut(.return, modifiers: .command)
             }
-            if theme.direction == .pass, GCKeyboard.coalesced != nil {
-                Text("⌘↩ send · ⌘R reply to last · esc cancel")
-                    .font(theme.font(.caption2, .mono))
-                    .foregroundStyle(palette.secondary.color)
-            }
+            .padding(.vertical, Tokens.Space.s1)
+            .padding(.leading, Tokens.Space.s3)
+            .padding(.trailing, Tokens.Space.s1)
+            .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.lg))
+            .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.lg).strokeBorder(focused ? Palette.accent : Palette.lineStrong))
+            .opacity(canWrite ? 1 : Tokens.Opacity.disabled)
+            .padding(.horizontal, Tokens.Space.s4)
+            .padding(.top, Tokens.Space.s2)
+            .padding(.bottom, Tokens.Space.s2)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(.bar)
+        .animation(Motion.fast(reduceMotion), value: mentionQuery)
         .onChange(of: draft.mode.isActive, initial: true) { if draft.mode.isActive { focused = true } }
+    }
+
+    private var placeholder: String {
+        switch session.status {
+        case .signedOut, .stopped: "Sign in to send"
+        default: "Message \(session.title(of: roomID))"
+        }
+    }
+
+    private var canWrite: Bool {
+        switch session.status {
+        case .signedOut, .stopped: false
+        default: true
+        }
     }
 
     private var target: MessageSnapshot? {
@@ -80,13 +98,70 @@ struct ComposerView: View {
     }
 
     private var canSend: Bool {
-        !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && session.status == .signedIn
+        canWrite && !draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    /// The word being typed after `@`, when there is one.
+    private var mentionQuery: String? {
+        guard let word = draft.text.split(separator: " ", omittingEmptySubsequences: false).last,
+              word.hasPrefix("@"), !word.contains("\n") else { return nil }
+        return String(word.dropFirst())
+    }
+
+    private func candidates(_ query: String) -> [UserObject] {
+        let people = session.memberSections(roomID).flatMap(\.people).filter { $0.userID != session.you?.userID }
+        guard !query.isEmpty else { return Array(people.prefix(6)) }
+        return Array(people.filter {
+            session.displayName(for: $0).localizedCaseInsensitiveContains(query) || $0.userID.localizedCaseInsensitiveContains(query)
+        }.prefix(6))
+    }
+
+    private func pick(_ person: UserObject) {
+        let name = session.displayName(for: person)
+        guard let at = draft.text.range(of: "@", options: .backwards) else { return }
+        draft.text.replaceSubrange(at.lowerBound..., with: "@\(name) ")
+        draft.mentions[person.userID] = name
     }
 
     private func send() {
         let text = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        onSend(text)
+        guard canSend else { return }
+        let mentions = draft.mentions.filter { text.contains("@" + $0.value) }.map(\.key).sorted()
+        onSend(text, mentions)
+    }
+}
+
+/// The web's MentionPicker: a raised list above the composer, each person with their face,
+/// name and `@user_id`.
+struct MentionPicker: View {
+    let session: ServerSession
+    let people: [UserObject]
+    let pick: (UserObject) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(people, id: \.userID) { person in
+                let name = session.displayName(for: person)
+                Button { pick(person) } label: {
+                    HStack(spacing: Tokens.Space.s2) {
+                        Avatar(name: name, userID: person.userID, presence: session.presence(of: person.userID), size: .sm)
+                        Text(name).apText(.field, .semibold).foregroundStyle(Palette.ink)
+                        Text("@" + person.userID).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, Tokens.Space.s2)
+                    .frame(minHeight: Tokens.Size.touchTarget)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Mention \(name)")
+            }
+        }
+        .padding(Tokens.Space.s1)
+        .frame(maxWidth: 320, alignment: .leading)
+        .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
+        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.line))
+        .shadow(color: .black.opacity(0.35), radius: 12, y: 8)
     }
 }
 
