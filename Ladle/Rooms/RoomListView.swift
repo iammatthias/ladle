@@ -1,4 +1,5 @@
 import ApronKit
+import PhotosUI
 import SwiftUI
 
 /// One server's rooms, as the web's sidebar: a "Rooms" section of rows, threads under their room
@@ -17,6 +18,9 @@ struct RoomListView: View {
     @State private var problem: String?
     @State private var leaving: String?
     @State private var signingOut = false
+    @State private var pickingAvatar = false
+    @State private var avatarItem: PhotosPickerItem?
+    @State private var settingAvatar = false
 
     /// A room to create: top level, or a thread under `parent`.
     struct NewRoom: Identifiable {
@@ -149,11 +153,15 @@ struct RoomListView: View {
             let name = session.displayName(for: you)
             Menu {
                 Section(name + " on " + session.record.label) {
+                    if session.canSetAvatar {
+                        Button("Change Avatar", systemImage: "person.crop.circle") { pickingAvatar = true }
+                    }
                     Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { signingOut = true }
                 }
             } label: {
                 HStack(spacing: Tokens.Space.s2) {
-                    Avatar(name: name, userID: you.userID, presence: session.presence(of: you.userID) ?? .online)
+                    Avatar(name: name, userID: you.userID, presence: session.presence(of: you.userID) ?? .online, image: session.avatarURL(of: you.userID))
+                        .overlay { if settingAvatar { ProgressView().controlSize(.small) } }
                     VStack(alignment: .leading, spacing: 0) {
                         Text(name).apText(.ui, .semibold).foregroundStyle(Palette.ink)
                         Text("on \(session.record.label)").apText(.sm).foregroundStyle(Palette.inkMuted)
@@ -169,6 +177,27 @@ struct RoomListView: View {
             .background(Palette.chrome)
             .overlay(alignment: .top) { Rectangle().fill(Palette.line).frame(height: 1) }
             .accessibilityLabel("Your profile on \(session.record.label): \(name)")
+            .photosPicker(isPresented: $pickingAvatar, selection: $avatarItem, matching: .images, preferredItemEncoding: .compatible)
+            .onChange(of: avatarItem) {
+                guard let item = avatarItem else { return }
+                avatarItem = nil
+                setAvatar(from: item)
+            }
+        }
+    }
+
+    /// Crops the picked image to the avatar the server takes, then sends it with `/avatar`
+    /// (§4.8.6). The server sends `user` with the new avatar once it is written.
+    private func setAvatar(from item: PhotosPickerItem) {
+        let limits = session.mediaLimits?.avatar
+        settingAvatar = true
+        perform {
+            defer { settingAvatar = false }
+            guard let file = try await item.loadTransferable(type: ImportedFile.self) else { throw CocoaError(.fileReadUnknown) }
+            let avatar = try await Task.detached {
+                try AttachmentPreparer.prepareAvatar(file.url, limits: limits, into: AttachmentStaging.directory)
+            }.value
+            try await session.setAvatar(avatar)
         }
     }
 

@@ -14,6 +14,8 @@ func errorText(_ error: any Error) -> String {
         return "Sign in to this server first."
     case ServerSession.Failure.unsupported(let capability):
         return "This server does not support \(capability)."
+    case ServerSession.Failure.attachmentNotAccepted:
+        return "The server didn't accept the file."
     default:
         return error.localizedDescription
     }

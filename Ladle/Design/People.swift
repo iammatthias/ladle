@@ -104,6 +104,9 @@ struct Avatar: View {
     let userID: String
     var presence: Presence?
     var size = Size.md
+    /// The user's avatar (§4.8.6), already checked by `MediaPolicy`; the initials show until it
+    /// loads, and stay when it doesn't.
+    var image: URL?
 
     var body: some View {
         let hue = Self.hue(userID)
@@ -112,6 +115,9 @@ struct Avatar: View {
             .foregroundStyle(Self.tint(hue, ink: true))
             .frame(width: size.diameter, height: size.diameter)
             .background(Self.tint(hue, ink: false), in: Circle())
+            .overlay {
+                if let image { AvatarImage(url: image, diameter: size.diameter) }
+            }
             .mask {
                 if presence != nil {
                     let cut = size.dot / 2 + size.gap
@@ -129,6 +135,26 @@ struct Avatar: View {
                 if let presence { StatusDot(presence: presence, diameter: size.dot) }
             }
             .accessibilityHidden(true)
+    }
+
+    /// Loads the avatar as an image only, never as a document (§4.8.6).
+    private struct AvatarImage: View {
+        let url: URL
+        let diameter: CGFloat
+        @State private var image: UIImage?
+        @Environment(\.displayScale) private var scale
+
+        var body: some View {
+            ZStack {
+                if let image { Image(uiImage: image).resizable().scaledToFill() }
+            }
+            .frame(width: diameter, height: diameter)
+            .clipShape(Circle())
+            .task(id: url) {
+                image = MediaLoader.shared.cachedImage(url, maxPixel: diameter * scale)
+                if image == nil { image = try? await MediaLoader.shared.image(url, maxPixel: diameter * scale) }
+            }
+        }
     }
 
     /// The web's `initials`: the first letter of the first and last words.

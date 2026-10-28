@@ -18,7 +18,7 @@ struct ShotsApp: App {
 }
 
 enum Screen: String, CaseIterable {
-    case firstRun = "first-run", servers, connect, rooms, timeline, mention, members, reaction, ipad
+    case firstRun = "first-run", servers, connect, rooms, timeline, mention, members, reaction, attachments, media, viewer, ipad
 }
 
 @MainActor
@@ -35,6 +35,10 @@ enum Renderer {
         scene.titlebar?.titleVisibility = .hidden
         scene.titlebar?.toolbar = nil
         Appearance.apply()
+        let media = URLSessionConfiguration.default
+        media.protocolClasses = [FixtureMedia.self] + (media.protocolClasses ?? [])
+        MediaLoader.shared = MediaLoader(configuration: media)
+        let staged = FixtureMedia.stagedAttachments()
 
         let store = await PreviewFixtures.makeStore()
         guard let home = store.session(for: PreviewFixtures.homeID) else { exit(1) }
@@ -52,7 +56,7 @@ enum Renderer {
             scene.sizeRestrictions?.maximumSize = size
             scene.sizeRestrictions?.minimumSize = size
             scene.windows.first?.overrideUserInterfaceStyle = shot.style
-            show(AnyView(view(shot.screen, store: store, home: home)
+            show(AnyView(view(shot.screen, store: store, home: home, staged: staged)
                 .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
                 .dynamicTypeSize(shot.large ? .accessibility3 : .large)
                 .apronStyle()
@@ -65,7 +69,7 @@ enum Renderer {
         exit(0)
     }
 
-    static func view(_ screen: Screen, store: SessionStore, home: ServerSession) -> AnyView {
+    static func view(_ screen: Screen, store: SessionStore, home: ServerSession, staged: [DraftAttachment]) -> AnyView {
         switch screen {
         case .firstRun:
             AnyView(NavigationStack {
@@ -87,6 +91,15 @@ enum Renderer {
             AnyView(NavigationStack { MemberList(session: home, roomID: PreviewFixtures.busyRoomID) })
         case .reaction:
             AnyView(ReactionPicker { _ in })
+        case .attachments:
+            AnyView(NavigationStack {
+                TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, draft: Draft(text: "Both sides of mine", attachments: staged))
+            })
+        case .media:
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID) })
+        case .viewer:
+            AnyView(MediaViewer(items: home.mediaItems(in: PreviewFixtures.mediaRoomID),
+                                selection: home.mediaItems(in: PreviewFixtures.mediaRoomID).first?.id ?? ""))
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), connecting: .constant(nil)))
@@ -131,5 +144,70 @@ enum Renderer {
             ["pair": .string(name), "dark": .number(ratio(text.dark, ground.dark)), "light": .number(ratio(text.light, ground.light))]
         }
         try? JSONValue.array(report).serializedData().write(to: url)
+    }
+}
+
+/// Answers the fixtures' hosted files (`PreviewFixtures.fileURL`) with generated media, and
+/// stages the composer's attachments, so the media screens render without a network.
+final class FixtureMedia: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { request.url?.host() == "home.example" }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let path = request.url?.path() ?? ""
+        let data = path.contains("embed_1") ? Self.photo(CGSize(width: 1600, height: 1200), hue: 0.02) : Data("fixture".utf8)
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1",
+                                       headerFields: ["Content-Type": path.contains("embed_1") ? "image/jpeg" : "application/octet-stream"])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    /// A still life: a table, a wall, and a round enamel pot in the given hue.
+    static func photo(_ size: CGSize, hue: CGFloat) -> Data {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).jpegData(withCompressionQuality: 0.85) { context in
+            let c = context.cgContext
+            UIColor(hue: 0.1, saturation: 0.15, brightness: 0.85, alpha: 1).setFill()
+            c.fill(CGRect(origin: .zero, size: size))
+            UIColor(hue: 0.08, saturation: 0.45, brightness: 0.45, alpha: 1).setFill()
+            c.fill(CGRect(x: 0, y: size.height * 0.62, width: size.width, height: size.height * 0.38))
+            let w = size.width * 0.42, h = size.height * 0.38
+            let body = CGRect(x: (size.width - w) / 2, y: size.height * 0.34, width: w, height: h)
+            UIColor(white: 0, alpha: 0.18).setFill()
+            c.fillEllipse(in: CGRect(x: body.minX - 20, y: body.maxY - 30, width: w + 40, height: 60))
+            UIColor(hue: hue, saturation: 0.8, brightness: 0.75, alpha: 1).setFill()
+            c.fill(CGRect(x: body.minX, y: body.minY, width: w, height: h).insetBy(dx: 0, dy: 20))
+            c.fillEllipse(in: CGRect(x: body.minX, y: body.maxY - 60, width: w, height: 80))
+            UIColor(hue: hue, saturation: 0.85, brightness: 0.6, alpha: 1).setFill()
+            c.fillEllipse(in: CGRect(x: body.minX - 10, y: body.minY - 10, width: w + 20, height: 60))
+            UIColor.black.withAlphaComponent(0.75).setFill()
+            c.fill(CGRect(x: size.width / 2 - 40, y: body.minY - 46, width: 80, height: 36))
+            UIColor.white.withAlphaComponent(0.35).setFill()
+            c.fillEllipse(in: CGRect(x: body.minX + w * 0.12, y: body.minY + 60, width: w * 0.12, height: h * 0.45))
+        }
+    }
+
+    /// The draft's files: two photos, a PDF, and one still being prepared.
+    @MainActor
+    static func stagedAttachments() -> [DraftAttachment] {
+        let folder = URL.temporaryDirectory.appending(path: "ladle-shots-staged", directoryHint: .isDirectory)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        func file(_ name: String, _ data: Data, _ type: String, _ size: CGSize? = nil) -> DraftAttachment {
+            let url = folder.appending(path: name)
+            try? data.write(to: url)
+            let attachment = Attachment(fileURL: url, title: name, contentType: type, byteCount: data.count,
+                                        pixelWidth: size.map { Int($0.width) }, pixelHeight: size.map { Int($0.height) })
+            return DraftAttachment(name: name, phase: .ready(attachment))
+        }
+        return [
+            file("IMG_4021.jpg", photo(CGSize(width: 1200, height: 1600), hue: 0.58), "image/jpeg", CGSize(width: 1200, height: 1600)),
+            file("IMG_4022.jpg", photo(CGSize(width: 1600, height: 1200), hue: 0.58), "image/jpeg", CGSize(width: 1600, height: 1200)),
+            file("receipt-flea-market.pdf", Data(count: 48_213), "application/pdf"),
+            DraftAttachment(name: "IMG_4023.HEIC", phase: .preparing),
+        ]
     }
 }

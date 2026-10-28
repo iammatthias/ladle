@@ -31,12 +31,12 @@ struct MessageRow: View {
                 } else if continues {
                     Color.clear.frame(width: Tokens.AvatarSize.md, height: 1)
                 } else {
-                    Avatar(name: name, userID: message.from.userID).padding(.top, 2)
+                    Avatar(name: name, userID: message.from.userID, image: session.avatarURL(of: message.from.userID)).padding(.top, 2)
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     if !continues {
                         HStack(alignment: .center, spacing: Tokens.Space.s2) {
-                            if compact { Avatar(name: name, userID: message.from.userID, size: .sm) }
+                            if compact { Avatar(name: name, userID: message.from.userID, size: .sm, image: session.avatarURL(of: message.from.userID)) }
                             head(name)
                         }
                     }
@@ -88,9 +88,11 @@ struct MessageRow: View {
                     .apText(.sm).italic().foregroundStyle(Palette.inkMuted)
                     .padding(.top, Tokens.Space.s1)
             }
-            if !message.embeds.isEmpty {
+            if !message.embedList.isEmpty {
                 VStack(alignment: .leading, spacing: Tokens.Space.s2) {
-                    ForEach(Array(message.embeds.enumerated()), id: \.offset) { _, embed in EmbedCard(embed: embed) }
+                    ForEach(Array(message.embedList.enumerated()), id: \.offset) { index, embed in
+                        EmbedView(session: session, embed: embed, mediaID: MediaItem.id(message, index))
+                    }
                 }
                 .padding(.top, Tokens.Space.s2)
             }
@@ -117,7 +119,7 @@ struct MessageRow: View {
         }
         parts.append(message.isTombstone ? "Message deleted" : message.plainText)
         if let room = message.prevRoomID { parts.append("moved from \(session.title(of: room))") }
-        for embed in message.embeds { parts.append(EmbedCard.summary(embed)) }
+        for embed in message.embedList { parts.append(EmbedCard.summary(embed)) }
         if message.isEdited { parts.append("edited") }
         parts.append(message.date.formatted(date: .omitted, time: .shortened))
         if let reactions = session.store.reactions(on: message.messageID), !message.isTombstone {
@@ -166,7 +168,8 @@ struct ReplyQuote: View {
                 Image(systemName: "arrow.turn.up.right").imageScale(.small).foregroundStyle(Palette.lineStrong)
                     .scaleEffect(x: -1)
                 if let quoted {
-                    Avatar(name: session.displayName(for: quoted.from), userID: quoted.from.userID, size: .xs)
+                    Avatar(name: session.displayName(for: quoted.from), userID: quoted.from.userID, size: .xs,
+                           image: session.avatarURL(of: quoted.from.userID))
                     Text(session.displayName(for: quoted.from)).fontWeight(.medium).foregroundStyle(Palette.ink)
                     Text(quoted.isTombstone ? AttributedString("Message deleted") : rendered(quoted.body))
                         .lineLimit(1)
@@ -265,57 +268,5 @@ struct FlowLayout: Layout {
             rowHeight = max(rowHeight, size.height)
         }
         return (points, CGSize(width: widest, height: y + rowHeight))
-    }
-}
-
-/// An embed (§4.8). OpenGraph renders as the web's LinkCard. Every other kind, including
-/// `iframe` and `html`, which Ladle does not load, renders as the labeled fallback card §3.5.2
-/// requires: the kind, and its title, URL or text.
-struct EmbedCard: View {
-    let embed: JSONValue
-
-    var body: some View {
-        let og = embed["og"]
-        let url = embed["url"]?.stringValue.flatMap(URL.init(string:))
-        let card = VStack(alignment: .leading, spacing: Tokens.Space.s0_5) {
-            if let og, og["title"] != nil || og["description"] != nil {
-                if let site = og["site_name"]?.stringValue ?? url?.host() {
-                    Text(site).apText(.sm).foregroundStyle(Palette.inkMuted)
-                }
-                if let title = og["title"]?.stringValue {
-                    Text(title).apText(.ui, .semibold).foregroundStyle(Palette.denim)
-                }
-                if let description = og["description"]?.stringValue {
-                    Text(description).apText(.ui).foregroundStyle(Palette.ink).lineLimit(3)
-                }
-            } else {
-                Label(Self.kindLabel(embed), systemImage: embed["kind"]?.stringValue == "upload" ? "doc" : "square.dashed")
-                    .apText(.sm, .semibold).foregroundStyle(Palette.inkMuted)
-                if let title = embed["title"]?.stringValue {
-                    Text(title).apText(.ui, .semibold).foregroundStyle(Palette.ink)
-                }
-                if let detail = embed["text"]?.stringValue ?? url?.absoluteString {
-                    Text(detail).apText(.ui).foregroundStyle(url == nil ? Palette.ink : Palette.denim).lineLimit(3)
-                }
-            }
-        }
-        .frame(maxWidth: Tokens.Size.embedMaxW, alignment: .leading)
-        .padding(Tokens.Space.s3)
-        .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
-        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.line))
-        if let url, ["http", "https"].contains(url.scheme ?? "") {
-            Link(destination: url) { card }.buttonStyle(.plain)
-        } else {
-            card
-        }
-    }
-
-    static func kindLabel(_ embed: JSONValue) -> String {
-        let kind = embed["kind"]?.stringValue ?? "embed"
-        return kind == "upload" ? "File" : kind.prefix(1).uppercased() + kind.dropFirst()
-    }
-
-    static func summary(_ embed: JSONValue) -> String {
-        [embed["og"]?["title"]?.stringValue ?? kindLabel(embed), embed["url"]?.stringValue].compactMap { $0 }.joined(separator: ", ")
     }
 }
