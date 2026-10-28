@@ -9,6 +9,7 @@ struct RoomListView: View {
     @State private var naming: NewRoom?
     @State private var newTitle = ""
     @State private var error: String?
+    @Environment(\.theme) private var theme
 
     /// A room to create: top level, or a thread under `parent`.
     struct NewRoom: Identifiable {
@@ -33,18 +34,20 @@ struct RoomListView: View {
             }
             ForEach(session.roomTree) { node in
                 Section {
-                    NavigationLink(value: node.roomID) { RoomRow(session: session, roomID: node.roomID) }
+                    NavigationLink(value: node.roomID) { RoomRow(session: session, roomID: node.roomID, isThread: false) }
                         .contextMenu { roomActions(node.roomID, isThread: false) }
                     ForEach(node.threadIDs, id: \.self) { threadID in
                         NavigationLink(value: threadID) {
-                            RoomRow(session: session, roomID: threadID)
-                                .padding(.leading)
+                            RoomRow(session: session, roomID: threadID, isThread: true)
                         }
                         .contextMenu { roomActions(threadID, isThread: true) }
                     }
                 }
+                .listRowBackground(theme.layout == .bubbles ? theme.palette.surface.color : theme.palette.background.color)
+                .listRowSeparatorTint(theme.palette.separator.color)
             }
         }
+        .modifier(ThemedList())
         .navigationTitle(session.record.label)
         .navigationDestination(for: String.self) { roomID in TimelineView(session: session, roomID: roomID) }
         .toolbar {
@@ -103,19 +106,71 @@ struct RoomListView: View {
     }
 }
 
+/// A room or thread: its title, the latest message, and how many messages are new. Unread rooms
+/// are also set in bold, so the state never rests on the badge color alone.
 private struct RoomRow: View {
     let session: ServerSession
     let roomID: String
+    let isThread: Bool
+    @Environment(\.theme) private var theme
 
     var body: some View {
-        HStack {
-            Text(session.title(of: roomID))
-            Spacer()
-            if !session.joinedRoomIDs.contains(roomID) {
-                Text("Not joined")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+        let palette = theme.palette
+        let unread = session.unreadCount(in: roomID)
+        let last = session.lastMessage(in: roomID)
+        let dense = theme.layout == .dense
+        HStack(alignment: dense ? .center : .top, spacing: 10) {
+            Image(systemName: isThread ? "arrow.turn.down.right" : "number")
+                .font(theme.font(dense ? .footnote : .body, weight: .semibold))
+                .foregroundStyle(isThread ? palette.secondary.color : palette.accent.color)
+                .frame(width: 22)
+                .padding(.leading, isThread && !dense ? 16 : 0)
+                .accessibilityLabel(isThread ? "Thread" : "Room")
+            VStack(alignment: .leading, spacing: 2) {
+                Text(session.title(of: roomID))
+                    .font(theme.font(dense ? .callout : .headline, theme.titleFace, weight: unread > 0 ? .bold : (dense ? .regular : .medium)))
+                    .foregroundStyle(palette.text.color)
+                if let last {
+                    Text("\(Text(last.from.userID == session.you?.userID ? "You" : session.displayName(for: last.from)).fontWeight(.semibold)): \(Text(rendered(last.body)))")
+                        .font(theme.font(dense ? .footnote : .subheadline))
+                        .foregroundStyle(palette.secondary.color)
+                        .lineLimit(theme.layout == .log ? 2 : 1)
+                }
             }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 4) {
+                if let last, !dense {
+                    Text(last.date, format: .dateTime.hour().minute())
+                        .font(theme.font(.caption, theme.metaFace).monospacedDigit())
+                        .foregroundStyle(unread > 0 ? palette.accent.color : palette.secondary.color)
+                }
+                if unread > 0 {
+                    UnreadBadge(count: unread)
+                } else if !session.joinedRoomIDs.contains(roomID) {
+                    Text("Not joined")
+                        .font(theme.font(.caption))
+                        .foregroundStyle(palette.secondary.color)
+                }
+            }
+        }
+        .frame(minHeight: 44)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+/// The direction's list style and background, shared by the server and room lists.
+struct ThemedList: ViewModifier {
+    @Environment(\.theme) private var theme
+
+    func body(content: Content) -> some View {
+        let styled = content
+            .scrollContentBackground(.hidden)
+            .background(theme.palette.background.color)
+            .environment(\.defaultMinListRowHeight, 44)
+        switch theme.layout {
+        case .bubbles: styled.listStyle(.insetGrouped)
+        case .log: styled.listStyle(.plain)
+        case .dense: styled.listStyle(.plain).listSectionSpacing(0)
         }
     }
 }
