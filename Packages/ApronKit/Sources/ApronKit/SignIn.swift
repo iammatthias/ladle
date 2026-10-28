@@ -1,0 +1,88 @@
+import Foundation
+
+/// One `auth` request a user can make (§3.2, §4.11). Email sign-in is two requests on the same
+/// connection: a proposal, then approval with the code the server mailed, which works only on the
+/// connection that proposed (§4.11.2).
+public enum SignIn: Hashable, Sendable {
+    /// A bearer token from another client, such as one `/invite-bot` issued (§3.2.1).
+    case token(String)
+    case guest(name: String?)
+    case emailProposal(address: String)
+    case emailCode(String)
+
+    public var scheme: String {
+        switch self {
+        case .token: "token"
+        case .guest: "guest"
+        case .emailProposal, .emailCode: "email"
+        }
+    }
+
+    /// Whether a successful reply carries `you`. A proposal authenticates nothing (§4.11.1).
+    public var authenticates: Bool {
+        if case .emailProposal = self { return false }
+        return true
+    }
+
+    /// The `auth` params. `state` goes only on a proposal (§4.11.1).
+    public func params(agent: String, state: String) -> JSONValue {
+        var params: [String: JSONValue] = ["scheme": .string(scheme), "agent": .string(agent)]
+        switch self {
+        case .token(let token): params["token"] = .string(token)
+        case .guest(let name): if let name, !name.isEmpty { params["name"] = .string(name) }
+        case .emailProposal(let address):
+            params["email"] = .string(address)
+            params["state"] = .string(state)
+        case .emailCode(let code): params["token"] = .string(code)
+        }
+        return .object(params)
+    }
+}
+
+public enum SignInOutcome: Hashable, Sendable {
+    case signedIn(UserObject)
+    /// The server mailed a code; approve it with `.emailCode` on the same connection.
+    case codeSent(to: String)
+}
+
+/// A token as a user pastes or scans it: the bare token, or a link (§A.4) whose `token` key
+/// holds it, such as `https://link.apron.chat/#server=wss://chat.example/ws&token=…`.
+public struct TokenPayload: Hashable, Sendable {
+    public var token: String
+    /// The link's `server`, when it named one.
+    public var server: URL?
+
+    public init(token: String, server: URL? = nil) {
+        self.token = token
+        self.server = server
+    }
+
+    public init?(parsing text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        guard let pairs = Self.linkPairs(trimmed) else {
+            guard OpaqueID.isValid(trimmed) else { return nil }
+            token = trimmed
+            server = nil
+            return
+        }
+        guard let token = pairs.first(where: { $0.name == "token" })?.value, !token.isEmpty else { return nil }
+        self.token = token
+        server = pairs.first(where: { $0.name == "server" })?.value.flatMap(URL.init(string:))
+    }
+
+    /// The form-encoded pairs after `https://…/#` or `apron:?`, or nil when the text is no link.
+    private static func linkPairs(_ text: String) -> [URLQueryItem]? {
+        let query: Substring
+        if text.hasPrefix("apron:?") {
+            query = text.dropFirst("apron:?".count)
+        } else if text.hasPrefix("https://"), let hash = text.firstIndex(of: "#") {
+            query = text[text.index(after: hash)...]
+        } else {
+            return nil
+        }
+        var components = URLComponents()
+        components.percentEncodedQuery = query.replacingOccurrences(of: "+", with: "%20")
+        return components.queryItems ?? []
+    }
+}
