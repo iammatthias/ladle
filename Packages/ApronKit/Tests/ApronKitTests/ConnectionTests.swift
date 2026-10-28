@@ -115,7 +115,7 @@ final class ConnectionTests: XCTestCase {
             _ = try await pending.value
             XCTFail("expected an error")
         } catch let error as RPCError {
-            XCTAssertEqual(error, RPCError(code: RPCError.denied, message: "Denied", data: ["reason": "private"]))
+            XCTAssertEqual(error, RPCError(code: RPCError.Code.denied, message: "Denied", data: ["reason": "private"]))
         }
     }
 

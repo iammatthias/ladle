@@ -46,14 +46,17 @@ public struct RPCError: Error, Hashable, Sendable {
         self.data = data
     }
 
-    public static let parseError = -32700
-    public static let invalidRequest = -32600
-    public static let unsupported = -32601
-    public static let invalidParams = -32602
-    public static let internalError = -32603
-    public static let denied = -32001
-    public static let retryAfter = -32002
-    public static let tooLarge = -32003
+    /// The codes §1.1 names.
+    public enum Code {
+        public static let parseError = -32700
+        public static let invalidRequest = -32600
+        public static let unsupported = -32601
+        public static let invalidParams = -32602
+        public static let internalError = -32603
+        public static let denied = -32001
+        public static let retryAfter = -32002
+        public static let tooLarge = -32003
+    }
 
     public var encoded: JSONValue {
         var members: [String: JSONValue] = ["code": .number(String(code)), "message": .string(message)]
