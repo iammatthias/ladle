@@ -1,6 +1,6 @@
 name: Ladle
 options:
-  bundleIdPrefix: com.iammatthias
+  bundleIdPrefix: app.ladle
   deploymentTarget:
     # The newest installed SDK is iOS 27.1 (Xcode 27.1). Bump to 27.2 once Xcode ships its SDK.
     iOS: "27.1"
@@ -36,11 +36,13 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         # §A.4 links from other apps: apron:?server=…&room=…
         CFBundleURLTypes:
-          - CFBundleURLName: com.iammatthias.ladle.apron
+          - CFBundleURLName: app.ladle.ios.apron
             CFBundleURLSchemes: [apron]
+        # Only standard TLS (HTTPS and WSS), which is exempt from export documentation.
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.iammatthias.ladle
+        PRODUCT_BUNDLE_IDENTIFIER: app.ladle.ios
         PRODUCT_NAME: Ladle
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Ladle
@@ -64,7 +66,7 @@ targets:
       - package: ApronKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.iammatthias.ladle.shots
+        PRODUCT_BUNDLE_IDENTIFIER: app.ladle.ios.shots
         PRODUCT_NAME: LadleShots
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_UILaunchScreen_Generation: YES

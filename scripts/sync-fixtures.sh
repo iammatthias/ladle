@@ -5,7 +5,7 @@
 set -e
 setopt NULL_GLOB
 cd "$(dirname "$0")/.."
-SRC=${APRON_SPEC:-/Users/iammatthias/Developer/forks/apron-server-go/testdata/apron}/tests/fixtures/wire/replay
+SRC=${APRON_SPEC:-$HOME/Developer/forks/apron-server-go/testdata/apron}/tests/fixtures/wire/replay
 DST=Packages/ApronKit/Tests/ApronKitTests/Fixtures/wire/replay
 
 if [[ ! -d $SRC ]]; then

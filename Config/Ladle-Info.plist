@@ -20,7 +20,7 @@
 	<array>
 		<dict>
 			<key>CFBundleURLName</key>
-			<string>com.iammatthias.ladle.apron</string>
+			<string>app.ladle.ios.apron</string>
 			<key>CFBundleURLSchemes</key>
 			<array>
 				<string>apron</string>
@@ -29,5 +29,7 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 </dict>
 </plist>

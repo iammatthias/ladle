@@ -3,6 +3,6 @@ import XCTest
 
 final class SmokeTests: XCTestCase {
     func testHostAppLoads() {
-        XCTAssertEqual(Bundle.main.bundleIdentifier, "com.iammatthias.ladle")
+        XCTAssertEqual(Bundle.main.bundleIdentifier, "app.ladle.ios")
     }
 }
