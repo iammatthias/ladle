@@ -14,6 +14,8 @@ struct TimelineView: View {
     @State private var leaving = false
     @State private var showingMembers = false
     @State private var atBottom = true
+    @State private var visit = Visit.opening
+    @State private var visible = false
     @State private var jumpTarget: String?
     @State private var sentCount = 0
     @State private var viewing: MediaRequest?
@@ -21,6 +23,7 @@ struct TimelineView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openRoom) private var openRoom
     @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
 
     init(session: ServerSession, roomID: String, draft: Draft = Draft(), showingMembers: Bool = false) {
         self.session = session
@@ -40,7 +43,7 @@ struct TimelineView: View {
                                 do { try await session.loadOlder(roomID) } catch { problem = errorText(error) }
                             }
                     }
-                    ForEach(session.timelineItems(roomID)) { item in
+                    ForEach(session.timelineItems(roomID, newLine: session.newLine(in: roomID, after: visit.after))) { item in
                         row(item).id(item.id)
                     }
                     ForEach(Array(session.notices.enumerated()).filter { $0.element.roomID == roomID }, id: \.offset) { _, notice in
@@ -110,10 +113,26 @@ struct TimelineView: View {
         } message: {
             Text(session.isPrivate(roomID) ? "It is private, so you need an invitation to come back." : "You can join it again from Browse Rooms.")
         }
+        .onAppear { visible = true }
+        .onDisappear { visible = false }
+        .onChange(of: ReadMark(reading: isReading, through: session.timeline(roomID).last?.messageID), initial: true) { _, mark in
+            guard mark.reading, let through = mark.through else { return }
+            Task { await session.markRead(roomID, through: through) }
+        }
         .task(id: session.status) {
             guard session.status == .signedIn else { return }
-            do { try await session.open(roomID) } catch { problem = errorText(error) }
+            do { try await session.open(roomID) } catch {
+                problem = errorText(error)
+                return
+            }
+            if visit == .opening { visit = .landed(after: session.readThrough(roomID)) }
         }
+    }
+
+    /// Reading the latest message, as the web's `readAction` decides it: this pane is on screen in
+    /// the active app, at its latest message, loaded and landed at its New line, on a live session.
+    private var isReading: Bool {
+        visible && scenePhase == .active && atBottom && visit.isLanded && session.status == .signedIn
     }
 
     @ToolbarContentBuilder
@@ -315,6 +334,30 @@ struct Draft {
     var mentions: [String: String] = [:]
     /// Files to send with a new message or reply (§4.8.4).
     var attachments: [DraftAttachment] = []
+}
+
+/// One look at a room, as the web's `newDivider`: where you had read when it opened fixes the New
+/// line for the visit, and reading counts only once the pane has landed there.
+enum Visit: Equatable {
+    case opening
+    /// `after` is `readThrough` as the room opened; nil when nothing was known.
+    case landed(after: LogID?)
+
+    var after: LogID? {
+        if case .landed(let after) = self { return after }
+        return nil
+    }
+
+    var isLanded: Bool {
+        if case .landed = self { return true }
+        return false
+    }
+}
+
+/// What reading marks: whether this pane is being read, and its latest message.
+struct ReadMark: Equatable {
+    var reading: Bool
+    var through: LogID?
 }
 
 /// Which media the viewer opens at.

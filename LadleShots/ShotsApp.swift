@@ -56,8 +56,11 @@ enum Renderer {
             scene.sizeRestrictions?.maximumSize = size
             scene.sizeRestrictions?.minimumSize = size
             scene.windows.first?.overrideUserInterfaceStyle = shot.style
+            // Every shot of a room reads from one store, and a room read in the active app marks
+            // itself read; inactive, the later shots keep their New line and badges.
             show(AnyView(view(shot.screen, store: store, home: home, staged: staged)
                 .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
+                .environment(\.scenePhase, .inactive)
                 .dynamicTypeSize(shot.large ? .accessibility3 : .large)
                 .apronStyle()
                 .id(UUID())))
