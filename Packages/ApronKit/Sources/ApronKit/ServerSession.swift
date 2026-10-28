@@ -247,6 +247,7 @@ public final class ServerSession {
         status = .signedIn
         if let rooms, let listing = try? await rooms.value { applyRoomList(listing) }
         await catchUp(on: connection)
+        Task { await drainOutbox() }
         return .signedIn(identity)
     }
 
@@ -383,13 +384,115 @@ public final class ServerSession {
 
     // MARK: Operations
 
-    /// Posts plain text (§3.5.1). Returns the new `message_id`, or nil when the server logged
-    /// nothing.
+    /// Posts plain text (§3.5.1), or runs a command (§4.1): text that starts with `/` goes as a
+    /// `command`, and `//` sends a message that starts with `/`. Returns the new `message_id`, or
+    /// nil for a command or when the server logged nothing. A post into a room this user has
+    /// not joined joins it first, or the message would never come back (§4.2.2).
     @discardableResult
-    public func send(_ text: String, in roomID: String, replyTo: LogID? = nil) async throws -> LogID? {
-        var params: [String: JSONValue] = ["room_id": .string(roomID), "body": ["text": .string(text), "format": "plain"]]
+    public func send(_ text: String, in roomID: String, replyTo: LogID? = nil, mentions: [String] = [], id: String? = nil) async throws -> LogID? {
+        let draft = Draft(text: text)
+        if !draft.isCommand, !joinedRoomIDs.contains(roomID), server?.has("rooms") == true, connection != nil, status == .signedIn {
+            try await join(roomID)
+        }
+        var body: [String: JSONValue] = ["text": .string(draft.text), "format": "plain"]
+        if !mentions.isEmpty { body["mentions"] = .array(mentions.map(JSONValue.string)) }
+        var params: [String: JSONValue] = ["room_id": .string(roomID), "body": .object(body)]
         if let replyTo { params["reply_to"] = ["message_id": replyTo.json] }
-        return LogID(try await request("message", .object(params))["message_id"])
+        let result = try await request(draft.isCommand ? "command" : "message", .object(params), id: id)
+        return draft.isCommand ? nil : LogID(result["message_id"])
+    }
+
+    /// Composer text as §4.1 reads it.
+    public struct Draft: Hashable, Sendable {
+        /// The text to send: a `//` message loses its first slash.
+        public var text: String
+        public var isCommand: Bool
+
+        public init(text: String) {
+            if text.hasPrefix("//") {
+                self.text = String(text.dropFirst())
+                isCommand = false
+            } else {
+                self.text = text
+                isCommand = text.hasPrefix("/")
+            }
+        }
+    }
+
+    // MARK: Outbox
+
+    /// A message waiting to be sent (UX spec 4.2). It keeps its request `id` across retries and
+    /// reconnects, so a server that deduplicates logs it once (§1.2).
+    public struct PendingMessage: Identifiable, Hashable, Sendable {
+        public enum State: Hashable, Sendable {
+            case sending
+            /// Not sent, with the reason; it waits for Retry or Delete.
+            case failed(String)
+        }
+
+        public let id: String
+        public let roomID: String
+        public let text: String
+        public let replyTo: LogID?
+        public let mentions: [String]
+        /// Who queued it; it sends only as that user.
+        public let userID: String?
+        public let queuedAt: Date
+        public var state: State
+    }
+
+    /// Queued messages in send order, across rooms.
+    public private(set) var outbox: [PendingMessage] = []
+    private var drainingOutbox = false
+
+    /// Queues a message and sends it now if signed in, or on the next sign-in as the same user.
+    /// Commands are not queued: they need a connection (UX spec 4.2).
+    public func post(_ text: String, in roomID: String, replyTo: LogID? = nil, mentions: [String] = []) {
+        outbox.append(PendingMessage(id: "q-" + environment.makeRequestID(), roomID: roomID, text: text, replyTo: replyTo,
+                                     mentions: mentions, userID: you?.userID, queuedAt: Date(), state: .sending))
+        Task { await drainOutbox() }
+    }
+
+    public func retry(_ id: String) {
+        guard let index = outbox.firstIndex(where: { $0.id == id }) else { return }
+        outbox[index].state = .sending
+        Task { await drainOutbox() }
+    }
+
+    public func discard(_ id: String) {
+        outbox.removeAll { $0.id == id }
+    }
+
+    /// Sends queued messages one at a time, in order. A dropped connection or a timeout leaves
+    /// the rest queued for the next sign-in.
+    func drainOutbox() async {
+        guard !drainingOutbox else { return }
+        drainingOutbox = true
+        defer { drainingOutbox = false }
+        while status == .signedIn, let item = outbox.first(where: { $0.state == .sending }) {
+            guard item.userID == nil || item.userID == you?.userID else {
+                mark(item.id, .failed("Queued while signed in as someone else."))
+                continue
+            }
+            do {
+                try await send(item.text, in: item.roomID, replyTo: item.replyTo, mentions: item.mentions, id: item.id)
+                outbox.removeAll { $0.id == item.id }
+            } catch let error as RPCError {
+                if let wait = error.retryAfter {
+                    try? await environment.sleep(wait)
+                } else if error.code == RPCError.Code.tooLarge {
+                    mark(item.id, .failed("Too long for this server."))
+                } else {
+                    mark(item.id, .failed(error.message.isEmpty ? "The server refused it (\(error.code))." : error.message))
+                }
+            } catch {
+                return
+            }
+        }
+    }
+
+    private func mark(_ id: String, _ state: PendingMessage.State) {
+        if let index = outbox.firstIndex(where: { $0.id == id }) { outbox[index].state = state }
     }
 
     /// Saves new text, sending every other client field again (§4.4).
@@ -447,10 +550,10 @@ public final class ServerSession {
         guard server?.has(capability) == true else { throw Failure.unsupported(capability: capability) }
     }
 
-    private func request(_ method: String, _ params: JSONValue) async throws -> JSONValue {
+    private func request(_ method: String, _ params: JSONValue, id: String? = nil) async throws -> JSONValue {
         guard let connection else { throw Failure.notConnected }
         guard status == .signedIn else { throw Failure.notSignedIn }
-        return try await connection.request(method, params: params)
+        return try await connection.request(method, params: params, id: id)
     }
 
     // MARK: Reading
