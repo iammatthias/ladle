@@ -136,6 +136,7 @@ struct ConnectView: View {
                     .autocorrectionDisabled()
                     .onChange(of: token) { _, new in if new.contains("token=") { accept(new) } }
             } hint: {
+                Text("Get a token from another Apron app with /add-device, or from your server's admin. It works only from the origin set for this server (\(origin.isEmpty ? "the server's address" : origin)).")
                 HStack(spacing: Tokens.Space.s2) {
                     PasteButton(payloadType: String.self) { strings in if let first = strings.first { accept(first) } }
                         .labelStyle(.titleAndIcon)
