@@ -68,7 +68,7 @@ final class ServerSessionTests: XCTestCase {
             jitter: { 1 },
             makeRequestID: { counter.withLock { $0 += 1; return "c\($0)" } },
             makeState: { "state-1" },
-            agent: "apron-ios/test",
+            agent: "ladle-ios/test",
             pageSize: 3
         )
         session = ServerSession(record: record, tokens: tokens, environment: environment)
@@ -111,7 +111,7 @@ final class ServerSessionTests: XCTestCase {
         let socket = await transport(0)
         let sent = await frames(socket, count: 2)
         XCTAssertEqual(sent, [
-            #"{"id":"c1","method":"auth","params":{"agent":"apron-ios/test","scheme":"token","token":"t1"}}"#,
+            #"{"id":"c1","method":"auth","params":{"agent":"ladle-ios/test","scheme":"token","token":"t1"}}"#,
             #"{"id":"c2","method":"room_list","params":{"filter":"joined","members":true}}"#,
         ])
         await socket.deliver(["id": "c1", "result": ["you": ["user_id": "ada", "name": "Ada"], "token": "t2"]])
@@ -140,7 +140,7 @@ final class ServerSessionTests: XCTestCase {
         let signIn = Task { try await session.signIn(.guest(name: "Ada")) }
         let sent = await frames(socket, count: 2)
         XCTAssertEqual(sent, [
-            #"{"id":"c1","method":"auth","params":{"agent":"apron-ios/test","name":"Ada","scheme":"guest"}}"#,
+            #"{"id":"c1","method":"auth","params":{"agent":"ladle-ios/test","name":"Ada","scheme":"guest"}}"#,
             #"{"id":"c2","method":"room_list","params":{"filter":"joined","members":true}}"#,
         ])
         await socket.deliver(["id": "c1", "result": ["you": ["user_id": "guest_1", "name": "Ada"]]])
@@ -157,7 +157,7 @@ final class ServerSessionTests: XCTestCase {
         await eventually("signed out") { session.status == .signedOut }
         let propose = Task { try await session.signIn(.emailProposal(address: "ada@example.com")) }
         let proposal = await frame(socket, 0)
-        XCTAssertEqual(proposal, #"{"id":"c1","method":"auth","params":{"agent":"apron-ios/test","email":"ada@example.com","scheme":"email","state":"state-1"}}"#)
+        XCTAssertEqual(proposal, #"{"id":"c1","method":"auth","params":{"agent":"ladle-ios/test","email":"ada@example.com","scheme":"email","state":"state-1"}}"#)
         await socket.deliver(["id": "c1", "result": [:]])
         let proposed = try await propose.value
         XCTAssertEqual(proposed, .codeSent(to: "ada@example.com"))
@@ -167,7 +167,7 @@ final class ServerSessionTests: XCTestCase {
         let approve = Task { try await session.signIn(.emailCode("418092")) }
         let sent = await frames(socket, count: 3)
         XCTAssertEqual(Array(sent[1...]), [
-            #"{"id":"c2","method":"auth","params":{"agent":"apron-ios/test","scheme":"email","token":"418092"}}"#,
+            #"{"id":"c2","method":"auth","params":{"agent":"ladle-ios/test","scheme":"email","token":"418092"}}"#,
             #"{"id":"c3","method":"room_list","params":{"filter":"joined","members":true}}"#,
         ])
         await socket.deliver(["id": "c2", "result": ["you": ["user_id": "ada"], "token": "st_1"]])
@@ -244,7 +244,7 @@ final class ServerSessionTests: XCTestCase {
         let fourth = await transport(3)
         let resumed = await frames(fourth, count: 2)
         XCTAssertEqual(resumed, [
-            #"{"id":"c4","method":"auth","params":{"agent":"apron-ios/test","scheme":"token","token":"t1"}}"#,
+            #"{"id":"c4","method":"auth","params":{"agent":"ladle-ios/test","scheme":"token","token":"t1"}}"#,
             #"{"id":"c5","method":"room_list","params":{"filter":"joined","members":true}}"#,
         ])
         await fourth.deliver(["id": "c4", "result": ["you": ["user_id": "ada", "name": "Ada"]]])

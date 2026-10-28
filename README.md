@@ -1,6 +1,6 @@
-# Apron for iOS
+# Ladle
 
-A native iOS client for the [Apron chat protocol](https://github.com/apron-chat) v9: one
+Ladle is a native iOS client for the [Apron chat protocol](https://github.com/apron-chat) v9: one
 identity per server, several servers, bearer-token sign-in. Swift 6 and SwiftUI, Apple
 frameworks only.
 
@@ -13,7 +13,7 @@ timeline with a composer.
 scripts/sync-fixtures.sh --check && swift test --package-path Packages/ApronKit   # the gate
 APRON_REQUIRE_SERVER=1 swift test --package-path Packages/ApronKit               # fail, not skip, without aprond
 ./build.sh build                               # the iOS app
-./build.sh test                                # app tests on the "Apron iPhone" simulator
+./build.sh test                                # app tests on the "Ladle iPhone" simulator
 ```
 
 `AGENTS.md` has the layout, the rules, and the sign-in design.
