@@ -1,0 +1,52 @@
+{
+  "fill-specializations" : [
+    {
+      "value" : {
+        "solid" : "srgb:0.92157,0.90980,0.89020,1.00000"
+      }
+    },
+    {
+      "appearance" : "dark",
+      "value" : {
+        "solid" : "srgb:0.06275,0.06275,0.10196,1.00000"
+      }
+    }
+  ],
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "image-name-specializations" : [
+            {
+              "value" : "soup-light.png"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "soup-dark.png"
+            }
+          ],
+          "name" : "soup"
+        }
+      ]
+    },
+    {
+      "layers" : [
+        {
+          "image-name-specializations" : [
+            {
+              "value" : "ladle-light.png"
+            },
+            {
+              "appearance" : "dark",
+              "value" : "ladle-dark.png"
+            }
+          ],
+          "name" : "ladle"
+        }
+      ]
+    }
+  ],
+  "supported-platforms" : {
+    "squares" : "shared"
+  }
+}
