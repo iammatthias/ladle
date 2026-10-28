@@ -33,6 +33,13 @@ public struct ServerInfo: Hashable, Sendable {
         capabilities.contains(capability)
     }
 
+    /// Whether the server keeps read cursors: `ext.settings.read_cursors` under capability
+    /// `ext:settings` (apron-web EXT.md), true unless it says `false`. A read cursor sent to a
+    /// server that keeps none only costs a frame.
+    public var keepsReadCursors: Bool {
+        !(has("ext:settings") && ext?["settings"]?["read_cursors"]?.boolValue == false)
+    }
+
     private static func strings(_ value: JSONValue?) -> [String]? {
         guard let elements = value?.arrayValue else { return nil }
         return elements.compactMap(\.stringValue)

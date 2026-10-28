@@ -96,8 +96,11 @@ public final class ServerSession {
     /// Transient notices (§3.5.3), newest last. Never installed as snapshots.
     public private(set) var notices: [Notice] = []
     public private(set) var histories: [String: RoomHistory] = [:]
-    /// How far this user has read each room: the latest own `read_message_id` (§4.6).
+    /// This user's read cursor per room, as the server last reported it (§4.6).
     public private(set) var readCursors: [String: LogID] = [:]
+    /// How far this user has read each room on this device, from `positions`; `readThrough`
+    /// combines it with the cursor and this user's own messages.
+    public private(set) var readPositions: [String: LogID] = [:]
     /// The fraction written of each of this user's uploads in flight, by `embed_id` (§4.8.3).
     public internal(set) var uploadProgress: [String: Double] = [:]
 
@@ -105,13 +108,16 @@ public final class ServerSession {
     public var onRecordChange: (@MainActor (ServerRecord) -> Void)?
 
     private let tokens: any TokenStore
+    private let positions: any ReadPositionStore
     let environment: Environment
     private var connection: Connection?
     private var runTask: Task<Void, Never>?
 
-    public init(record: ServerRecord, tokens: any TokenStore, environment: Environment = .live) {
+    public init(record: ServerRecord, tokens: any TokenStore, positions: any ReadPositionStore = InMemoryReadPositionStore(),
+                environment: Environment = .live) {
         self.record = record
         self.tokens = tokens
+        self.positions = positions
         self.environment = environment
     }
 
@@ -244,6 +250,7 @@ public final class ServerSession {
             return .codeSent(to: address)
         }
         if let previous = you, previous.userID != identity.userID { resetChatState() }
+        readPositions = positions.positions(server: record.id, user: identity.userID)
         var bearer = result["token"]?.stringValue
         if bearer == nil, case .token(let presented) = method { bearer = presented }
         try tokens.setToken(bearer, for: record.id)
@@ -274,6 +281,7 @@ public final class ServerSession {
         notices = []
         histories = [:]
         readCursors = [:]
+        readPositions = [:]
     }
 
     // MARK: Frames
@@ -304,6 +312,7 @@ public final class ServerSession {
                let roomID = OpaqueID.validated(params?["room_id"]), let read = LogID(params?["read_message_id"]),
                readCursors[roomID].map({ $0 < read }) ?? true {
                 readCursors[roomID] = read
+                advancePosition(roomID, to: read)
             }
         default:
             break
@@ -580,10 +589,42 @@ public final class ServerSession {
 
     public func displayName(for user: UserObject) -> String { users.displayName(for: user) }
 
-    /// Loaded messages from others after this user's read cursor; 0 without a cursor.
+    /// This user read the room through `messageID`, as apron-web's `readAction`: the position
+    /// kept on this device moves forward, and with capability `activity` so does the read cursor,
+    /// which goes to the server (§4.6) when it keeps cursors, for this user's other devices.
+    /// Neither ever moves back.
+    public func markRead(_ roomID: String, through messageID: LogID) async {
+        guard status == .signedIn, let server, let connection, you != nil else { return }
+        advancePosition(roomID, to: messageID)
+        guard server.has("activity"), readCursors[roomID].map({ $0 < messageID }) ?? true else { return }
+        readCursors[roomID] = messageID
+        guard server.keepsReadCursors else { return }
+        try? await connection.notify("activity", params: ["room_id": .string(roomID), "read_message_id": messageID.json])
+    }
+
+    private func advancePosition(_ roomID: String, to messageID: LogID) {
+        guard let you, readPositions[roomID].map({ $0 < messageID }) ?? true else { return }
+        readPositions[roomID] = messageID
+        positions.advance(roomID, to: messageID, server: record.id, user: you.userID)
+    }
+
+    /// How far this user has read a room, as apron-web's `readPositions.through`: the furthest
+    /// of the position kept on this device, the server's cursor, and this user's newest loaded
+    /// message, since one sent from another device says the room was read up to it. Nil when
+    /// nothing is known.
+    public func readThrough(_ roomID: String) -> LogID? {
+        guard let you else { return nil }
+        let newestOwn = timeline(roomID).last { $0.from.userID == you.userID }?.messageID
+        return [readPositions[roomID], readCursors[roomID], newestOwn].compactMap { $0 }.max()
+    }
+
+    /// Loaded messages from others after `readThrough`, or all of them when nothing is known.
     public func unreadCount(in roomID: String) -> Int {
-        guard let cursor = readCursors[roomID] else { return 0 }
-        return timeline(roomID).count(where: { $0.messageID > cursor && !$0.isTombstone && $0.from.userID != you?.userID })
+        guard let you else { return 0 }
+        let read = readThrough(roomID)
+        return timeline(roomID).count { message in
+            !message.isTombstone && message.from.userID != you.userID && read.map { $0 < message.messageID } ?? true
+        }
     }
 
     public func title(of roomID: String) -> String {

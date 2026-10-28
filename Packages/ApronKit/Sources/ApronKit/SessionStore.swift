@@ -13,12 +13,14 @@ public final class SessionStore {
 
     private let serverStore: ServerStore?
     private let tokens: any TokenStore
+    private let positions: any ReadPositionStore
     private let environment: ServerSession.Environment
 
-    /// `serverStore` nil keeps the list in memory only.
+    /// `serverStore` nil keeps the list, and the read positions, in memory only.
     public init(serverStore: ServerStore?, tokens: any TokenStore, environment: ServerSession.Environment = .live) {
         self.serverStore = serverStore
         self.tokens = tokens
+        positions = serverStore.map { FileReadPositionStore(directory: $0.directory) } ?? InMemoryReadPositionStore()
         self.environment = environment
     }
 
@@ -59,7 +61,7 @@ public final class SessionStore {
 
     @discardableResult
     private func startSession(for record: ServerRecord) -> ServerSession {
-        let session = ServerSession(record: record, tokens: tokens, environment: environment)
+        let session = ServerSession(record: record, tokens: tokens, positions: positions, environment: environment)
         session.onRecordChange = { [weak self] changed in self?.accountChanged(changed) }
         sessions[record.id] = session
         session.start()

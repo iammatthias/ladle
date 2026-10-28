@@ -24,14 +24,14 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.store.reactions(on: notes.messageID)?.last?.userIDs, ["bram", "chiara", "sam"])
         XCTAssertNotNil(home.store.message(PreviewFixtures.replyTargetID))
 
-        XCTAssertEqual(home.unreadCount(in: "general"), 4, "minutes 12, 15, 16 and 20; 14 is Sam's own")
+        XCTAssertEqual(home.unreadCount(in: "general"), 3, "minutes 15, 16 and 20: Sam's own at 14 says he read through it")
         XCTAssertEqual(general.filter { $0.body?["mentions"]?.arrayValue?.contains("sam") == true }.count, 1, "one mention of you")
         XCTAssertEqual(general.compactMap(\.prevRoomID), ["ops"], "one moved message")
         XCTAssertEqual(general.compactMap { $0.body?["embeds"]?.arrayValue?.first?["kind"]?.stringValue }, ["link", "poll"])
         XCTAssertEqual(home.store.room("ops")?.isPrivate, true)
         XCTAssertEqual(home.notices.map(\.roomID), ["general"])
         XCTAssertEqual(home.store.room(home.roomTree[1].threadIDs[0])?.description?.stringValue, "Ship Friday, then freeze")
-        XCTAssertEqual(home.unreadCount(in: "random"), 6)
+        XCTAssertEqual(home.unreadCount(in: "random"), 0, "Sam's pending upload is the newest message")
         let uploads = home.timeline(PreviewFixtures.mediaRoomID).flatMap(\.embedList).compactMap(\.upload)
         XCTAssertEqual(uploads.map { upload -> String in
             switch upload {

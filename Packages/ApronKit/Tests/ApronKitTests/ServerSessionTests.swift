@@ -55,6 +55,7 @@ final class ServerSessionTests: XCTestCase {
     ]]
     let record = ServerRecord(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, url: URL(string: "wss://chat.example/ws")!)
     let tokens = InMemoryTokenStore()
+    let positions = InMemoryReadPositionStore()
     let clock = FakeClock()
     let transports = Transports()
     var session: ServerSession!
@@ -71,7 +72,7 @@ final class ServerSessionTests: XCTestCase {
             agent: "ladle-ios/test",
             pageSize: 3
         )
-        session = ServerSession(record: record, tokens: tokens, environment: environment)
+        session = ServerSession(record: record, tokens: tokens, positions: positions, environment: environment)
     }
 
     override func tearDown() async throws {
@@ -81,6 +82,16 @@ final class ServerSessionTests: XCTestCase {
     private func transport(_ index: Int) async -> FakeTransport {
         await eventually("transport \(index)") { transports.made.withLock { $0.count > index } }
         return transports.made.withLock { $0[index] }
+    }
+
+    /// Queues a transport whose greeting lists `capabilities`, with `ext` when given.
+    private func queueTransport(capabilities: [String], ext: JSONValue? = nil) -> FakeTransport {
+        var params: [String: JSONValue] = ["apron": 9, "auth": ["email", "token", "guest"], "capabilities": .array(capabilities.map(JSONValue.string))]
+        if let ext { params["ext"] = ext }
+        let transport = FakeTransport()
+        transports.queued.withLock { $0.append(transport) }
+        Task { await transport.deliver(["method": "server", "params": .object(params)]) }
+        return transport
     }
 
     private func frames(_ transport: FakeTransport, count: Int) async -> [String] {
@@ -358,8 +369,95 @@ final class ServerSessionTests: XCTestCase {
         await socket.deliver(activity("bob", "300"))
         await socket.deliver(activity("ada", "150"))
         await socket.deliver(["method": "message", "params": message("199", "x")])
-        await eventually("frames applied") { session.timeline("general").count == 1 }
+        await socket.deliver(["method": "message", "params": message("201", "y")])
+        await eventually("frames applied") { session.timeline("general").count == 2 }
         XCTAssertEqual(session.readCursors, ["general": LogID("200")!])
+        XCTAssertEqual(session.unreadCount(in: "general"), 1, "201 is after the cursor")
+
+        await socket.deliver(activity("ada", "201"))
+        await eventually("another device read it") { session.readCursors["general"] == LogID("201") }
+        XCTAssertEqual(session.unreadCount(in: "general"), 0)
+        XCTAssertEqual(positions.positions(server: record.id, user: "ada"), ["general": LogID("201")!], "kept for the next launch")
+    }
+
+    func testMarkReadSendsTheCursorOnlyForward() async throws {
+        let socket = queueTransport(capabilities: ["history", "rooms", "activity"])
+        session.start()
+        try await signInAsGuest(on: socket)
+        await session.markRead("general", through: LogID("200")!)
+        await session.markRead("general", through: LogID("150")!)
+        await session.markRead("general", through: LogID("200")!)
+        await session.markRead("general", through: LogID("260")!)
+        let sent = await frames(socket, count: 4)
+        XCTAssertEqual(Array(sent[2...]), [
+            #"{"method":"activity","params":{"read_message_id":"200","room_id":"general"}}"#,
+            #"{"method":"activity","params":{"read_message_id":"260","room_id":"general"}}"#,
+        ])
+        XCTAssertEqual(session.readCursors, ["general": LogID("260")!])
+        XCTAssertEqual(session.readPositions, ["general": LogID("260")!])
+        XCTAssertEqual(positions.positions(server: record.id, user: "ada"), ["general": LogID("260")!])
+    }
+
+    func testWithoutTheActivityCapabilityReadingMovesOnlyThePosition() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        for id in ["101", "102", "103"] { await socket.deliver(["method": "message", "params": message(id, "hi")]) }
+        await eventually("messages applied") { session.timeline("general").count == 3 }
+        XCTAssertEqual(session.unreadCount(in: "general"), 3)
+
+        await session.markRead("general", through: LogID("103")!)
+        let join = Task { try await session.join("other") }
+        let third = await frame(socket, 2)
+        XCTAssertEqual(third, #"{"id":"c3","method":"room_join","params":{"room_id":"other"}}"#, "nothing went before it")
+        await socket.deliver(["id": "c3", "result": [:]])
+        _ = try await join.value
+        XCTAssertEqual(session.readCursors, [:])
+        XCTAssertEqual(session.readPositions, ["general": LogID("103")!])
+        XCTAssertEqual(session.unreadCount(in: "general"), 0)
+
+        await socket.deliver(["method": "message", "params": message("104", "later")])
+        await eventually("message applied") { session.timeline("general").count == 4 }
+        XCTAssertEqual(session.unreadCount(in: "general"), 1)
+    }
+
+    func testAServerThatKeepsNoCursorsGetsNoFrameButTheCursorStillMoves() async throws {
+        let socket = queueTransport(capabilities: ["history", "rooms", "activity", "ext:settings"], ext: ["settings": ["read_cursors": false]])
+        session.start()
+        try await signInAsGuest(on: socket)
+        await session.markRead("general", through: LogID("200")!)
+        let join = Task { try await session.join("other") }
+        let third = await frame(socket, 2)
+        XCTAssertEqual(third, #"{"id":"c3","method":"room_join","params":{"room_id":"other"}}"#, "nothing went before it")
+        await socket.deliver(["id": "c3", "result": [:]])
+        _ = try await join.value
+        XCTAssertEqual(session.readCursors, ["general": LogID("200")!])
+        XCTAssertEqual(session.readPositions, ["general": LogID("200")!])
+    }
+
+    func testTheReadCursorsSettingCountsOnlyUnderItsCapability() {
+        func info(_ capabilities: [String], ext: JSONValue? = nil) -> ServerInfo {
+            var params: [String: JSONValue] = ["apron": 9, "auth": ["token"], "capabilities": .array(capabilities.map(JSONValue.string))]
+            if let ext { params["ext"] = ext }
+            return ServerInfo(params: .object(params))!
+        }
+        XCTAssertTrue(info(["activity"]).keepsReadCursors)
+        XCTAssertTrue(info(["activity"], ext: ["settings": ["read_cursors": false]]).keepsReadCursors, "no ext:settings capability")
+        XCTAssertTrue(info(["activity", "ext:settings"], ext: ["settings": ["guest_posting": false]]).keepsReadCursors)
+        XCTAssertFalse(info(["activity", "ext:settings"], ext: ["settings": ["read_cursors": false]]).keepsReadCursors)
+    }
+
+    func testKeptPositionsLoadForTheSignedInUserOnly() async throws {
+        positions.advance("general", to: LogID("150")!, server: record.id, user: "ada")
+        positions.advance("general", to: LogID("900")!, server: record.id, user: "bob")
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        XCTAssertEqual(session.readPositions, ["general": LogID("150")!])
+        for id in ["140", "160"] { await socket.deliver(["method": "message", "params": message(id, "hi")]) }
+        await eventually("messages applied") { session.timeline("general").count == 2 }
+        XCTAssertEqual(session.readThrough("general"), LogID("150"))
+        XCTAssertEqual(session.unreadCount(in: "general"), 1)
     }
 
     // MARK: Reading

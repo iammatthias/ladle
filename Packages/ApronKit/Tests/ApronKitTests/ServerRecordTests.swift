@@ -65,4 +65,46 @@ final class ServerRecordTests: XCTestCase {
         XCTAssertNil(try tokens.token(for: a))
         XCTAssertEqual(try tokens.token(for: b), "token-b")
     }
+
+    func testReadPositionsPersistForwardOnlyPerServerAndUser() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "apron-positions-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let server = UUID(uuidString: "00000000-0000-0000-0000-00000000000A")!
+        let other = UUID(uuidString: "00000000-0000-0000-0000-00000000000B")!
+        let store = FileReadPositionStore(directory: directory)
+        XCTAssertEqual(store.positions(server: server, user: "ada"), [:])
+        store.advance("general", to: LogID("200")!, server: server, user: "ada")
+        store.advance("general", to: LogID("150")!, server: server, user: "ada")
+        store.advance("design", to: LogID("90")!, server: server, user: "ada")
+        store.advance("general", to: LogID("300")!, server: other, user: "ada")
+        store.advance("general", to: LogID("10")!, server: server, user: "bob")
+
+        let reopened = FileReadPositionStore(directory: directory)
+        XCTAssertEqual(reopened.positions(server: server, user: "ada"), ["general": LogID("200")!, "design": LogID("90")!])
+        XCTAssertEqual(reopened.positions(server: other, user: "ada"), ["general": LogID("300")!])
+        XCTAssertEqual(reopened.positions(server: server, user: "bob"), ["general": LogID("10")!])
+        XCTAssertEqual(String(decoding: try Data(contentsOf: reopened.fileURL), as: UTF8.self), """
+        {
+          "00000000-0000-0000-0000-00000000000A" : {
+            "ada" : {
+              "design" : "90",
+              "general" : "200"
+            },
+            "bob" : {
+              "general" : "10"
+            }
+          },
+          "00000000-0000-0000-0000-00000000000B" : {
+            "ada" : {
+              "general" : "300"
+            }
+          }
+        }
+        """)
+
+        try Data("not json".utf8).write(to: reopened.fileURL)
+        XCTAssertEqual(reopened.positions(server: server, user: "ada"), [:], "a damaged file is empty")
+        reopened.advance("general", to: LogID("5")!, server: server, user: "ada")
+        XCTAssertEqual(FileReadPositionStore(directory: directory).positions(server: server, user: "ada"), ["general": LogID("5")!])
+    }
 }
