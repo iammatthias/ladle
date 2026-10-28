@@ -4,12 +4,15 @@ import SwiftUI
 /// Adds a server and signs in to it in one sheet, as the web's ConnectScreen: the Apron
 /// project's demo server as one tap or any server's address with a pointer to hosting your own,
 /// "Sign in with" Token, Email or Guest, and the fields for that method. Opened for a
-/// saved server, it signs in again and can change the name and origin. A pasted or scanned link
-/// that names a server fills in the address too.
+/// saved server, it signs in again and can change the name and origin. Adding a server, a
+/// scanned, pasted or tapped sign-in link fills in the address and the token together; nothing
+/// connects until you tap Connect (link.apron.chat SPEC §6).
 struct ConnectView: View {
     let store: SessionStore
     var record: ServerRecord?
     var prefill: TokenPayload?
+    /// Whether the camera can scan; the design-review renderer sets it, the app never does.
+    var canScan = QRScanner.isAvailable
     @Environment(\.dismiss) private var dismiss
     @State private var address = ""
     @State private var label = ""
@@ -19,6 +22,10 @@ struct ConnectView: View {
     @State private var email = ""
     @State private var code = ""
     @State private var guestName = ""
+    @State private var scanning = false
+    /// The token a scan, paste or link filled in, while the field still holds it.
+    @State private var receivedToken: String?
+    @State private var otherServer: URL?
     @State private var working = false
     @State private var error: String?
     @State private var session: ServerSession?
@@ -46,6 +53,7 @@ struct ConnectView: View {
                         ActionBanner(symbol: "person.crop.circle.badge.exclamationmark", title: "Signed out", detail: reason, tone: Palette.warn) { EmptyView() }
                     }
                     if record == nil {
+                        scanOrEnter
                         VStack(alignment: .leading, spacing: Tokens.Space.s1) {
                             Text("Official server").apText(.sm, .semibold).foregroundStyle(Palette.inkMuted)
                             officialServer
@@ -118,6 +126,15 @@ struct ConnectView: View {
                     if working { ProgressView() } else { Button(submitLabel) { submit() }.disabled(!canSubmit).fontWeight(.semibold) }
                 }
             }
+            .fullScreenCover(isPresented: $scanning) {
+                QRScanner { text in
+                    guard let fill = SignInFill(text, signingInTo: record?.url) else { return false }
+                    apply(fill)
+                    scanning = false
+                    return true
+                }
+            }
+            .sensoryFeedback(.success, trigger: receivedToken) { _, new in new != nil }
             .onAppear(perform: load)
             .onChange(of: methods) { _, offered in if !offered.contains(method), let first = offered.first { method = first } }
         }
@@ -135,13 +152,25 @@ struct ConnectView: View {
                     .apText(.ui, mono: true)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .onChange(of: token) { _, new in if new.contains("token=") { accept(new) } }
+                    .onChange(of: token) { _, new in
+                        if new.contains("token=") { accept(new) } else if !new.isEmpty { otherServer = nil }
+                    }
             } hint: {
-                Text("Signed in elsewhere? In that app, send /invite-device and a name, such as /invite-device phone, then paste the token here. A server's admin can also give you one.")
+                if let otherServer {
+                    Label("This link is for \(otherServer.host() ?? otherServer.absoluteString).", systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(Palette.danger)
+                } else if record != nil, tokenReceived {
+                    Label("Token received", systemImage: "checkmark.circle.fill").foregroundStyle(Palette.ok)
+                }
+                Text("Signed in elsewhere? In that app, send /invite-device and a name, such as /invite-device phone, then paste the token here or scan its QR code. A server's admin can also give you one.")
                 HStack(spacing: Tokens.Space.s2) {
                     PasteButton(payloadType: String.self) { strings in if let first = strings.first { accept(first) } }
                         .labelStyle(.titleAndIcon)
                         .buttonBorderShape(.capsule)
+                    if record != nil, canScan {
+                        Button("Scan QR Code", systemImage: "qrcode.viewfinder") { scanning = true }
+                            .buttonStyle(GhostButtonStyle(tone: Palette.accent))
+                    }
                 }
             }
         case .email:
@@ -173,6 +202,37 @@ struct ConnectView: View {
                     .textContentType(.nickname)
             } hint: {
                 Text("No token needed; the server picks a guest identity. Signing out of a guest account loses it.")
+            }
+        }
+    }
+
+    /// The two ways to add a server: scan a sign-in QR code, which fills in the server and the
+    /// token, or enter them in the fields below. Once a token is in, it says so instead.
+    @ViewBuilder
+    private var scanOrEnter: some View {
+        if tokenReceived {
+            ActionBanner(symbol: "checkmark", title: "Token received",
+                         detail: url.flatMap { $0.host() }.map { "For \($0). Check the server, then tap Connect." } ?? "Enter the server's address, then tap Connect.",
+                         tone: Palette.ok) {
+                if canScan {
+                    Button("Scan Again") { scanning = true }.buttonStyle(GhostButtonStyle(tone: Palette.accent))
+                }
+            }
+        } else if canScan {
+            VStack(alignment: .leading, spacing: Tokens.Space.s2) {
+                Button { scanning = true } label: {
+                    Label("Scan QR Code", systemImage: "qrcode.viewfinder").frame(maxWidth: .infinity)
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                Text("Fills in the server and token from a sign-in code, such as the one /invite-device sends.")
+                    .apText(.sm).foregroundStyle(Palette.inkMuted)
+                HStack(spacing: Tokens.Space.s2) {
+                    Rectangle().fill(Palette.line).frame(height: 1)
+                    Text("or enter manually").apText(.sm, .semibold).foregroundStyle(Palette.inkMuted).fixedSize()
+                    Rectangle().fill(Palette.line).frame(height: 1)
+                }
+                .accessibilityElement(children: .combine)
+                .padding(.top, Tokens.Space.s1)
             }
         }
     }
@@ -234,6 +294,8 @@ struct ConnectView: View {
 
     private var url: URL? { Self.url(from: address) }
 
+    private var tokenReceived: Bool { method == .token && receivedToken == token }
+
     private var submitLabel: String {
         switch method {
         case .email where (session ?? existing)?.pendingEmail == nil: "Send Code"
@@ -267,18 +329,36 @@ struct ConnectView: View {
         if let prefill { accept(prefill) }
     }
 
+    /// Pasted or typed text: a sign-in fills in, anything else lands in the field as typed.
     private func accept(_ text: String) {
-        guard let payload = TokenPayload(parsing: text) else {
+        guard let fill = SignInFill(text, signingInTo: record?.url) else {
             token = text
             return
         }
-        accept(payload)
+        apply(fill)
     }
 
+    /// A link that opened Ladle, which may name a server with no token.
     private func accept(_ payload: TokenPayload) {
-        token = payload.token
-        method = .token
         if let server = payload.server, record == nil { address = server.absoluteString }
+        if !payload.token.isEmpty { apply(.token(payload.token)) }
+    }
+
+    private func apply(_ fill: SignInFill) {
+        otherServer = nil
+        switch fill {
+        case .serverAndToken(let server, let token):
+            address = server.absoluteString
+            apply(.token(token))
+        case .token(let token):
+            self.token = token
+            receivedToken = token
+            method = .token
+        case .otherServer(let server):
+            token = ""
+            otherServer = server
+            method = .token
+        }
     }
 
     // MARK: Submit

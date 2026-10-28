@@ -87,7 +87,7 @@ clone), which is only a worked example.
   `App/` (`RootView`: one pane at a time in compact width, a split view with the server rail,
   rooms, room and member column in regular width; `@SceneStorage` restoration; `apron:` links),
   `Servers/` (the server list and iPad rail, `ConnectView`: add a server and sign in in one
-  sheet), `Rooms/`, `Timeline/` (messages, composer with the
+  sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
   mention list, reaction picker, member list, `TimelineItems`: day pills, messages, the New
   line, thread cards at the thread's creation position, and queued messages; `EmbedViews`:
   upload embeds as a picture, an inline video, an audio player, a file card that opens in
@@ -166,7 +166,7 @@ never restart its services or kill its processes). Screens are reviewed on this 
 
 `LadleShots` is a debug-only Mac Catalyst app target built from `Ladle/` (minus `LadleApp.swift`)
 plus `LadleShots/ShotsApp.swift`. It seeds `PreviewFixtures` and renders, at 390x844 pt
-(compact width) in dark and light: the first run (no servers), the server list, Connect, the room list, the busy room, the
+(compact width) in dark and light: the first run (no servers), the server list, Connect, Connect after a scanned sign-in, the room list, the busy room, the
 mention list, the member list and the reaction picker, the composer with attachments, a room
 of uploads (image, video, file, audio, pending), and the media viewer; the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
@@ -186,6 +186,9 @@ Limits of the Mac render, each checked on this machine:
 - The software keyboard never appears on a Mac, so the reaction picker shows its field without
   the emoji keyboard.
 - Gestures (swipe actions) and haptics cannot be shown in a still.
+- VisionKit's scanner does not exist on Mac Catalyst, so the camera cover is never shot; the
+  renderer passes `canScan: true` to show the Scan QR Code entry, and seeds the scanned state
+  through `prefill`, the path a tapped link takes.
 
 Why not the other routes: running the iOS app as "Designed for iPad" on this Mac fails twice.
 First, `xcodebuild -destination 'platform=macOS,variant=Designed for iPad,arch=arm64'` says "My
@@ -217,10 +220,10 @@ clone. Run it before `swift test` (the gate line above does), and `./build.sh te
   default breaks saved files.
 - Apple frameworks only: Foundation, URLSession WebSockets, AuthenticationServices,
   Security, SwiftUI, Observation, Network (`NWPathMonitor` reconnects when the network
-  returns), and for attachments PhotosUI, AVFoundation, AVKit, QuickLook, ImageIO,
+  returns), VisionKit (the sign-in QR scanner, not on Mac Catalyst), and for attachments PhotosUI, AVFoundation, AVKit, QuickLook, ImageIO,
   UniformTypeIdentifiers and CryptoKit (cache file names). PhotosPicker and the document
   picker run out of process and need no usage string; the camera and the microphone (voice
-  notes) have theirs in `project.yml`. Nothing in them is a required-reason API, so
+  notes) have theirs in `project.yml`; the camera's names scanning too. Nothing in them is a required-reason API, so
   `PrivacyInfo.xcprivacy` is unchanged: files go only to the server the user sends them to. A third-party package needs a justified entry here. None so far. No bundled fonts:
   the web ships none either.
 - Replay rule: a record replaces only on a numerically greater `log_id`, or a tombstone at an
@@ -229,13 +232,17 @@ clone. Run it before `swift test` (the gate line above does), and `./build.sh te
 
 ## Identity and sign-in
 
-The primary v1 sign-in is a bearer token (`scheme: "token"`, §3.2.1), pasted into the app,
-obtained from another client. (A QR scanner was removed until apron-web can show one.) This works today with no server changes:
+The primary v1 sign-in is a bearer token (`scheme: "token"`, §3.2.1), pasted into the app or
+scanned from a QR code, obtained from another client. This works today with no server changes:
 the web client has a "sign in with a token the server gave you" mode, the public demo issues
 tokens through `/invite-bot` (a bot identity), and the protocol allows a command that issues
 more tokens. The Rust server's `/invite-device <name>` (after apron-server-cloudflare's) mints a
 device token for the signed-in account that signs in from any origin, or with none; its `auth`
-result carries no `token`, so the device keeps the one it presented.
+result carries no `token`, so the device keeps the one it presented. Its notice includes a §A.4
+sign-in link (`https://link.apron.chat/#server=…&token=…`), which apron-web can show as a QR code.
+Adding a server, a scan of that link fills in the server and the token, and you tap Connect; a
+link never signs in by itself (link.apron.chat SPEC §6). `ConnectView.canScan` hides the scan
+entry where `DataScannerViewController` is unavailable; only the renderer sets it.
 
 Other tokens are bound to the origin of the client that obtained them (§3.2.1, §4.10). So each
 `ServerRecord` stores an `origin` (for example `https://web.apron.chat`), defaulted to
