@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <path class="rust-line" d="M 512 600 L 512 290 A 100 100 0 0 1 712 290 L 712 330" fill="none" stroke-width="100" stroke-linecap="round" stroke-linejoin="round"/>
+  <path class="rust" d="M 242 590 A 270 270 0 0 0 782 590 Z"/>
+  <ellipse class="rust" cx="512" cy="590" rx="270" ry="76"/>
+</svg>
