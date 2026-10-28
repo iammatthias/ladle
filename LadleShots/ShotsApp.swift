@@ -38,6 +38,9 @@ enum Renderer {
         let media = URLSessionConfiguration.default
         media.protocolClasses = [FixtureMedia.self] + (media.protocolClasses ?? [])
         MediaLoader.shared = MediaLoader(configuration: media)
+        LinkPreviews.shared = LinkPreviews(directory: nil) { url in
+            url.host() == "git.example" ? FixtureMedia.wikiPreview : nil
+        }
         let staged = FixtureMedia.stagedAttachments()
 
         let store = await PreviewFixtures.makeStore()
@@ -174,6 +177,10 @@ final class FixtureMedia: URLProtocol {
     }
 
     override func stopLoading() {}
+
+    /// What this device would fetch for the busy room's bare wiki link.
+    static let wikiPreview = LinkPreview(title: "Release 0.2 · ladle wiki", site: "git.example",
+                                         image: photo(CGSize(width: 840, height: 440), hue: 0.33))
 
     /// A still life: a table, a wall, and a round enamel pot in the given hue.
     static func photo(_ size: CGSize, hue: CGFloat) -> Data {

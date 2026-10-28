@@ -88,13 +88,25 @@ struct MessageRow: View {
                     .apText(.sm).italic().foregroundStyle(Palette.inkMuted)
                     .padding(.top, Tokens.Space.s1)
             }
-            if !message.embedList.isEmpty {
+            let unfurl = message.unfurlURL
+            let embeds = message.embedList
+            // A fetched preview takes the place of the `link` embed for the same URL, if any.
+            let unfurledEmbed = unfurl.flatMap { url in embeds.firstIndex { $0.kind == "link" && $0.url == url } }
+            if !embeds.isEmpty {
                 VStack(alignment: .leading, spacing: Tokens.Space.s2) {
-                    ForEach(Array(message.embedList.enumerated()), id: \.offset) { index, embed in
-                        EmbedView(session: session, embed: embed, mediaID: MediaItem.id(message, index))
+                    ForEach(Array(embeds.enumerated()), id: \.offset) { index, embed in
+                        let view = EmbedView(session: session, embed: embed, mediaID: MediaItem.id(message, index))
+                        if let unfurl, index == unfurledEmbed {
+                            FetchedLinkCard(url: unfurl) { view }
+                        } else {
+                            view
+                        }
                     }
                 }
                 .padding(.top, Tokens.Space.s2)
+            }
+            if let unfurl, unfurledEmbed == nil {
+                FetchedLinkCard(url: unfurl, inset: Tokens.Space.s2) { EmptyView() }
             }
             if let reactions = session.store.reactions(on: message.messageID) {
                 ReactionBar(session: session, reactions: reactions, onReact: onReact, onAdd: onAddReaction)

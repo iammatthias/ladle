@@ -289,13 +289,7 @@ struct EmbedCard: View {
 
     var body: some View {
         if let url = embed.url {
-            Link(destination: url) { card }
-                .buttonStyle(.plain)
-                .contextMenu {
-                    Link(destination: url) { Label("Open Link", systemImage: "arrow.up.right.square") }
-                    Button("Copy Link", systemImage: "doc.on.doc") { UIPasteboard.general.url = url }
-                    ShareLink(item: url)
-                }
+            LinkButton(url: url) { card }
         } else {
             card
         }
@@ -311,31 +305,15 @@ struct EmbedCard: View {
     }
 
     private func openGraph(_ og: OpenGraph) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
+        LinkCard(site: og.siteName, title: og.title ?? embed.title ?? embed.url?.absoluteString ?? embed.kind,
+                 description: og.description) {
             if let image = og.image, policy.allowsMedia(image.url) {
                 RemoteImage(url: image.url)
                     .aspectRatio(1.91, contentMode: .fit)
                     .accessibilityLabel(image.alt ?? "")
                     .accessibilityHidden(image.alt == nil)
             }
-            VStack(alignment: .leading, spacing: Tokens.Space.s0_5) {
-                if let site = og.siteName {
-                    Text(site).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
-                }
-                Text(og.title ?? embed.title ?? embed.url?.absoluteString ?? embed.kind)
-                    .apText(.body, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
-                if let description = og.description {
-                    Text(description).apText(.ui).foregroundStyle(Palette.inkMuted).lineLimit(2)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, Tokens.Space.s3)
-            .padding(.horizontal, Tokens.Space.s4)
         }
-        .frame(maxWidth: Tokens.Size.embedCardW)
-        .background(Palette.raised)
-        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.lg))
-        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.lg).strokeBorder(Palette.line))
     }
 
     private var fallback: some View {
@@ -367,6 +345,53 @@ struct EmbedCard: View {
 
     static func summary(_ embed: Embed) -> String {
         [kindLabel(embed), embed.og?.image?.alt ?? embed.name].compactMap { $0 }.joined(separator: ", ")
+    }
+}
+
+/// The web's EmbedCard: the picture its caller gives, the site, the title, and two lines of
+/// description, 420 pt wide at most.
+struct LinkCard<Picture: View>: View {
+    let site: String?
+    let title: String
+    var description: String?
+    @ViewBuilder var picture: Picture
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            picture
+            VStack(alignment: .leading, spacing: Tokens.Space.s0_5) {
+                if let site {
+                    Text(site).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
+                }
+                Text(title).apText(.body, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
+                if let description {
+                    Text(description).apText(.ui).foregroundStyle(Palette.inkMuted).lineLimit(2)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, Tokens.Space.s3)
+            .padding(.horizontal, Tokens.Space.s4)
+        }
+        .frame(maxWidth: Tokens.Size.embedCardW)
+        .background(Palette.raised)
+        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.lg))
+        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.lg).strokeBorder(Palette.line))
+    }
+}
+
+/// A card that opens `url` in the browser, with Open, Copy and Share in its context menu.
+struct LinkButton<Label: View>: View {
+    let url: URL
+    @ViewBuilder var label: Label
+
+    var body: some View {
+        Link(destination: url) { label }
+            .buttonStyle(.plain)
+            .contextMenu {
+                Link(destination: url) { SwiftUI.Label("Open Link", systemImage: "arrow.up.right.square") }
+                Button("Copy Link", systemImage: "doc.on.doc") { UIPasteboard.general.url = url }
+                ShareLink(item: url)
+            }
     }
 }
 
