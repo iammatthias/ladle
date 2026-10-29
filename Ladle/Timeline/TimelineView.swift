@@ -3,10 +3,14 @@ import SwiftUI
 
 /// A room's messages, oldest first, paging back as the top comes into view. The web's timeline:
 /// day pills, the New line in denim, thread cards where each thread began, room notices as
-/// callouts, and queued messages at the end. Problems show inline, never as alerts.
+/// callouts, and queued messages at the end. Problems show inline, never as alerts. A link's
+/// `place` in this room scrolls to its message and highlights it, or shows its member.
 struct TimelineView: View {
     let session: ServerSession
     let roomID: String
+    @Binding var place: ApronLink?
+    @State private var focus: ApronLink?
+    @State private var highlighted: LogID?
     @State private var draft: Draft
     @State private var problem: String?
     @State private var reacting: MessageSnapshot?
@@ -26,9 +30,10 @@ struct TimelineView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
 
-    init(session: ServerSession, roomID: String, draft: Draft = Draft(), showingMembers: Bool = false) {
+    init(session: ServerSession, roomID: String, place: Binding<ApronLink?> = .constant(nil), draft: Draft = Draft(), showingMembers: Bool = false) {
         self.session = session
         self.roomID = roomID
+        _place = place
         _draft = State(initialValue: draft)
         _showingMembers = State(initialValue: showingMembers)
     }
@@ -134,6 +139,37 @@ struct TimelineView: View {
             }
             if visit == .opening { visit = .landed(after: session.readThrough(roomID)) }
         }
+        .onChange(of: place, initial: true) { _, link in
+            guard let link, link.room == roomID else { return }
+            focus = link
+            place = nil
+        }
+        .task(id: Focus(link: focus, signedIn: session.status == .signedIn)) {
+            guard let link = focus, session.status == .signedIn else { return }
+            await show(link)
+            if !Task.isCancelled { focus = nil }
+        }
+    }
+
+    /// A link's place in this room: its member list for `user`, and for `message` the history
+    /// back to it, a scroll there and a brief highlight, or a notice when the room lacks it.
+    private func show(_ link: ApronLink) async {
+        if link.user != nil { showingMembers = true }
+        guard let message = link.message else { return }
+        let shown: Bool
+        do { shown = try await session.reveal(message, in: roomID) } catch {
+            if !Task.isCancelled { problem = errorText(error) }
+            return
+        }
+        guard shown else {
+            problem = "That message isn't in this room."
+            return
+        }
+        highlighted = message
+        try? await Task.sleep(for: .milliseconds(100))
+        jumpTarget = message.text
+        try? await Task.sleep(for: .seconds(2))
+        withAnimation(Motion.medium(reduceMotion)) { highlighted = nil }
     }
 
     private var isReading: Bool {
@@ -205,7 +241,7 @@ struct TimelineView: View {
     private func row(_ item: TimelineItem) -> some View {
         switch item {
         case .message(let message, let continues):
-            MessageRow(session: session, message: message, continues: continues,
+            MessageRow(session: session, message: message, continues: continues, highlighted: highlighted == message.messageID,
                        onReact: { emoji in perform { try await session.toggleReaction(emoji, on: message.messageID) } },
                        onAddReaction: { reacting = message },
                        onJump: { jumpTarget = $0.text })
@@ -369,6 +405,11 @@ enum Visit: Equatable {
         if case .landed = self { return true }
         return false
     }
+}
+
+struct Focus: Equatable {
+    var link: ApronLink?
+    var signedIn: Bool
 }
 
 struct ReadMark: Equatable {

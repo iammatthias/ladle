@@ -3,11 +3,13 @@ import SwiftUI
 
 /// The web's Message: an avatar in a 32 pt gutter, the sender and time, the reply it answers
 /// above, the text, embeds, and reactions. A message that mentions you sits on accent-soft with
-/// an accent bar, as the web marks it.
+/// an accent bar, as the web marks it. One a link opened to is highlighted on `hover`, as the
+/// web's `ap-msg-highlighted`.
 struct MessageRow: View {
     let session: ServerSession
     let message: MessageSnapshot
     let continues: Bool
+    var highlighted = false
     var onReact: (String) -> Void = { _ in }
     var onAddReaction: () -> Void = {}
     var onJump: (LogID) -> Void = { _ in }
@@ -47,7 +49,7 @@ struct MessageRow: View {
         }
         .padding(.vertical, Tokens.Space.s1)
         .padding(.horizontal, Tokens.Space.s2)
-        .background(mentionsYou ? Palette.accentSoft : .clear, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
+        .background(highlighted ? Palette.hover : mentionsYou ? Palette.accentSoft : .clear, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
         .overlay(alignment: .leading) {
             if mentionsYou {
                 Capsule().fill(Palette.accent).frame(width: 3).padding(.vertical, Tokens.Space.s1)
