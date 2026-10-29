@@ -84,9 +84,10 @@ struct MessageRow: View {
                 .foregroundStyle(Palette.ink)
                 .tint(Palette.denim)
                 .fixedSize(horizontal: false, vertical: true)
+                .written(in: TextDirection(of: message.plainText))
         }
         if let room = message.prevRoomID {
-            Text("Moved from \(Text(session.title(of: room)).foregroundStyle(Palette.denim))")
+            Text("Moved from \(Text(TextDirection.isolated(session.title(of: room))).foregroundStyle(Palette.denim))")
                 .apText(.sm).italic().foregroundStyle(Palette.inkMuted)
                 .padding(.top, Tokens.Space.s1)
         }
@@ -162,11 +163,32 @@ func rendered(_ body: JSONValue?, mentions: [String: String] = [:], you: String?
 }
 
 /// A one-line preview of a body inside a control (a reply quote, a room or thread row): the text
-/// without links, so a tap goes to the control and the line keeps its color.
+/// without links, so a tap goes to the control and the line keeps its color, isolated from the
+/// words around it (§3.5.2).
 func previewText(_ body: JSONValue?) -> AttributedString {
     var out = rendered(body)
     out.link = nil
-    return out
+    return AttributedString("\u{2068}") + out + AttributedString("\u{2069}")
+}
+
+extension View {
+    /// Lays out a block of what someone wrote in its own direction (§3.5.2): a paragraph written
+    /// against the app's direction starts at its own side.
+    func written(in direction: TextDirection?) -> some View {
+        modifier(WrittenDirection(direction: direction))
+    }
+}
+
+private struct WrittenDirection: ViewModifier {
+    let direction: TextDirection?
+    @Environment(\.layoutDirection) private var layout
+
+    func body(content: Content) -> some View {
+        let against = direction.map { ($0 == .rightToLeft) != (layout == .rightToLeft) } ?? false
+        content
+            .multilineTextAlignment(against ? .trailing : .leading)
+            .frame(maxWidth: .infinity, alignment: against ? .trailing : .leading)
+    }
 }
 
 /// The web's ReplyPreview: a bent line, the quoted sender's face and name, and one line of their

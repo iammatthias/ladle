@@ -29,6 +29,11 @@ clone), which is only a worked example.
     snapshots by `message_id`, reaction sets by `(message_id, user_id)`, memberships by
     `(room_id, user_id)`) under the replay rule, member-list seeding as of a position, re-homing
     on moves, and the README's logical projection. `ext` stays a `JSONValue`.
+  - `TextDirection`: what users write takes its direction from its first strong letter (§3.5.2).
+    Names, room titles, descriptions, the server's title and message text show without
+    U+202A–U+202E (stored and sent as written); a name or preview set among the app's own
+    words is isolated (U+2068…U+2069); a message written against the app's direction starts
+    at its own side (`written(in:)` in the app).
   - `ReactionEntry`: a `reactions` entry (§4.7) is one emoji sequence or a key, such as a custom
     emoji's `:name:`. Entries compare without U+FE0F (`key`): a set, the summaries and
     `toggleReaction` treat ❤ and ❤️ as one, and a summary shows the fully-qualified spelling.
