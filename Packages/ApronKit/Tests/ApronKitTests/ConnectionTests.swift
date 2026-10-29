@@ -15,7 +15,11 @@ actor FakeTransport: FrameTransport {
     private(set) var sentLog: [String] = []
 
     /// `dropped` starts the transport already closed by the server, so connecting fails.
-    init(dropped: Bool = false) {
+    private let rejection: Int?
+
+    /// `rejectedWith` fails the upgrade with that HTTP status.
+    init(dropped: Bool = false, rejectedWith rejection: Int? = nil) {
+        self.rejection = rejection
         (sent, sentSink) = AsyncStream.makeStream(of: String.self, bufferingPolicy: .unbounded)
         inboxClosed = dropped
     }
@@ -29,6 +33,7 @@ actor FakeTransport: FrameTransport {
     }
 
     func receive() async throws -> String {
+        if let rejection { throw FrameTransportError.handshakeRejected(status: rejection) }
         if !inbox.isEmpty { return inbox.removeFirst() }
         if inboxClosed { throw FrameTransportError.closed }
         let next = await withCheckedContinuation { reader = $0 }

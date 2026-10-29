@@ -48,6 +48,25 @@ final class Transports: Sendable {
     }
 }
 
+/// Stands in for the connection-status probe: answers from a queue and records each request.
+final class Probes: Sendable {
+    let queued = Mutex<[ProbeResponse]>([])
+    let requests = Mutex<[String]>([])
+
+    func answer(_ url: URL, _ origin: String?) throws -> ProbeResponse {
+        requests.withLock { $0.append("\(url.absoluteString) \(origin ?? "-")") }
+        guard let next = queued.withLock({ $0.isEmpty ? nil : $0.removeFirst() }) else { throw URLError(.cannotConnectToHost) }
+        return next
+    }
+
+    func queue(_ status: Int, header: Bool = true, retryAfter: String? = nil, body: String) {
+        var headers: [String: String] = [:]
+        if header { headers["apron-connection-status"] = "1" }
+        if let retryAfter { headers["retry-after"] = retryAfter }
+        queued.withLock { $0.append(ProbeResponse(status: status, headers: headers, body: Data(body.utf8))) }
+    }
+}
+
 @MainActor
 final class ServerSessionTests: XCTestCase {
     static let greeting: JSONValue = ["method": "server", "params": [
@@ -58,6 +77,7 @@ final class ServerSessionTests: XCTestCase {
     let positions = InMemoryReadPositionStore()
     let clock = FakeClock()
     let transports = Transports()
+    let probes = Probes()
     var session: ServerSession!
 
     override func setUp() async throws {
@@ -70,7 +90,8 @@ final class ServerSessionTests: XCTestCase {
             makeRequestID: { counter.withLock { $0 += 1; return "c\($0)" } },
             makeState: { "state-1" },
             agent: "ladle-ios/test",
-            pageSize: 3
+            pageSize: 3,
+            fetchConnectionStatus: { [probes] url, origin in try probes.answer(url, origin) }
         )
         session = ServerSession(record: record, tokens: tokens, positions: positions, environment: environment)
     }
@@ -375,6 +396,81 @@ final class ServerSessionTests: XCTestCase {
         await socket.dropFromServer()
         await eventually("backoff") { clock.recorded.count == 1 }
         XCTAssertEqual(clock.recorded, [.seconds(30)])
+    }
+
+    // MARK: Connection status
+
+    private func failUpgrade(status: Int? = nil) {
+        transports.queued.withLock { $0.append(FakeTransport(dropped: status == nil, rejectedWith: status)) }
+    }
+
+    func testAnUnavailableServerShowsItsMessageAndWaitsOutRetryAfter() async throws {
+        failUpgrade(status: 503)
+        probes.queue(503, retryAfter: "120", body: #"{"error":"Demo temporarily unavailable"}"#)
+        session.start()
+        await eventually("reconnecting") { session.unavailableMessage != nil && clock.recorded.count == 1 }
+        XCTAssertEqual(session.unavailableMessage, "Demo temporarily unavailable")
+        XCTAssertEqual(clock.recorded, [.seconds(120)])
+        XCTAssertEqual(probes.requests.withLock { $0 }, ["https://chat.example/ws?apron_connection_status=1 https://chat.example"])
+
+        clock.release()
+        await eventually("connected") { session.status == .signedOut }
+        XCTAssertNil(session.unavailableMessage)
+        XCTAssertEqual(probes.requests.withLock { $0.count }, 1, "a connected server is not probed")
+    }
+
+    func testACapacityRefusalKeepsRetryingAndHonoursItsRetryAfter() async throws {
+        failUpgrade(status: 429)
+        probes.queue(429, retryAfter: "7", body: #"{"error":"Too many connections"}"#)
+        session.start()
+        await eventually("delay") { clock.recorded.count == 1 }
+        XCTAssertEqual(session.unavailableMessage, "Too many connections")
+        XCTAssertEqual(clock.recorded, [.seconds(7)])
+        XCTAssertEqual(session.status, .reconnecting(attempt: 1, delay: .seconds(7)))
+    }
+
+    func testAnAvailableServerFallsBackToBackoffWithoutAMessage() async throws {
+        failUpgrade()
+        probes.queue(200, body: #"{"available":true}"#)
+        session.start()
+        await eventually("delay") { clock.recorded.count == 1 }
+        XCTAssertNil(session.unavailableMessage)
+        XCTAssertEqual(clock.recorded, [.milliseconds(500)])
+        XCTAssertEqual(probes.requests.withLock { $0.count }, 1)
+    }
+
+    func testAReplyWithoutTheHeaderIsIgnored() async throws {
+        failUpgrade(status: 503)
+        probes.queue(503, header: false, retryAfter: "120", body: #"{"error":"Bad gateway from an edge"}"#)
+        session.start()
+        await eventually("delay") { clock.recorded.count == 1 }
+        XCTAssertNil(session.unavailableMessage)
+        XCTAssertEqual(clock.recorded, [.milliseconds(500)])
+    }
+
+    func testARefusedOriginStopsWithTheServersReason() async throws {
+        failUpgrade(status: 403)
+        probes.queue(403, body: #"{"error":"Origin not allowed"}"#)
+        session.start()
+        await eventually("stopped") { session.status == .stopped(.rejected(status: 403)) }
+        XCTAssertEqual(session.unavailableMessage, "Origin not allowed")
+    }
+
+    func testEachFailedAttemptProbesOnce() async throws {
+        failUpgrade()
+        failUpgrade()
+        session.start()
+        await eventually("first delay") { clock.recorded.count == 1 }
+        clock.release()
+        await eventually("second delay") { clock.recorded.count == 2 }
+        XCTAssertEqual(probes.requests.withLock { $0.count }, 2)
+    }
+
+    func testProbeURLAndReportParsing() throws {
+        XCTAssertEqual(Connection.probeURL(for: URL(string: "wss://server.apron.chat/")!)?.absoluteString, "https://server.apron.chat/?apron_connection_status=1")
+        XCTAssertEqual(Connection.probeURL(for: URL(string: "ws://localhost:8080/ws?x=1")!)?.absoluteString, "http://localhost:8080/ws?x=1&apron_connection_status=1")
+        let report = Connection.report(from: ProbeResponse(status: 503, headers: ["apron-connection-status": "1"], body: Data(#"{"error":"Demo temporarily unavailable"}"#.utf8)))
+        XCTAssertEqual(report, ConnectionStatusReport(message: "Demo temporarily unavailable", retryAfter: nil))
     }
 
     // MARK: History

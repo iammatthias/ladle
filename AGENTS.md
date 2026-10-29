@@ -83,7 +83,14 @@ clone), which is only a worked example.
     - Reconnect: pending requests fail with `Connection.Failure.closed` (no same-id resend),
       then `backoff(attempt:jitter:)` = min(60 s, 0.5 s × 2^min(7, attempt − 1)) × [0.8, 1.2),
       never below a `retry_after`. Attempts restart after 30 s signed in. An id-less `denied`
-      or a refused upgrade stops reconnecting (`Status.stopped`). A resume answered `denied` or
+      or a refused upgrade other than 429 or 5xx stops reconnecting (`Status.stopped`).
+    - Connection status (`ConnectionStatus.swift`): after an upgrade fails, before the server's
+      greeting, `Connection.probe` sends one `GET <url as https>?apron_connection_status=1` with
+      the record's Origin through `Environment.fetchConnectionStatus`. A reply with
+      `Apron-Connection-Status: 1` and a JSON `error` sets `unavailableMessage` (server list row,
+      rail tooltip, a Callout in the room view; cleared on the next connection) and its
+      `Retry-After` seconds floor the next reconnect delay. Anything else falls back to plain
+      backoff. `LiveProbeTests` runs against a real server when `APRON_LIVE_PROBE_URL` is set. A resume answered `denied` or
       `invalid_params` clears the token and asks for sign-in.
     - History: `open` loads the newest page once (`limit` = page size, no bounds), `loadOlder`
       pages with `before = first_log_id − 1` until `more` is false or the floor. The floor is

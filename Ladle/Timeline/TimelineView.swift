@@ -170,6 +170,9 @@ struct TimelineView: View {
     private var banner: some View {
         let state = ConnectionState(session.status)
         VStack(spacing: Tokens.Space.s2) {
+            if let message = session.unavailableMessage {
+                Callout(title: session.serverName) { Text(message) }
+            }
             if let state, state.isProblem {
                 ActionBanner(symbol: state.symbol, title: state.title(session.record), detail: state.detail) {
                     if state.canRetry { Button("Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
@@ -195,7 +198,7 @@ struct TimelineView: View {
             }
         }
         .padding(.horizontal, Tokens.Space.s4)
-        .padding(.top, state == nil && problem == nil ? 0 : Tokens.Space.s2)
+        .padding(.top, state == nil && problem == nil && session.unavailableMessage == nil ? 0 : Tokens.Space.s2)
     }
 
     @ViewBuilder

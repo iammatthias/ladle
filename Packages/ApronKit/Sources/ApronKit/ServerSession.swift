@@ -55,6 +55,8 @@ public final class ServerSession {
         public var writeEmbed: EmbedWrite
         /// The fetch of a custom emoji catalog (`ext:emoji`).
         public var fetchEmojiCatalog: @Sendable (URL) async throws -> Data
+        /// The GET of `?apron_connection_status=1` after a failed upgrade.
+        public var fetchConnectionStatus: ConnectionStatusFetch
 
         public init(
             makeTransport: @escaping @Sendable (ServerRecord) -> any FrameTransport,
@@ -66,7 +68,8 @@ public final class ServerSession {
             pageSize: Int = 50,
             stableAfter: Duration = .seconds(30),
             writeEmbed: @escaping EmbedWrite = EmbedWriter.live,
-            fetchEmojiCatalog: @escaping @Sendable (URL) async throws -> Data = EmojiCatalogFetch.live
+            fetchEmojiCatalog: @escaping @Sendable (URL) async throws -> Data = EmojiCatalogFetch.live,
+            fetchConnectionStatus: @escaping ConnectionStatusFetch = ConnectionStatusProbe.live
         ) {
             self.makeTransport = makeTransport
             self.sleep = sleep
@@ -78,6 +81,7 @@ public final class ServerSession {
             self.stableAfter = stableAfter
             self.writeEmbed = writeEmbed
             self.fetchEmojiCatalog = fetchEmojiCatalog
+            self.fetchConnectionStatus = fetchConnectionStatus
         }
 
         public static let live = Environment(makeTransport: { record in
@@ -92,6 +96,9 @@ public final class ServerSession {
     public private(set) var you: UserObject?
     /// The address a code was mailed to, while the proposing connection lasts (§4.11.2).
     public private(set) var pendingEmail: String?
+    /// What the server said when it would not take a connection, such as "Demo temporarily
+    /// unavailable", until the next connection. Fetched once per failed upgrade (`Connection.probe`).
+    public private(set) var unavailableMessage: String?
     /// Why the saved token stopped working, until the user signs in again.
     public private(set) var signInNeeded: String?
     public private(set) var store = ReplayStore()
@@ -169,6 +176,7 @@ public final class ServerSession {
         runTask = nil
         await connection?.close()
         connection = nil
+        unavailableMessage = nil
         status = .offline
     }
 
@@ -198,8 +206,10 @@ public final class ServerSession {
             let connection = Connection(transport: environment.makeTransport(record), makeRequestID: environment.makeRequestID)
             var minimumDelay = Duration.zero
             var stayedUp = false
+            var upgradeFailure: UpgradeFailure?
             do {
                 server = try await connection.connect()
+                unavailableMessage = nil
                 self.connection = connection
                 let reader = Task { for await notification in connection.notifications { handle(notification) } }
                 if let token = try? tokens.token(for: record.id) {
@@ -211,21 +221,34 @@ public final class ServerSession {
                 await reader.value
                 stayedUp = status == .signedIn && ContinuousClock.now - opened >= environment.stableAfter
             } catch Connection.Failure.rejected(let code) {
-                status = .stopped(.rejected(status: code))
-                break
-            } catch {}
+                upgradeFailure = .rejected(code)
+            } catch is RPCError {
+            } catch Connection.Failure.invalidServerFrame {
+            } catch {
+                upgradeFailure = .unreachable
+            }
 
             await connection.close()
             if self.connection === connection { self.connection = nil }
             pendingEmail = nil
             for roomID in histories.keys { histories[roomID]?.isLive = false }
             if Task.isCancelled { return }
+            if let upgradeFailure {
+                let report = await Connection.probe(url: record.url, origin: record.origin, fetch: environment.fetchConnectionStatus)
+                if Task.isCancelled { return }
+                unavailableMessage = report?.message
+                minimumDelay = report?.retryAfter ?? .zero
+                if case .rejected(let code) = upgradeFailure, !(code == 429 || code >= 500) {
+                    status = .stopped(.rejected(status: code))
+                    break
+                }
+            }
             if let error = await connection.connectionError {
                 if error.code == RPCError.Code.denied {
                     status = .stopped(.denied(error.message))
                     break
                 }
-                minimumDelay = error.retryAfter ?? .zero
+                minimumDelay = max(minimumDelay, error.retryAfter ?? .zero)
             }
 
             attempt = stayedUp ? 1 : attempt + 1
@@ -234,6 +257,12 @@ public final class ServerSession {
             do { try await environment.sleep(delay) } catch { return }
         }
         runTask = nil
+    }
+
+    /// A connection that never reached the server's greeting, the only time the probe runs.
+    private enum UpgradeFailure {
+        case rejected(Int)
+        case unreachable
     }
 
     /// `min(60 s, 0.5 s × 2^min(7, attempt − 1))`, scaled by `jitter`.
