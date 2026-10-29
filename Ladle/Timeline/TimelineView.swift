@@ -290,6 +290,9 @@ struct TimelineView: View {
         }
         .disabled(!session.mayWrite)
         Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.plainText }
+        if let link = ApronLink(server: session.record.url, room: message.roomID, message: message.messageID).webURL {
+            Button("Copy Link", systemImage: "link") { UIPasteboard.general.url = link }
+        }
         if session.mayMove(message), !session.moveDestinations(for: message).isEmpty {
             Menu("Move To", systemImage: "arrow.right.square") {
                 ForEach(session.moveDestinations(for: message), id: \.self) { roomID in
@@ -298,10 +301,12 @@ struct TimelineView: View {
             }
         }
         ForEach(MessageText.links(message.body).prefix(3), id: \.self) { url in
+            // An Apron link leaves its server as its absolute web form (§1, §5).
+            let shared = ApronLink(url).flatMap { $0.resolved(against: session.record.url).webURL } ?? url
             Menu(url.host() ?? url.absoluteString, systemImage: "link") {
                 Button("Open Link", systemImage: "arrow.up.right.square") { openURL(url) }
-                Button("Copy Link", systemImage: "doc.on.doc") { UIPasteboard.general.url = url }
-                ShareLink(item: url)
+                Button("Copy Link", systemImage: "doc.on.doc") { UIPasteboard.general.url = shared }
+                ShareLink(item: shared)
             }
         }
         if session.status == .signedIn, session.mayWrite, session.isYou(message.from.userID), session.server?.has("edit") == true {
