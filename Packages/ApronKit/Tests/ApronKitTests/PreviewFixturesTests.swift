@@ -11,8 +11,15 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.status, .signedIn)
         XCTAssertEqual(demo.status, .signedIn)
 
-        XCTAssertEqual(home.roomTree.map { home.title(of: $0.roomID) }, ["design", "general", "ops", "random"])
-        XCTAssertEqual(home.roomTree.map { $0.threadIDs.map(home.title(of:)) }, [["Icon sketches"], ["Release 0.2"], [], []])
+        XCTAssertEqual(home.roomTree.map { home.title(of: $0.roomID) }, ["design", "general", "kitchen", "ops", "random"])
+        XCTAssertEqual(home.roomTree.map { $0.threadIDs.map(home.title(of:)) }, [["Icon sketches"], ["Release 0.2"], [], [], []])
+
+        let kitchen = home.timeline(PreviewFixtures.emojiRoomID)
+        XCTAssertEqual(home.emojiCatalog?.offered.map(\.key), [":apron:", ":shipit:", ":partyparrot:"], "the hidden one is not offered")
+        XCTAssertEqual(home.store.reactions(on: kitchen[0].messageID)?.map(\.emoji), [":apron:", ":partyparrot:", ":retired:", "👍"],
+                       "one key the catalog lacks, for the placeholder")
+        XCTAssertEqual(TextDirection(of: kitchen[1].body?["text"]?.stringValue ?? ""), .rightToLeft)
+        XCTAssertEqual(home.unreadCount(in: PreviewFixtures.emojiRoomID), 0)
 
         let general = home.timeline(PreviewFixtures.busyRoomID)
         XCTAssertEqual(general.count, 13)

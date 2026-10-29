@@ -239,11 +239,14 @@ struct RoomRow: View {
                     if session.isPrivate(roomID) { Lock() }
                 }
                 if !isThread, let topic = session.roomDescription(roomID) {
-                    Text(topic).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
+                    EmojiText(text: descriptionText(topic, session.emojiCatalog), catalog: session.emojiCatalog, role: .sm)
+                        .apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
                 }
                 if isThread {
                     if let description = session.roomDescription(roomID) {
-                        line(icon: "text.alignleft") { Text(description) }
+                        line(icon: "text.alignleft") {
+                            EmojiText(text: descriptionText(description, session.emojiCatalog), catalog: session.emojiCatalog, role: .sm)
+                        }
                     }
                     if let last = session.timeline(roomID).last {
                         line(icon: "arrow.turn.down.right") {
@@ -282,9 +285,10 @@ struct RoomRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText(unread: unread, mentions: mentions, joined: joined))
+        .task(id: session.server?.emojiCatalogURL) { await session.loadEmojiCatalog(for: session.roomDescription(roomID)) }
     }
 
-    private func line(icon: String, @ViewBuilder _ text: () -> Text) -> some View {
+    private func line(icon: String, @ViewBuilder _ text: () -> some View) -> some View {
         HStack(spacing: Tokens.Space.s1) {
             Image(systemName: icon).imageScale(.small)
             text().lineLimit(1)
@@ -302,7 +306,7 @@ struct RoomRow: View {
         if mentions > 0 { parts.append("\(mentions) \(mentions == 1 ? "mention" : "mentions") of you") }
         if unread > 0 { parts.append("\(unread) new") }
         if !joined { parts.append("not joined") }
-        if isThread, let description = session.roomDescription(roomID) { parts.append(description) }
+        if isThread, let description = session.roomDescription(roomID) { parts.append(spoken(description, session.emojiCatalog)) }
         return parts.joined(separator: ", ")
     }
 }

@@ -103,7 +103,7 @@ struct TimelineView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
         .sheet(item: $reacting) { message in
-            ReactionPicker { emoji in
+            ReactionPicker(session: session) { emoji in
                 reacting = nil
                 perform { try await session.toggleReaction(emoji, on: message.messageID) }
             }
@@ -464,7 +464,7 @@ struct ThreadCard: View {
                 }
             }
             if let description = session.roomDescription(threadID) {
-                Label { Text(description).lineLimit(1) } icon: { Image(systemName: "text.alignleft").foregroundStyle(Palette.inkMuted) }
+                Label { EmojiText(text: descriptionText(description, session.emojiCatalog), catalog: session.emojiCatalog, role: .ui).lineLimit(1) } icon: { Image(systemName: "text.alignleft").foregroundStyle(Palette.inkMuted) }
                     .foregroundStyle(Palette.ink)
             }
             if let last {
@@ -478,6 +478,7 @@ struct ThreadCard: View {
         }
         .apText(.ui)
         .labelStyle(TightLabel())
+        .task(id: session.server?.emojiCatalogURL) { await session.loadEmojiCatalog(for: session.roomDescription(threadID)) }
         .padding(.top, Tokens.Space.s1)
         .padding(.bottom, Tokens.Space.s1_5)
         .padding(.horizontal, Tokens.Space.s3)

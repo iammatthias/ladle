@@ -56,6 +56,9 @@ struct MessageRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityText(name: name, mentionsYou: mentionsYou))
+        .task(id: session.server?.emojiCatalogURL) {
+            if session.needsEmojiCatalog(message) { await session.loadEmojiCatalog() }
+        }
     }
 
     private func head(_ name: String) -> some View {
@@ -79,7 +82,8 @@ struct MessageRow: View {
     @ViewBuilder
     private var content: some View {
         if !message.plainText.isEmpty {
-            Text(rendered(message.body, mentions: mentionNames, you: session.you?.userID))
+            EmojiText(text: rendered(message.body, mentions: mentionNames, you: session.you?.userID, emoji: session.emojiCatalog),
+                      catalog: session.emojiCatalog)
                 .apText(.body)
                 .foregroundStyle(Palette.ink)
                 .tint(Palette.denim)
@@ -131,22 +135,32 @@ struct MessageRow: View {
             let target = message.replyTo.flatMap(session.store.message)
             parts.append("replying to " + (target.map { $0.isTombstone ? "a deleted message" : session.displayName(for: $0.from) } ?? "an unavailable message"))
         }
-        parts.append(message.plainText)
+        parts.append(spoken(message.plainText, session.emojiCatalog))
         if let room = message.prevRoomID { parts.append("moved from \(session.title(of: room))") }
         for embed in message.embedList { parts.append(EmbedCard.summary(embed)) }
         if message.isEdited { parts.append("edited") }
         parts.append(message.date.formatted(date: .omitted, time: .shortened))
         if let reactions = session.store.reactions(on: message.messageID) {
-            parts.append(reactions.map { "\($0.emoji) \($0.userIDs.count)" }.joined(separator: ", "))
+            parts.append(reactions.map { "\(ReactionGlyph.label($0.emoji, session.emojiCatalog)) \($0.userIDs.count)" }.joined(separator: ", "))
         }
         return parts.joined(separator: ", ")
     }
 }
 
-/// The body as `MessageText` renders it, links included. Mentions outside links show as the
-/// web's chips: denim on denim-soft, and accent with on-accent for you.
-func rendered(_ body: JSONValue?, mentions: [String: String] = [:], you: String? = nil) -> AttributedString {
-    var out = MessageText.attributed(body)
+/// Plain text as VoiceOver reads it: each custom emoji key the catalog has as its `alt`.
+func spoken(_ text: String, _ catalog: EmojiCatalog?) -> String {
+    guard let catalog else { return text }
+    var out = text
+    for range in EmojiKeys.ranges(in: text, known: { catalog[$0] != nil }).reversed() {
+        out.replaceSubrange(range, with: catalog[String(text[range])]?.label ?? "")
+    }
+    return out
+}
+
+/// The body as `MessageText` renders it, links and custom emoji keys included. Mentions outside
+/// links show as the web's chips: denim on denim-soft, and accent with on-accent for you.
+func rendered(_ body: JSONValue?, mentions: [String: String] = [:], you: String? = nil, emoji: EmojiCatalog? = nil) -> AttributedString {
+    var out = MessageText.attributed(body, emoji: emoji)
     for (id, name) in mentions {
         for token in Set(["@" + name, "@" + id]) {
             var search = out.startIndex ..< out.endIndex
@@ -240,18 +254,19 @@ struct ReactionBar: View {
             ForEach(reactions, id: \.key) { reaction in
                 let mine = session.you.map { reaction.userIDs.contains($0.userID) } ?? false
                 let names = reaction.userIDs.map { session.users.user($0).flatMap(UserObject.init).map(session.displayName(for:)) ?? $0 }
+                let label = ReactionGlyph.label(reaction.emoji, session.emojiCatalog)
                 Button { onReact(reaction.emoji) } label: {
                     chip(mine: mine) {
-                        Text(reaction.emoji)
+                        ReactionGlyph(entry: reaction.emoji, catalog: session.emojiCatalog)
                         Text("\(reaction.userIDs.count)").monospacedDigit()
                     }
                 }
                 .buttonStyle(.plain)
                 .disabled(!session.mayWrite)
                 .contextMenu {
-                    Section("\(reaction.emoji) from") { ForEach(names, id: \.self) { Text($0) } }
+                    Section("\(label) from") { ForEach(names, id: \.self) { Text($0) } }
                 }
-                .accessibilityLabel("\(reaction.emoji), \(names.joined(separator: ", "))")
+                .accessibilityLabel("\(label), \(names.joined(separator: ", "))")
                 .accessibilityAddTraits(mine ? .isSelected : [])
                 .accessibilityHint(mine ? "Removes your reaction" : "Adds your reaction")
             }

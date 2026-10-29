@@ -48,7 +48,7 @@ public struct EmojiCatalog: Hashable, Sendable {
 
     public init(json: JSONValue, policy: MediaPolicy) {
         for (key, entry) in json.objectValue ?? [:] {
-            guard CustomEmoji.isKey(key), entry.objectValue != nil, let url = Self.image(entry["url"], policy) else { continue }
+            guard CustomEmoji.isKey(key), let url = Self.image(entry["url"], policy) else { continue }
             let width = entry["width"]?.doubleValue.flatMap { $0 > 0 ? $0 : nil }
             let height = entry["height"]?.doubleValue.flatMap { $0 > 0 ? $0 : nil }
             emoji[key] = CustomEmoji(

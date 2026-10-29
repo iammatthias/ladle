@@ -170,7 +170,13 @@ clone), which is only a worked example.
   a server added through the Connect sheet opens once its sign-in succeeds),
   `Servers/` (the server list and iPad rail, `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
-  mention list, reaction picker, member list, `TimelineItems`: day pills, messages, the New
+  mention list and the custom emoji `:` list, reaction picker (custom emoji by category first),
+  member list, `CustomEmojiViews`: `EmojiText` draws each marked key as its image at the line's
+  height inside one `Text`, read by VoiceOver as its `alt`, `ReactionGlyph` an emoji, a custom
+  emoji's image or a dashed placeholder for a key the catalog lacks, `EmojiImages` the images,
+  `static_url` under Reduce Motion (Ladle draws the first frame of an animated image either
+  way); message text, room and thread descriptions, the welcome and the server description
+  draw custom emoji, and each fetches the catalog when its text could hold a key, `TimelineItems`: day pills, messages, the New
   line, thread cards at the thread's creation position, and queued messages; `EmbedViews`:
   `og` embeds as the web's EmbedCard (a hosted image, site, title, two lines; with `og.video` or `og.audio` that `OpenGraph.player(policy:)` allows, the card plays it inline and only its text opens the `url`), others as a
   labeled fallback card; `FetchedLinkCard`: a fetched preview as the same card, fetched with
@@ -256,7 +262,9 @@ plus `LadleShots/ShotsApp.swift`. It seeds `PreviewFixtures` (and a fetched prev
 (compact width) in dark and light: the first run (no servers), the server list, Connect, Connect after a scanned sign-in, the room list, the busy room, the
 mention list, the member list and the reaction picker, the composer with attachments, a room
 of uploads (image, video, file, audio, pending), the media viewer, the composer over the text
-limit, and a read-only guest's sign-in prompt on the demo server; the busy room at AX3; and the iPad
+limit, a read-only guest's sign-in prompt on the demo server, custom emoji in text, a
+description and reactions with a right-to-left line (the kitchen room), the reaction picker
+with the custom emoji, and the composer's `:` list; the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with
