@@ -439,6 +439,19 @@ public final class ServerSession {
             histories[roomID] = nil
             throw error
         }
+        await listThreads(of: roomID)
+    }
+
+    /// Installs the room's threads this user has not joined (§4.2.1). Their records are in their
+    /// own logs (§4.3.1), so this listing is how a member of the room learns of threads started
+    /// while they were away. A refused listing leaves the threads already known. A thread is not
+    /// listed: both reference servers refuse nested threads, and they limit `room_list`.
+    private func listThreads(of roomID: String, on connection: Connection? = nil) async {
+        guard server?.has("rooms") == true, store.room(roomID)?.parentRoomID == nil,
+              let connection = connection ?? self.connection else { return }
+        let params: JSONValue = ["parent_room_id": .string(roomID), "filter": "not_joined"]
+        guard let result = try? await connection.request("room_list", params: params) else { return }
+        install(Records(roomListResult: result))
     }
 
     /// Loads the page before the oldest one loaded, while there is one (§4.3.2).
@@ -462,6 +475,7 @@ public final class ServerSession {
                 after = next
             }
             histories[roomID]?.isLive = true
+            await listThreads(of: roomID, on: connection)
         }
     }
 

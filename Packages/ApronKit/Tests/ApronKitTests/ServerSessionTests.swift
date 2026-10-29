@@ -534,13 +534,16 @@ final class ServerSessionTests: XCTestCase {
             "messages": [message("104", "d"), message("105", "e"), message("106", "f")],
             "first_log_id": "104", "last_log_id": "106", "more": true, "latest_log_id": "106", "history_log_id": "101",
         ]])
+        let threads = await frame(socket, 3)
+        XCTAssertEqual(threads, #"{"id":"c4","method":"room_list","params":{"filter":"not_joined","parent_room_id":"general"}}"#)
+        await socket.deliver(["id": "c4", "result": ["not_joined": []]])
         try await open.value
         XCTAssertEqual(session.canLoadOlder("general"), true)
 
         let older = Task { try await session.loadOlder("general") }
-        let olderFrame = await frame(socket, 3)
-        XCTAssertEqual(olderFrame, #"{"id":"c4","method":"history","params":{"before":"103","limit":3,"room_id":"general"}}"#)
-        await socket.deliver(["id": "c4", "result": [
+        let olderFrame = await frame(socket, 4)
+        XCTAssertEqual(olderFrame, #"{"id":"c5","method":"history","params":{"before":"103","limit":3,"room_id":"general"}}"#)
+        await socket.deliver(["id": "c5", "result": [
             "messages": [message("101", "a"), message("102", "b"), message("103", "c")],
             "first_log_id": "101", "last_log_id": "103", "more": false, "latest_log_id": "106", "history_log_id": "101",
         ]])
@@ -548,8 +551,29 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.canLoadOlder("general"), false)
         try await session.loadOlder("general")
         let sentCount = await socket.sentLog.count
-        XCTAssertEqual(sentCount, 4, "no request past the start")
+        XCTAssertEqual(sentCount, 5, "no request past the start")
         XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["101", "102", "103", "104", "105", "106"])
+    }
+
+    func testOpeningAThreadListsNoThreadsOfIt() async throws {
+        session.start()
+        let socket = await transport(0)
+        await eventually("signed out") { session.status == .signedOut }
+        let signIn = Task { try await session.signIn(.guest(name: nil)) }
+        _ = await frames(socket, count: 2)
+        await socket.deliver(["id": "c1", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await socket.deliver(["id": "c2", "result": ["joined": [
+            ["room_id": "general", "log_id": "100", "latest_log_id": "100", "history_log_id": "100"],
+            ["room_id": "130", "log_id": "130", "parent_room_id": "general", "latest_log_id": "130", "history_log_id": "130"],
+        ]]])
+        _ = try await signIn.value
+
+        let open = Task { try await session.open("130") }
+        _ = await frame(socket, 2)
+        await socket.deliver(["id": "c3", "result": ["messages": [], "more": false, "latest_log_id": "130", "history_log_id": "130"]])
+        try await open.value
+        let sent = await socket.sentLog.count
+        XCTAssertEqual(sent, 3, "history alone")
     }
 
     func testAReconnectCatchesUpOpenedRoomsFromTheirCheckpoint() async throws {
@@ -564,6 +588,8 @@ final class ServerSessionTests: XCTestCase {
             "messages": [message("104", "d")], "first_log_id": "104", "last_log_id": "104", "more": false,
             "latest_log_id": "104", "history_log_id": "101",
         ]])
+        _ = await frame(firstSocket, 3)
+        await firstSocket.deliver(["id": "c4", "result": ["not_joined": []]])
         try await open.value
         await firstSocket.deliver(["method": "message", "params": message("107", "live")])
         await eventually("live message") { session.timeline("general").count == 2 }
@@ -573,16 +599,22 @@ final class ServerSessionTests: XCTestCase {
 
         let second = await transport(1)
         _ = await frames(second, count: 2)
-        await second.deliver(["id": "c4", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
-        await second.deliver(["id": "c5", "result": ["joined": [["room_id": "general", "log_id": "100", "latest_log_id": "109", "history_log_id": "101"]]]])
+        await second.deliver(["id": "c5", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await second.deliver(["id": "c6", "result": ["joined": [["room_id": "general", "log_id": "100", "latest_log_id": "109", "history_log_id": "101"]]]])
         let catchUp = await frame(second, 2)
-        XCTAssertEqual(catchUp, #"{"id":"c6","method":"history","params":{"after":"108","limit":200,"room_id":"general"}}"#)
-        await second.deliver(["id": "c6", "result": [
+        XCTAssertEqual(catchUp, #"{"id":"c7","method":"history","params":{"after":"108","limit":200,"room_id":"general"}}"#)
+        await second.deliver(["id": "c7", "result": [
             "messages": [message("109", "missed")], "first_log_id": "109", "last_log_id": "109", "more": false,
             "latest_log_id": "109", "history_log_id": "101",
         ]])
-        await eventually("caught up") { session.timeline("general").count == 3 }
+        let threads = await frame(second, 3)
+        XCTAssertEqual(threads, #"{"id":"c8","method":"room_list","params":{"filter":"not_joined","parent_room_id":"general"}}"#)
+        await second.deliver(["id": "c8", "result": ["not_joined": [
+            ["room_id": "108", "log_id": "108", "parent_room_id": "general", "title": "Missed", "latest_log_id": "108", "history_log_id": "108"],
+        ]]])
+        await eventually("caught up") { session.roomTree == [RoomNode(roomID: "general", threadIDs: ["108"])] }
         XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["104", "107", "109"])
+        XCTAssertEqual(session.joinedRoomIDs, ["general"])
     }
 
     func testOwnReadCursorOnlyMovesForwardAndOthersAreIgnored() async throws {
@@ -740,13 +772,15 @@ final class ServerSessionTests: XCTestCase {
             "messages": [tombstone("120"), message("130", "b")], "first_log_id": "120", "last_log_id": "130", "more": true,
             "latest_log_id": "130", "history_log_id": "100",
         ]])
+        _ = await frame(socket, 3)
+        await socket.deliver(["id": "c4", "result": ["not_joined": []]])
         try await open.value
         XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["130"])
         XCTAssertEqual(session.newLine(in: "general", after: LogID("125")!), LogID("130"), "the loaded tombstone at 120 shows nothing unread is older")
 
         let older = Task { try await session.loadOlder("general") }
-        _ = await frame(socket, 3)
-        await socket.deliver(["id": "c4", "result": [
+        _ = await frame(socket, 4)
+        await socket.deliver(["id": "c5", "result": [
             "messages": [tombstone("110")], "first_log_id": "110", "last_log_id": "110", "more": true,
             "latest_log_id": "130", "history_log_id": "100",
         ]])

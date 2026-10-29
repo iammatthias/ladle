@@ -1,8 +1,9 @@
 import Foundation
 
 /// An in-memory server that answers a session from a fixed script: the greeting, `auth`,
-/// `room_list`, `history` by room, and the user's read cursors as `activity` (§4.6). Every other
-/// request gets `{}`. It never sends anything unasked, so a seeded session stays still.
+/// `room_list`, `history` by room, and the user's read cursors as `activity` (§4.6). A room's
+/// unjoined threads are none, since the script joins every room. Every other request gets `{}`.
+/// It never sends anything unasked, so a seeded session stays still.
 public actor PreviewServer: FrameTransport {
     public struct Script: Sendable {
         public var greeting: JSONValue
@@ -13,7 +14,7 @@ public actor PreviewServer: FrameTransport {
         public var histories: [String: JSONValue]
         /// `read_message_id` per `room_id`.
         public var readCursors: [String: String]
-        /// Notices (§3.5.3) sent after `room_list`.
+        /// Notices (§3.5.3) sent after the `room_list` of joined rooms.
         public var notices: [JSONValue] = []
     }
 
@@ -38,6 +39,8 @@ public actor PreviewServer: FrameTransport {
         switch request["method"]?.stringValue {
         case "auth":
             deliver(["id": id, "result": ["you": script.you, "token": "preview"]])
+        case "room_list" where params?["parent_room_id"] != nil:
+            deliver(["id": id, "result": ["not_joined": []]])
         case "room_list":
             deliver(["id": id, "result": script.roomList])
             for (roomID, read) in script.readCursors.sorted(by: { codePointLess($0.key, $1.key) }) {
