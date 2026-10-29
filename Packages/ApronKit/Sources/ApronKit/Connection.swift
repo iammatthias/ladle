@@ -37,6 +37,8 @@ public actor Connection {
     private var reader: Task<Void, Never>?
     private var pinger: Task<Void, Never>?
     private var isClosed = false
+    /// When the server last sent a frame, `pong` included.
+    private var lastHeard = ContinuousClock.now
     /// Outgoing frames, written by one task so they reach the wire in call order.
     private let outbox: AsyncStream<Outbound>.Continuation
     private let outboxFrames: AsyncStream<Outbound>
@@ -176,7 +178,9 @@ public actor Connection {
     private func readLoop() async {
         while !Task.isCancelled {
             do {
-                handle(try await transport.receive())
+                let text = try await transport.receive()
+                lastHeard = .now
+                handle(text)
             } catch FrameTransportError.handshakeRejected(let status) {
                 finish(with: .rejected(status: status))
                 return
@@ -220,6 +224,8 @@ public actor Connection {
         restartPinger()
     }
 
+    /// Pings at the server's interval, and closes a connection that has sent nothing, not even a
+    /// `pong`, for two intervals: its peer is gone, though no close frame said so.
     private func restartPinger() {
         pinger?.cancel()
         guard let interval = pingInterval else { return }
@@ -227,6 +233,10 @@ public actor Connection {
             while !Task.isCancelled {
                 try? await Task.sleep(for: interval)
                 if Task.isCancelled { return }
+                if ContinuousClock.now - lastHeard > interval * 2 {
+                    await close()
+                    return
+                }
                 try? notify("ping")
             }
         }

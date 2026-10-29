@@ -221,8 +221,37 @@ final class ConnectionTests: XCTestCase {
         _ = try await connection.connect()
         var outgoing = transport.sent.makeAsyncIterator()
         let first = await outgoing.next()
+        await transport.deliver(raw: #"{"method":"pong"}"#)
         let second = await outgoing.next()
         XCTAssertEqual([first, second], [#"{"method":"ping"}"#, #"{"method":"ping"}"#])
+        await connection.close()
+    }
+
+    func testASilentConnectionClosesAfterTwoPingIntervals() async throws {
+        let (connection, transport) = makeConnection()
+        await transport.deliver(["method": "server", "params": ["apron": 9, "auth": ["guest"], "ping": 0.05]])
+        _ = try await connection.connect()
+        var ended = false
+        for await _ in connection.notifications {}
+        ended = true
+        XCTAssertTrue(ended)
+        let closed = await transport.closed
+        XCTAssertTrue(closed, "the socket is closed, so the session reconnects")
+    }
+
+    func testPongsKeepAConnectionOpen() async throws {
+        let (connection, transport) = makeConnection()
+        await transport.deliver(["method": "server", "params": ["apron": 9, "auth": ["guest"], "ping": 0.05]])
+        _ = try await connection.connect()
+        let answering = Task {
+            for await frame in transport.sent where frame == #"{"method":"ping"}"# {
+                await transport.deliver(raw: #"{"method":"pong"}"#)
+            }
+        }
+        try await Task.sleep(for: .milliseconds(400))
+        let closed = await transport.closed
+        XCTAssertFalse(closed)
+        answering.cancel()
         await connection.close()
     }
 
