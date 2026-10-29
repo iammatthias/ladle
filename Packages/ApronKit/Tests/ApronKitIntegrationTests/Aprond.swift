@@ -31,7 +31,8 @@ final class Aprond: @unchecked Sendable {
 
     /// Skips the test when the binary is missing, or fails it when `APRON_REQUIRE_SERVER=1`.
     /// `arguments` go after the defaults, such as `--upload.max-mb 1`. The defaults let guests post
-    /// (read-only otherwise) and offer passkeys to the origin Ladle presents for this port.
+    /// (read-only otherwise) without the five-a-minute limit every test's guests share, as they
+    /// share one address, and offer passkeys to the origin Ladle presents for this port.
     static func start(_ arguments: [String] = [], file: StaticString = #filePath, line: UInt = #line) async throws -> Aprond {
         guard FileManager.default.isExecutableFile(atPath: binary.path()) else {
             let message = "aprond not found at \(binary.path()); build apron-server-rust or set APROND"
@@ -57,7 +58,7 @@ final class Aprond: @unchecked Sendable {
         process.executableURL = copy
         process.currentDirectoryURL = directory
         process.arguments = ["--store", "memory", "--addr", "127.0.0.1:\(port)", "--email.enable", "--email.sender", "log",
-                             "--guest.posting", "--webauthn.origin", "https://127.0.0.1:\(port)",
+                             "--guest.posting", "--limit.guest-posts-per-minute", "0", "--webauthn.origin", "https://127.0.0.1:\(port)",
                              "--admin-token-file", tokenFile.path()] + arguments
         let stderr = Pipe()
         process.standardError = stderr

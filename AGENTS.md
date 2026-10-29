@@ -205,7 +205,8 @@ clone), which is only a worked example.
   starts it per test with `--store memory --email.enable --email.sender log` on a free loopback
   port, and reads email codes from stderr. The server's defaults are read-only guests and
   passkeys only for configured origins, so `Aprond` adds `--guest.posting`, `--webauthn.origin`
-  for its port, and an `--admin-token-file` (`adminToken` signs in the admin, which `/avatar`
+  for its port, `--limit.guest-posts-per-minute 0` (guests on one address share five writes a
+  minute), and an `--admin-token-file` (`adminToken` signs in the admin, which `/avatar`
   needs). A thread goes when its last member leaves. The binary defaults to the sibling
   `apron-server-rust/target/release/aprond`; `APROND` overrides it.
 - `Config/Domains.example.xcconfig`: template for the gitignored `Config/Domains.xcconfig`.
