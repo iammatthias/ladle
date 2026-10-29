@@ -6,7 +6,7 @@ import SwiftUI
 /// servers, then a server's rooms, then a room. Regular (the web at 960 px and wider) is a split
 /// view: the server rail and the rooms in the sidebar, the room beside them, and its members in
 /// a column of their own. The open server and room survive a relaunch (`@SceneStorage`), and
-/// `apron:` links open them.
+/// Apron links open them (`ApronLink`), with the message or member a link names.
 struct RootView: View {
     let store: SessionStore
     var loadError: String?
@@ -14,6 +14,8 @@ struct RootView: View {
     @SceneStorage("room") private var roomID: String?
     @State private var path: [Route] = []
     @State private var connecting: ConnectRequest?
+    /// A link's message or member, for the room it opens to show.
+    @State private var place: ApronLink?
     @State private var restored = false
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
@@ -31,14 +33,14 @@ struct RootView: View {
         .apronStyle()
         .sheet(item: $connecting) { request in
             ConnectView(store: store, record: request.record, prefill: request.prefill) { id in
-                if request.record == nil { open(id, room: request.room) }
+                if request.record == nil { show(id, request.place) }
             }
         }
         .environment(\.requestSignIn, SignInAction { connecting = ConnectRequest(record: $0) })
-        .onOpenURL(perform: handle)
+        .onOpenURL { url in ApronLink(url).map(open) }
         .environment(\.openURL, OpenURLAction { url in
-            guard DeepLink(url) != nil else { return .systemAction }
-            handle(url)
+            guard let link = ApronLink(url) else { return .systemAction }
+            open(link)
             return .handled
         })
         .onChange(of: scenePhase) { _, phase in
@@ -66,11 +68,13 @@ struct RootView: View {
                         if let session = store.session(for: id) {
                             RoomListView(session: session, open: { path.append(.room(id, $0)) },
                                          onSignIn: { connecting = ConnectRequest(record: session.record) })
+                                .resolvingLinks(from: session)
                                 .onAppear { serverID = id.uuidString; roomID = nil }
                         }
                     case .room(let id, let room):
                         if let session = store.session(for: id) {
-                            TimelineView(session: session, roomID: room)
+                            TimelineView(session: session, roomID: room, place: $place)
+                                .resolvingLinks(from: session)
                                 .environment(\.openRoom, OpenRoomAction { path.append(.room(id, $0)) })
                                 .onAppear { serverID = id.uuidString; roomID = room }
                         }
@@ -82,10 +86,8 @@ struct RootView: View {
     // MARK: iPad
 
     private var split: some View {
-        SplitLayout(store: store, serverID: $serverID, roomID: $roomID, connecting: $connecting)
+        SplitLayout(store: store, serverID: $serverID, roomID: $roomID, place: $place, connecting: $connecting)
     }
-
-    private var selectedServer: UUID? { SplitLayout.server(serverID, in: store) }
 
     /// Rebuilds the iPhone path from the saved selection once the servers have loaded.
     private func restore() {
@@ -94,24 +96,25 @@ struct RootView: View {
         path = [.server(id)] + (roomID.map { [.room(id, $0)] } ?? [])
     }
 
-    // MARK: Links (§A.4)
+    // MARK: Links (link.apron.chat SPEC)
 
-    private func handle(_ url: URL) {
-        guard let link = DeepLink(url) else { return }
-        guard let server = link.server else {
-            if let room = link.room, let id = selectedServer { open(id, room: room) }
-            return
-        }
+    /// Opens a link's place on a saved server, or offers to add the server, which waits for
+    /// you. A relative link here has no server that sent it (`resolvingLinks` resolves those in
+    /// a server's own content), so it opens nothing.
+    private func open(_ link: ApronLink) {
+        guard let server = link.server else { return }
         if let record = store.records.first(where: { $0.url == server }) {
-            open(record.id, room: link.room)
+            show(record.id, link)
         } else {
-            connecting = ConnectRequest(prefill: TokenPayload(token: link.token ?? "", server: server), room: link.room)
+            connecting = ConnectRequest(prefill: TokenPayload(token: link.token ?? "", server: server), place: link)
         }
     }
 
-    private func open(_ id: UUID, room: String?) {
+    private func show(_ id: UUID, _ link: ApronLink?) {
+        let room = link?.room
         serverID = id.uuidString
         roomID = room
+        place = room == nil ? nil : link
         path = [.server(id)] + (room.map { [.room(id, $0)] } ?? [])
     }
 
@@ -133,30 +136,23 @@ struct RootView: View {
     }
 }
 
-/// An Apron link (§A.4): `apron:?server=…&room=…`, or `https://link.apron.chat/#…`. A token
-/// in an `apron:` link is ignored, since any app can send one; one in an `https` link that you
-/// tapped prefills the sign-in, which still waits for you.
-struct DeepLink {
-    var server: URL?
-    var room: String?
-    var token: String?
+extension View {
+    /// Resolves a relative link in this server's content against the server (§5), not the one
+    /// on screen, and hands every link up as its absolute web form.
+    func resolvingLinks(from session: ServerSession) -> some View {
+        modifier(ResolvingLinks(server: session.record.url))
+    }
+}
 
-    init?(_ url: URL) {
-        let text = url.absoluteString
-        let query: String
-        if text.hasPrefix("apron:?") {
-            query = String(text.dropFirst("apron:?".count))
-        } else if url.scheme == "https", url.host() == "link.apron.chat", let fragment = url.fragment(percentEncoded: true) {
-            query = fragment
-        } else {
-            return nil
-        }
-        var components = URLComponents()
-        components.percentEncodedQuery = query.replacingOccurrences(of: "+", with: "%20")
-        let items = components.queryItems ?? []
-        server = items.first { $0.name == "server" }?.value.flatMap(URL.init(string:))
-        room = items.first { $0.name == "room" }?.value
-        token = text.hasPrefix("apron:") ? nil : items.first { $0.name == "token" }?.value
+private struct ResolvingLinks: ViewModifier {
+    let server: URL
+    @Environment(\.openURL) private var openURL
+
+    func body(content: Content) -> some View {
+        content.environment(\.openURL, OpenURLAction { url in
+            openURL(ApronLink(url).flatMap { $0.resolved(against: server).webURL } ?? url)
+            return .handled
+        })
     }
 }
 
@@ -166,6 +162,7 @@ struct SplitLayout: View {
     let store: SessionStore
     @Binding var serverID: String?
     @Binding var roomID: String?
+    @Binding var place: ApronLink?
     @Binding var connecting: ConnectRequest?
 
     var body: some View {
@@ -178,6 +175,7 @@ struct SplitLayout: View {
                     NavigationStack {
                         RoomListView(session: session, selected: roomID, open: { roomID = $0 },
                                      onSignIn: { connecting = ConnectRequest(record: session.record) })
+                            .resolvingLinks(from: session)
                     }
                 } else {
                     NoServers(connecting: $connecting).background(Palette.chrome)
@@ -189,7 +187,8 @@ struct SplitLayout: View {
         } detail: {
             NavigationStack {
                 if let session, let roomID {
-                    TimelineView(session: session, roomID: roomID, showingMembers: true)
+                    TimelineView(session: session, roomID: roomID, place: $place, showingMembers: true)
+                        .resolvingLinks(from: session)
                         .id(roomID)
                         .environment(\.openRoom, OpenRoomAction { self.roomID = $0 })
                 } else {

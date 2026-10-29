@@ -212,7 +212,8 @@ struct HostYourOwnLink: View {
 struct ConnectRequest: Identifiable {
     var record: ServerRecord?
     var prefill: TokenPayload?
-    var room: String?
+    /// The link that asked for this server, opened once you sign in.
+    var place: ApronLink?
     let id = UUID()
 }
 
