@@ -99,6 +99,11 @@ clone), which is only a worked example.
       it drops the snapshots whose `log_id` is below it, with their reactions, and refuses late
       ones. Each opened room keeps a checkpoint that live records advance; after a reconnect it
       pages forward from `checkpoint + 1`.
+    - Threads: a thread's record is in its own log (§4.3.1), not its room's, so a member of the
+      room who has not joined it learns of it from `room_update` `updated` while connected, and
+      otherwise only from `room_list {parent_room_id, filter: not_joined}` (§4.2.1). `open` and
+      each reconnect's catch-up send that listing for every opened room, as apron-web lists the
+      active room's threads; threads of a room not yet opened show only once it is.
     - `timeline` leaves deleted messages out, so the rows, day pills, grouping, the New line,
       unread and mention counts, room previews and thread cards never see one. The store and
       the projection keep the tombstones for the replay rule; a reply quoting one reads
