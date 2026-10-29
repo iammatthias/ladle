@@ -191,14 +191,15 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertTrue(session.isGuest)
         XCTAssertFalse(session.mayWrite)
 
+        let account = queueTransport(capabilities: ["rooms", "ext:permissions"])
         let signIn = Task { try await session.signIn(.token("t9")) }
-        _ = await frames(readOnly, count: 4)
-        await readOnly.deliver(["id": "c3", "result": ["you": ["user_id": "ada", "name": "Ada", "ext": ["permissions": [:]]]]])
-        await readOnly.deliver(["id": "c4", "result": ["joined": []]])
+        _ = await frames(account, count: 2)
+        await account.deliver(["id": "c3", "result": ["you": ["user_id": "ada", "name": "Ada", "ext": ["permissions": [:]]]]])
+        await account.deliver(["id": "c4", "result": ["joined": []]])
         _ = try await signIn.value
         XCTAssertTrue(session.mayWrite, "an account the server lets write")
 
-        await readOnly.deliver(["method": "user", "params": ["you": ["user_id": "ada", "ext": ["permissions": ["write": false]]]]])
+        await account.deliver(["method": "user", "params": ["you": ["user_id": "ada", "ext": ["permissions": ["write": false]]]]])
         await eventually("write taken away") { !session.mayWrite }
         XCTAssertFalse(session.isGuest, "write: false holds for any account, not only guests")
     }
@@ -217,10 +218,11 @@ final class ServerSessionTests: XCTestCase {
         try await signInAsGuest(on: legacy)
         XCTAssertFalse(session.mayWrite)
 
+        let account = queueTransport(capabilities: ["rooms", "ext:settings"], ext: ["settings": ["guest_posting": false]])
         let signIn = Task { try await session.signIn(.token("t9")) }
-        _ = await frames(legacy, count: 4)
-        await legacy.deliver(["id": "c3", "result": ["you": ["user_id": "ada", "name": "Ada", "roles": []]]])
-        await legacy.deliver(["id": "c4", "result": ["joined": []]])
+        _ = await frames(account, count: 2)
+        await account.deliver(["id": "c3", "result": ["you": ["user_id": "ada", "name": "Ada", "roles": []]]])
+        await account.deliver(["id": "c4", "result": ["joined": []]])
         _ = try await signIn.value
         XCTAssertTrue(session.mayWrite, "the old setting held only for guests")
     }
@@ -317,6 +319,40 @@ final class ServerSessionTests: XCTestCase {
         }
         XCTAssertEqual(session.pendingEmail, "ada@example.com")
         XCTAssertEqual(session.status, .signedOut)
+    }
+
+    func testSigningInAgainOpensANewConnectionWithoutResumingTheOldIdentity() async throws {
+        session.start()
+        let guest = await transport(0)
+        try await signInAsGuest(on: guest)
+        let signIn = Task { try await session.signIn(.token("device")) }
+        let fresh = await transport(1)
+        let sent = await frames(fresh, count: 2)
+        XCTAssertEqual(sent.first, #"{"id":"c3","method":"auth","params":{"agent":"ladle-ios/test","scheme":"token","token":"device"}}"#)
+        await fresh.deliver(["id": "c3", "result": ["you": ["user_id": "grace", "name": "Grace"]]])
+        await fresh.deliver(["id": "c4", "result": ["joined": []]])
+        _ = try await signIn.value
+        XCTAssertEqual(session.you?.userID, "grace")
+        XCTAssertEqual(try tokens.token(for: record.id), "device")
+        let guestFrames = await guest.sentLog.count
+        XCTAssertEqual(guestFrames, 2)
+    }
+
+    func testSigningInAfterTheServerRevokedTheTokenConnectsAgain() async throws {
+        session.start()
+        let first = await transport(0)
+        try await signInAsGuest(on: first)
+        await first.close(code: 1008, reason: "Bot token replaced; sign in with the new one")
+        await eventually("stopped") { session.status == .stopped(.signedOut) }
+        let signIn = Task { try await session.signIn(.token("new")) }
+        let second = await transport(1)
+        let sent = await frames(second, count: 1)
+        XCTAssertEqual(sent, [#"{"id":"c3","method":"auth","params":{"agent":"ladle-ios/test","scheme":"token","token":"new"}}"#])
+        await second.deliver(["id": "c3", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await second.deliver(["id": "c4", "result": ["joined": []]])
+        _ = try await signIn.value
+        XCTAssertEqual(session.status, .signedIn)
+        XCTAssertNil(session.signInNeeded)
     }
 
     func testADeniedResumeClearsTheTokenAndAsksForSignIn() async throws {

@@ -174,6 +174,7 @@ public final class ServerSession {
     /// Connects, and keeps reconnecting until `stop()`. A no-op while running.
     public func start() {
         guard runTask == nil else { return }
+        status = .connecting
         runTask = Task { await run() }
     }
 
@@ -218,7 +219,9 @@ public final class ServerSession {
                 unavailableMessage = nil
                 self.connection = connection
                 let reader = Task { for await notification in connection.notifications { handle(notification) } }
-                if let token = try? tokens.token(for: record.id) {
+                let resumes = resumesSavedToken
+                resumesSavedToken = true
+                if resumes, let token = try? tokens.token(for: record.id) {
                     await resume(with: token, on: connection)
                 } else {
                     status = .signedOut
@@ -297,12 +300,33 @@ public final class ServerSession {
 
     // MARK: Sign-in
 
-    /// Sends one `auth`. A sign-in pipelines `room_list` right behind it (§3.2.2).
+    /// Sends one `auth`. A sign-in pipelines `room_list` right behind it (§3.2.2). It goes on a
+    /// connection with no identity yet: a signed-in one is replaced first, since servers refuse a
+    /// second `auth` ("Identity switching requires reconnect"), and a stopped session connects
+    /// again. Neither presents the saved token, which stays saved until this sign-in succeeds.
     @discardableResult
     public func signIn(_ method: SignIn) async throws -> SignInOutcome {
+        let stopped = if case .stopped = status { true } else { false }
+        if status == .signedIn || stopped || connection == nil {
+            await stop()
+            resumesSavedToken = false
+            start()
+            let deadline = ContinuousClock.now + .seconds(20)
+            while status != .signedOut {
+                switch status {
+                case .stopped, .reconnecting: throw Failure.notConnected
+                default: break
+                }
+                guard ContinuousClock.now < deadline else { throw Failure.notConnected }
+                try await Task.sleep(for: .milliseconds(10))
+            }
+        }
         guard let connection else { throw Failure.notConnected }
         return try await authenticate(method, on: connection)
     }
+
+    /// False for the one connection a `signIn` opens, which must not resume the saved token.
+    @ObservationIgnored private var resumesSavedToken = true
 
     private func resume(with token: String, on connection: Connection) async {
         do {
