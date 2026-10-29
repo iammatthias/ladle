@@ -1,0 +1,116 @@
+{
+ "method": "server",
+ "params": {
+  "apron": 9,
+  "agent": "apron-cloudflare-demo/9",
+  "capabilities": [
+   "history",
+   "edit",
+   "rooms",
+   "reactions",
+   "command",
+   "activity",
+   "embed:upload",
+   "status",
+   "ext",
+   "ext:settings",
+   "ext:limits",
+   "ext:media",
+   "ext:permissions",
+   "ext:emoji"
+  ],
+  "auth": [
+   "webauthn",
+   "token",
+   "guest"
+  ],
+  "signup": [
+   "webauthn",
+   "token"
+  ],
+  "welcome": "Welcome to the [Apron](https://apron.chat) demo server. Messages expire after a week.\n\nGuests are read-only and have limited quota, create an account with a passkey to post.\n\nThis is a public demo with restrictions to prevent abuse. Please don't abuse. :)",
+  "title": "Apron Demo",
+  "description": "The public demo of [Apron](https://github.com/shazow/apron), an open chat protocol.",
+  "avatar": "https://web.apron.chat/icon-512.png",
+  "ping": 45,
+  "push": {
+   "webpush": {
+    "key": "BF-ztm22-yk6-AvyxkBGWzxaiA_CnO1c9vDAe1-RMg0WJ_EuNgmPhxxTyUq6J0nhaFxNxmcFsAc6KVfWLkdDl0M"
+   },
+   "wake": [
+    "mentions",
+    "replies",
+    "private"
+   ]
+  },
+  "status": [
+   "dnd",
+   "invisible"
+  ],
+  "ext": {
+   "settings": {
+    "read_cursors": true,
+    "private_rooms": 20
+   },
+   "media": {
+    "origins": [
+     "https://media.apron.chat"
+    ],
+    "upload": {
+     "image/png": {
+      "max_bytes": 5242880
+     },
+     "image/jpeg": {
+      "max_bytes": 5242880
+     },
+     "image/gif": {
+      "max_bytes": 5242880
+     },
+     "image/webp": {
+      "max_bytes": 5242880
+     },
+     "audio/webm": {
+      "max_bytes": 5242880
+     },
+     "audio/ogg": {
+      "max_bytes": 5242880
+     },
+     "audio/mp4": {
+      "max_bytes": 5242880
+     }
+    },
+    "avatar": {
+     "image/png": {
+      "max_bytes": 262144
+     },
+     "image/jpeg": {
+      "max_bytes": 262144
+     },
+     "image/gif": {
+      "max_bytes": 262144
+     },
+     "image/webp": {
+      "max_bytes": 262144
+     }
+    },
+    "emoji": {
+     "image/png": {
+      "max_bytes": 262144
+     },
+     "image/jpeg": {
+      "max_bytes": 262144
+     },
+     "image/gif": {
+      "max_bytes": 262144
+     },
+     "image/webp": {
+      "max_bytes": 262144
+     }
+    }
+   },
+   "emoji": {
+    "catalog_url": "https://media.apron.chat/e/c/9a14c45fbb303b8da5df0558a367dc98b1f0a4ebd9a10644e9442bd1a6418c46.json"
+   }
+  }
+ }
+}

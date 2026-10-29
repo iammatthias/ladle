@@ -34,6 +34,18 @@ clone), which is only a worked example.
     U+202A–U+202E (stored and sent as written); a name or preview set among the app's own
     words is isolated (U+2068…U+2069); a message written against the app's direction starts
     at its own side (`written(in:)` in the app).
+  - `CustomEmoji`, `EmojiCatalog`, `EmojiKeys` (EXTENSIONS.md `ext:emoji`): `ServerInfo.emojiCatalogURL`
+    is `ext.emoji.catalog_url` under the capability, only `https:`, loopback `http:` or
+    `data:application/json`. `EmojiCatalog` decodes entry by entry: a bad key, or a `url` that
+    `MediaPolicy.allowsAvatar` refuses, drops the entry, a bad field drops alone; `offered`
+    leaves out `hidden` ones, by category then key (the catalog's order does not survive
+    `JSONValue`), and `search` ranks name matches before `alt` and tag matches. `EmojiKeys`
+    scans text left to right as the spec says; `MessageText` marks each key the catalog has
+    outside code and links with `CustomEmojiKey`. `ServerSession.loadEmojiCatalog()` fetches
+    the current URL's catalog once through `Environment.fetchEmojiCatalog`
+    (`EmojiCatalogFetch.live`: no cookies, credentials or referrer, at most 4 MB), keeps it by
+    URL, and never retries a failed URL; `emojiCatalog` is the current one. The recorded demo
+    `server` frame and catalog are in `Tests/ApronKitTests/Fixtures/ext-emoji/`.
   - `ReactionEntry`: a `reactions` entry (§4.7) is one emoji sequence or a key, such as a custom
     emoji's `:name:`. Entries compare without U+FE0F (`key`): a set, the summaries and
     `toggleReaction` treat ❤ and ❤️ as one, and a summary shows the fully-qualified spelling.
