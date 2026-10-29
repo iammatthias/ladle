@@ -6,16 +6,31 @@ public protocol FrameTransport: Sendable {
     /// Opens the transport. The first frame the server sends must then be readable with `receive`.
     func connect() async throws
     func send(_ text: String) async throws
-    /// The next text frame. Throws `FrameTransportError.closed` once the peer closed.
+    /// The next text frame. Throws `FrameTransportError.closedByServer` once the peer sent a
+    /// close frame, and `FrameTransportError.closed` once the transport closed otherwise.
     func receive() async throws -> String
     func close() async
 }
 
 public enum FrameTransportError: Error, Equatable, Sendable {
     case closed
+    /// The server closed the WebSocket with this close frame.
+    case closedByServer(CloseFrame)
     case binaryFrame
     /// The server answered the upgrade request with this HTTP status instead of 101.
     case handshakeRejected(status: Int)
+}
+
+/// The code and reason of a WebSocket close frame (RFC 6455 §7.4). Servers say with them why
+/// they closed a connection, such as 1008 "Device token replaced; sign in with the new one".
+public struct CloseFrame: Hashable, Sendable {
+    public var code: Int
+    public var reason: String
+
+    public init(code: Int, reason: String) {
+        self.code = code
+        self.reason = reason
+    }
 }
 
 /// A WebSocket over URLSession. `origin` is sent as the `Origin` header on the upgrade request:
@@ -53,7 +68,10 @@ public final class WebSocketTransport: FrameTransport {
             if let response = task.response as? HTTPURLResponse, response.statusCode != 101 {
                 throw FrameTransportError.handshakeRejected(status: response.statusCode)
             }
-            if task.closeCode != .invalid { throw FrameTransportError.closed }
+            if task.closeCode != .invalid {
+                let reason = task.closeReason.flatMap { String(data: $0, encoding: .utf8) } ?? ""
+                throw FrameTransportError.closedByServer(CloseFrame(code: task.closeCode.rawValue, reason: reason))
+            }
             throw error
         }
     }

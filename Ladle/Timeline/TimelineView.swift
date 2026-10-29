@@ -606,7 +606,7 @@ struct ConnectionState {
             (symbol, isProblem, canRetry, words) = ("wifi.exclamationmark", true, true, { "Can't reach \($0.url.host() ?? $0.label). Retrying in \(seconds) s" })
         case .offline:
             (symbol, isProblem, canRetry, words) = ("wifi.slash", true, true, { _ in "Not connected" })
-        case .signedOut:
+        case .signedOut, .stopped(.signedOut):
             (symbol, isProblem, canRetry, words) = ("person.crop.circle.badge.exclamationmark", true, false, { "Signed out of \($0.label)" })
             detail = "Sign in from the room list to send."
         case .stopped(.denied(let message)):

@@ -138,7 +138,7 @@ struct RoomListView: View {
             })
         }
         switch session.status {
-        case .signedOut where session.server != nil:
+        case .signedOut where session.server != nil, .stopped(.signedOut) where session.server != nil:
             return AnyView(ActionBanner(symbol: "person.crop.circle.badge.exclamationmark", title: "Sign in to \(session.serverName)",
                                         detail: session.signInNeeded) {
                 Button("Sign In", action: onSignIn).buttonStyle(PrimaryButtonStyle())

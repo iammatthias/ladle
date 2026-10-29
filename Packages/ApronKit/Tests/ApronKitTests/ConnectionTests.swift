@@ -35,11 +35,14 @@ actor FakeTransport: FrameTransport {
     func receive() async throws -> String {
         if let rejection { throw FrameTransportError.handshakeRejected(status: rejection) }
         if !inbox.isEmpty { return inbox.removeFirst() }
-        if inboxClosed { throw FrameTransportError.closed }
+        if inboxClosed { throw closedError }
         let next = await withCheckedContinuation { reader = $0 }
-        guard let next else { throw FrameTransportError.closed }
+        guard let next else { throw closedError }
         return next
     }
+
+    private var closeFrame: CloseFrame?
+    private var closedError: FrameTransportError { closeFrame.map(FrameTransportError.closedByServer) ?? .closed }
 
     func close() async {
         closed = true
@@ -51,6 +54,12 @@ actor FakeTransport: FrameTransport {
 
     func deliver(raw text: String) {
         if let reader { self.reader = nil; reader.resume(returning: text) } else { inbox.append(text) }
+    }
+
+    /// The server closes the socket with a close frame.
+    func close(code: Int, reason: String) {
+        closeFrame = CloseFrame(code: code, reason: reason)
+        dropFromServer()
     }
 
     /// The server closes the socket.

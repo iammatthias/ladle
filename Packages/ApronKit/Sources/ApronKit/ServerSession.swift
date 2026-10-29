@@ -27,6 +27,9 @@ public final class ServerSession {
         case denied(String)
         /// The WebSocket upgrade was refused, such as 403 for an `Origin` the server rejects.
         case rejected(status: Int)
+        /// The server closed the connection until the user signs in (`CloseAdvice`): it revoked
+        /// the credentials, which `signInNeeded` explains, or the connection never signed in.
+        case signedOut
     }
 
     public enum Failure: Error, Hashable, Sendable {
@@ -252,6 +255,22 @@ public final class ServerSession {
                     break
                 }
                 minimumDelay = max(minimumDelay, error.retryAfter ?? .zero)
+            }
+            if let frame = await connection.closeFrame {
+                switch CloseAdvice(frame) {
+                case .reconnect:
+                    break
+                case .backOff:
+                    minimumDelay = max(minimumDelay, CloseAdvice.backOffDelay)
+                case .awaitSignIn:
+                    status = .stopped(.signedOut)
+                case .credentialsRevoked(let reason):
+                    try? tokens.setToken(nil, for: record.id)
+                    setAccount(nil)
+                    signInNeeded = reason
+                    status = .stopped(.signedOut)
+                }
+                if status == .stopped(.signedOut) { break }
             }
 
             attempt = stayedUp ? 1 : attempt + 1
