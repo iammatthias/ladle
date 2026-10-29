@@ -23,6 +23,8 @@ struct ConnectView: View {
     @State private var token = ""
     @State private var email = ""
     @State private var code = ""
+    /// The name of the account a sign-up invite creates.
+    @State private var accountName = ""
     @State private var scanning = false
     /// The token a scan, paste or link filled in, while the field still holds it.
     @State private var receivedToken: String?
@@ -163,7 +165,11 @@ struct ConnectView: View {
                 } else if record != nil, tokenReceived {
                     Label("Token received", systemImage: "checkmark.circle.fill").foregroundStyle(Palette.ok)
                 }
-                Text("Signed in elsewhere? In that app, send /invite-device and a name, such as /invite-device phone, then paste the token here or scan its QR code. A server's admin can also give you one.")
+                if isSignUpInvite {
+                    Text("This invitation creates an account. Choose the name others see, or leave it empty and the server picks one.")
+                } else {
+                    Text("Signed in elsewhere? In that app, send /invite-device and a name, such as /invite-device phone, then paste the token here or scan its QR code. A server's admin can also give you one.")
+                }
                 HStack(spacing: Tokens.Space.s2) {
                     PasteButton(payloadType: String.self) { strings in if let first = strings.first { accept(first) } }
                         .labelStyle(.titleAndIcon)
@@ -173,6 +179,13 @@ struct ConnectView: View {
                             .buttonStyle(GhostButtonStyle(tone: Palette.accent))
                     }
                 }
+            }
+            if isSignUpInvite {
+                field("Your name") {
+                    TextField("", text: $accountName, prompt: Text("How others see you").foregroundStyle(Palette.inkMuted))
+                        .apText(.field)
+                        .textContentType(.name)
+                } hint: { EmptyView() }
             }
         case .email:
             if let pending = (session ?? existing)?.pendingEmail {
@@ -292,9 +305,13 @@ struct ConnectView: View {
 
     private var tokenReceived: Bool { method == .token && receivedToken == token }
 
+    /// An `apron_join_` token: it creates an account, named as the user asks.
+    private var isSignUpInvite: Bool { TokenPayload(parsing: token).map { SignIn.isSignUpInvite($0.token) } ?? false }
+
     private var submitLabel: String {
         switch method {
         case .email where (session ?? existing)?.pendingEmail == nil: "Send Code"
+        case .token where isSignUpInvite: "Create Account"
         default: record == nil ? "Connect" : "Sign In"
         }
     }
@@ -383,7 +400,8 @@ struct ConnectView: View {
                 switch method {
                 case .token:
                     guard let payload = TokenPayload(parsing: token) else { return }
-                    outcome = try await session.signIn(.token(payload.token))
+                    outcome = try await session.signIn(SignIn.isSignUpInvite(payload.token)
+                        ? .signUp(invite: payload.token, name: accountName) : .token(payload.token))
                 case .email:
                     if session.pendingEmail == nil {
                         outcome = try await session.signIn(.emailProposal(address: email.trimmingCharacters(in: .whitespaces)))

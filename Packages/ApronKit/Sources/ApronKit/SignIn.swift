@@ -6,13 +6,16 @@ import Foundation
 public enum SignIn: Hashable, Sendable {
     /// A bearer token from another client, such as one `/invite-bot` issued (§3.2.1).
     case token(String)
+    /// A sign-up invite (`/invite` on Cloudflare's demo, an `apron_join_` token): it creates an
+    /// account named `name`, and the result carries that account's own token, which is saved.
+    case signUp(invite: String, name: String)
     case guest(name: String?)
     case emailProposal(address: String)
     case emailCode(String)
 
     public var scheme: String {
         switch self {
-        case .token: "token"
+        case .token, .signUp: "token"
         case .guest: "guest"
         case .emailProposal, .emailCode: "email"
         }
@@ -29,6 +32,10 @@ public enum SignIn: Hashable, Sendable {
         var params: [String: JSONValue] = ["scheme": .string(scheme), "agent": .string(agent)]
         switch self {
         case .token(let token): params["token"] = .string(token)
+        case .signUp(let invite, let name):
+            params["token"] = .string(invite)
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !trimmed.isEmpty { params["name"] = .string(trimmed) }
         case .guest(let name): if let name, !name.isEmpty { params["name"] = .string(name) }
         case .emailProposal(let address):
             params["email"] = .string(address)
@@ -37,6 +44,11 @@ public enum SignIn: Hashable, Sendable {
         }
         return .object(params)
     }
+}
+
+extension SignIn {
+    /// Whether a token is a sign-up invite, which creates an account rather than signing in to one.
+    public static func isSignUpInvite(_ token: String) -> Bool { token.hasPrefix("apron_join_") }
 }
 
 public enum SignInOutcome: Hashable, Sendable {

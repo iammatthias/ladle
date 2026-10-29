@@ -37,7 +37,10 @@ clone), which is only a worked example.
   - `ServerSession`: `@MainActor @Observable`, one per `ServerRecord`. Connection lifecycle,
     sign-in, the stores, and every chat operation. Its `Environment` is the test seam
     (transport factory, sleep, jitter, request IDs, proposal `state`, page size).
-    - Sign-in is `SignIn`: `.token`, `.guest`, `.emailProposal`, `.emailCode`. A sign-in sends
+    - Sign-in is `SignIn`: `.token`, `.signUp`, `.guest`, `.emailProposal`, `.emailCode`.
+      `.signUp` is scheme `token` with a sign-up invite (`apron_join_`, Cloudflare's `/invite`)
+      and the new account's `name`; its result carries the account's own `apron_invite_`
+      token, which is saved in place of the invite. A sign-in sends
       `auth` with `agent` and pipelines `room_list {filter: joined, members: true}` behind it.
       A token in any result replaces the saved one; a `.token` sign-in without one keeps the
       presented token; a guest result without one clears it. The email code goes on the
