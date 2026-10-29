@@ -2,8 +2,8 @@ import Foundation
 
 /// A reproducible two-server world for previews and design screenshots: rooms and threads, unread
 /// rooms, replies, reactions, an edit, a deleted message, long and short messages, and presence.
-/// Home is signed in with a token; the demo greets as Cloudflare's demo does (read-only guests,
-/// images and audio only) and is signed in as a guest.
+/// Home is signed in with a token; the demo greets as Cloudflare's demo does (images and audio
+/// only) and is signed in as a guest it lets only read.
 /// Every session is a real `ServerSession` driven by a `PreviewServer`, so the views read the
 /// same stores they read in the app.
 public enum PreviewFixtures {
@@ -73,7 +73,7 @@ public enum PreviewFixtures {
             "capabilities": ["history", "edit", "rooms", "reactions", "command", "activity", "embed:upload", "status", "ext",
                              "ext:settings", "ext:limits", "ext:media", "ext:permissions"],
             "ext": [
-                "settings": ["guest_posting": false, "read_cursors": true, "add_members": true],
+                "settings": ["read_cursors": true, "private_rooms": 20],
                 "media": [
                     "origins": ["https://media.apron.example"],
                     "upload": limits(images + ["audio/webm", "audio/ogg", "audio/mp4"], 5_242_880),
@@ -290,7 +290,7 @@ public enum PreviewFixtures {
 
     private static let demo = PreviewServer.Script(
         greeting: cloudflareGreeting,
-        you: ["user_id": "guest_7", "name": "Guest 7", "status": "online"],
+        you: ["user_id": "guest_7", "name": "Guest 7", "status": "online", "ext": ["permissions": ["write": false]]],
         roomList: [
             "joined": [
                 room("lobby", "lobby", members: ["guest_7", "host", "wren"]),

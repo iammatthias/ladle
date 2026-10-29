@@ -46,10 +46,14 @@ clone), which is only a worked example.
       A token in any result replaces the saved one; a `.token` sign-in without one keeps the
       presented token; a guest result without one clears it. The email code goes on the
       connection that proposed (§4.11.2); `pendingEmail` is cleared on every disconnect.
-    - `isReadOnlyGuest`: signed in with scheme `guest` on a server whose `ext.settings` says
-      `guest_posting: false` (EXT.md §3.1). The timeline then shows a sign-in prompt in place of
-      the composer, and react, reply and New Thread are off with the reason.
-    - `permissions` is `you.ext.permissions` under capability `ext:permissions` (EXT.md §7).
+    - `mayWrite`: false with `permissions.write == false` (EXTENSIONS.md `ext:permissions`), or
+      for a guest (scheme `guest`) on a server from before EXTENSIONS.md whose `ext.settings`
+      says `guest_posting: false`. The timeline then shows a sign-in prompt in place of the
+      composer, and react, reply, edit, delete, move, join, leave and New Thread are off with
+      the reason.
+    - `permissions` is `Permissions`, `you.ext.permissions` under capability `ext:permissions`
+      (EXTENSIONS.md): `write`, `add_members` and `move_any`, each defaulting when absent or not
+      a boolean, and all of them when `permissions` is not an object.
       `edit` and `move` share one save that sends the message's `body`, `reply_to` and `ext` as stored (§4.4 replaces client fields); `move` adds the new `room_id`;
       `mayMove` allows your own messages, and anyone's with `move_any`. The message menu offers
       Move To the room's threads, or out of a thread to its room and that room's other threads.

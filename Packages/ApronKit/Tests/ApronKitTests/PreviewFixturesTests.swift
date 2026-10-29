@@ -57,8 +57,8 @@ final class PreviewFixturesTests: XCTestCase {
             }
         }, ["video with poster", "audio with cover"])
         XCTAssertEqual(demo.unreadCount(in: "lobby"), 3)
-        XCTAssertTrue(demo.isReadOnlyGuest, "a guest on a server whose guests only read")
-        XCTAssertFalse(home.isReadOnlyGuest)
+        XCTAssertFalse(demo.mayWrite, "a guest the demo lets only read")
+        XCTAssertTrue(home.mayWrite)
         XCTAssertEqual(UploadOffer(demo.mediaLimits?.upload).summary, "This server takes images and audio only.")
         XCTAssertEqual(home.users.user("chiara")?["status"]?.stringValue, "dnd")
         XCTAssertEqual(["ada", "chiara", "dev", "eunji", "sam"].map { home.roles(of: UserObject(["user_id": .string($0)])!) },

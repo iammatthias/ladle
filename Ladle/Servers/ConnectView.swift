@@ -338,7 +338,7 @@ struct ConnectView: View {
             label = record.label
             origin = record.origin
             if let scheme = record.account?.scheme, let saved = Method(rawValue: scheme.capitalized),
-               saved != .guest || existing?.isReadOnlyGuest == false {
+               saved != .guest || existing?.mayWrite == true {
                 method = saved
             }
         }
