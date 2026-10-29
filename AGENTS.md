@@ -5,8 +5,9 @@ client. Single-user: one identity per server, with several servers. Swift 6, Swi
 protocol core behind the protocol's client conformance fixtures. Phase 2 adds the session layer
 (`ServerSession`, `SessionStore`) and a thin SwiftUI client over it.
 
-The spec is `PROTOCOL.md` in the protocol repository, checked out read-only at
-`~/Developer/forks/apron-server-go/testdata/apron`. Implement to the spec and
+The spec is `PROTOCOL.md` and `EXTENSIONS.md` in the protocol repository, cloned read-only at
+`~/Developer/forks/apron-server-go/testdata/apron`, at the commit `scripts/SPEC` pins (read it
+with `git show <pin>:PROTOCOL.md`; the clone's checkout may be older). Implement to the spec and
 its fixtures, not to the TypeScript reference client (`.apron-web/src/lib/protocol/` in the same
 clone), which is only a worked example.
 
@@ -164,8 +165,9 @@ clone), which is only a worked example.
   port, and reads email codes from stderr. The binary defaults to the sibling
   `apron-server-rust/target/release/aprond`; `APROND` overrides it.
 - `Config/Domains.example.xcconfig`: template for the gitignored `Config/Domains.xcconfig`.
-- `scripts/sync-fixtures.sh`: copies the protocol's replay fixtures into the package's test
-  resources; `--check` fails on drift.
+- `scripts/sync-fixtures.sh`: copies the protocol's replay fixtures at the `scripts/SPEC` commit
+  into the package's test resources; `--check` fails on drift. To follow a newer spec, review
+  its changes, move the pin, rerun the script.
 
 ## Build and test
 
@@ -268,7 +270,7 @@ replay/`, every variant twice (literal frames, and with `"jsonrpc":"2.0"` added 
 checking each `expect` step and the final `expected` projection. Currently 18 files, 42 variants,
 84 runs; the aggregate test pins those counts, so bump them when fixtures are added upstream.
 The fixtures are copies: `scripts/sync-fixtures.sh --check` fails when they drift from the
-clone. Run it before `swift test` (the gate line above does), and `./build.sh test` runs it too. The session fixtures (`wire/session/`) are phase 2.
+pinned commit. Run it before `swift test` (the gate line above does), and `./build.sh test` runs it too. The session fixtures (`wire/session/`) are phase 2.
 
 ## Rules
 
