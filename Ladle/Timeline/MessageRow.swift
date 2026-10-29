@@ -220,6 +220,7 @@ struct ReactionBar: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .disabled(session.isReadOnlyGuest)
                 .contextMenu {
                     Section("\(reaction.emoji) from") { ForEach(names, id: \.self) { Text($0) } }
                 }
@@ -227,7 +228,7 @@ struct ReactionBar: View {
                 .accessibilityAddTraits(mine ? .isSelected : [])
                 .accessibilityHint(mine ? "Removes your reaction" : "Adds your reaction")
             }
-            if session.server?.has("reactions") == true {
+            if session.server?.has("reactions") == true, !session.isReadOnlyGuest {
                 Button(action: onAdd) {
                     chip(mine: false) { Image(systemName: "face.smiling").imageScale(.small) }
                 }

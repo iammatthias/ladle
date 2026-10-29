@@ -34,6 +34,7 @@ struct RootView: View {
                 if request.record == nil { open(id, room: request.room) }
             }
         }
+        .environment(\.requestSignIn, SignInAction { connecting = ConnectRequest(record: $0) })
         .onOpenURL(perform: handle)
         .environment(\.openURL, OpenURLAction { url in
             guard DeepLink(url) != nil else { return .systemAction }

@@ -326,7 +326,10 @@ struct ConnectView: View {
             address = record.url.absoluteString
             label = record.label
             origin = record.origin
-            if let scheme = record.account?.scheme, let saved = Method(rawValue: scheme.capitalized) { method = saved }
+            if let scheme = record.account?.scheme, let saved = Method(rawValue: scheme.capitalized),
+               saved != .guest || existing?.isReadOnlyGuest == false {
+                method = saved
+            }
         }
         if let prefill { accept(prefill) }
     }

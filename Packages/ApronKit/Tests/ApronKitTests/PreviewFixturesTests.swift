@@ -50,6 +50,9 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.unreadCount(in: home.roomTree[1].threadIDs[0]), 2)
         XCTAssertEqual(home.unreadCount(in: "design"), 0)
         XCTAssertEqual(demo.unreadCount(in: "lobby"), 3)
+        XCTAssertTrue(demo.isReadOnlyGuest, "a guest on a server whose guests only read")
+        XCTAssertFalse(home.isReadOnlyGuest)
+        XCTAssertEqual(UploadOffer(demo.mediaLimits?.upload).summary, "This server takes images and audio only.")
         XCTAssertEqual(home.users.user("chiara")?["status"]?.stringValue, "dnd")
     }
 }

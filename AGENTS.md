@@ -42,6 +42,9 @@ clone), which is only a worked example.
       A token in any result replaces the saved one; a `.token` sign-in without one keeps the
       presented token; a guest result without one clears it. The email code goes on the
       connection that proposed (§4.11.2); `pendingEmail` is cleared on every disconnect.
+    - `isReadOnlyGuest`: signed in with scheme `guest` on a server whose `ext.settings` says
+      `guest_posting: false` (EXT.md §3.1). The timeline then shows a sign-in prompt in place of
+      the composer, and react, reply and New Thread are off with the reason.
     - Reconnect: pending requests fail with `Connection.Failure.closed` (no same-id resend),
       then `backoff(attempt:jitter:)` = min(60 s, 0.5 s × 2^min(7, attempt − 1)) × [0.8, 1.2),
       never below a `retry_after`. Attempts restart after 30 s signed in. An id-less `denied`
