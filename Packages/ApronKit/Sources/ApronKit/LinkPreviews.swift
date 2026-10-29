@@ -162,7 +162,7 @@ public final class LinkPreviews {
     }
 
     /// Whether this device may fetch `url`: `http` or `https` on a public host name or address.
-    /// Apron's own links go to `DeepLink` instead. `localhost`, `.local` and single-label names,
+    /// Apron's own links open in the app (`ApronLink`) instead. `localhost`, `.local` and single-label names,
     /// and loopback, private, link-local and other non-public address literals are refused,
     /// because the fetch would reach into the reader's own network. A public name that resolves
     /// or redirects to such an address is not caught here.
