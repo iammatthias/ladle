@@ -166,6 +166,11 @@ clone), which is only a worked example.
     system action); Apron links go to `DeepLink`. Neither reference server describes links:
     both drop a sender's `og`, so a `link` embed arrives as its kind and URL and shows the
     fallback card, as on the web.
+  - `MessageText.plain` and `snippet` (`MessageText+Plain.swift`): a body as plain text for where it
+    is not rendered, as apron-web's `plainTextOf` and `messageSnippet`: a `markdown` body without
+    its syntax (code keeps its text, a link shows its text, each block a line, typed line breaks
+    kept, mentions as written), cut to a line count and length. The reply quote and every
+    one-line preview (`previewText`) use it.
   - `LinkPreviews`: previews this device fetches for links the server did not describe (the
     user's choice over §4.8.1's "clients don't fetch third-party pages"). `unfurlURL` picks one
     link per message, the first `mayFetch` allows among its first three (text links, then `link`

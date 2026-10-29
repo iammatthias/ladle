@@ -176,13 +176,12 @@ func rendered(_ body: JSONValue?, mentions: [String: String] = [:], you: String?
     return out
 }
 
-/// A one-line preview of a body inside a control (a reply quote, a room or thread row): the text
-/// without links, so a tap goes to the control and the line keeps its color, isolated from the
-/// words around it (§3.5.2).
+/// A one-line preview of a body inside a control (a reply quote, a room or thread row): its
+/// first line as plain text (`MessageText.snippet`, so markdown shows without its syntax), with
+/// no links, so a tap goes to the control and the line keeps its color, isolated from the words
+/// around it (§3.5.2).
 func previewText(_ body: JSONValue?) -> AttributedString {
-    var out = rendered(body)
-    out.link = nil
-    return AttributedString("\u{2068}") + out + AttributedString("\u{2069}")
+    AttributedString("\u{2068}" + MessageText.snippet(body) + "\u{2069}")
 }
 
 extension View {

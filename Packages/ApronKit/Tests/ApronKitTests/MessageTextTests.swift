@@ -62,4 +62,30 @@ final class MessageTextTests: XCTestCase {
         XCTAssertEqual([og.siteName, og.title, og.description, og.image?.alt], ["git.example", "Ladle glyph", "Bowl-only mark.", "The glyph"])
         XCTAssertEqual(og.image?.url.absoluteString, "https://chat.example/f/Zr8Tq1/thumb")
     }
+
+    private func markdown(_ text: String) -> JSONValue { ["text": .string(text), "format": "markdown"] }
+
+    func testAMarkdownMessageQuotesAsPlainTextWithCodeKeptAndALinkByItsText() {
+        XCTAssertEqual(MessageText.snippet(markdown("Tabulated `log₁₀` to 7 places. **0 errors**, 4,000 gears turned.")),
+                       "Tabulated log₁₀ to 7 places. 0 errors, 4,000 gears turned.")
+        XCTAssertEqual(MessageText.snippet(markdown("_see_ [the notes](https://example.com/notes) for **@bob**, a < b & c")),
+                       "see the notes for @bob, a < b & c")
+        XCTAssertEqual(MessageText.snippet(markdown("**ping** `@you`")), "ping @you")
+        XCTAssertEqual(MessageText.plain(markdown("> quoted *line*")), "quoted line")
+    }
+
+    func testPlainTextTakesBlocksAsLinesAndKeepsTypedLineBreaks() {
+        let body = markdown("# Plan\n\n- ~~one~~ first\n- two\n\n```\nx = 1\n```")
+        XCTAssertEqual(MessageText.snippet(body, lines: 3, max: 280), "Plan\none first\ntwo")
+        XCTAssertEqual(MessageText.plain(body), "Plan\none first\ntwo\nx = 1")
+        XCTAssertEqual(MessageText.plain(markdown("a\nb\n\n\nc")), "a\nb\nc")
+        XCTAssertEqual(MessageText.snippet(markdown("first\nsecond")), "first")
+    }
+
+    func testAPlainMessageQuotesAsWrittenAndALongOneIsCut() {
+        XCTAssertEqual(MessageText.snippet(["text": "Tabulated `log₁₀`, **as typed**"]), "Tabulated `log₁₀`, **as typed**")
+        XCTAssertEqual(MessageText.snippet(["text": "  one  \n\n two "], lines: 2), "one\ntwo")
+        XCTAssertEqual(MessageText.plain(markdown("")), "")
+        XCTAssertEqual(MessageText.snippet(["text": .string(String(repeating: "ab ", count: 10))], max: 10), "ab ab ab…")
+    }
 }
