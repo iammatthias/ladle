@@ -24,7 +24,7 @@ final class UploadIntegrationTests: XCTestCase {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    private func signedInGuest(_ arguments: [String] = []) async throws -> ServerSession {
+    private func signedIn(_ arguments: [String] = [], asAdmin: Bool = false) async throws -> ServerSession {
         let server = try await Aprond.start(arguments)
         servers.append(server)
         let environment = ServerSession.Environment(makeTransport: { WebSocketTransport(url: $0.url, origin: $0.origin) })
@@ -32,7 +32,7 @@ final class UploadIntegrationTests: XCTestCase {
         sessions.append(session)
         session.start()
         try await waitFor("connected") { session.status == .signedOut }
-        try await session.signIn(.guest(name: "Ada"))
+        try await session.signIn(asAdmin ? .token(server.adminToken) : .guest(name: nil))
         return session
     }
 
@@ -54,7 +54,7 @@ final class UploadIntegrationTests: XCTestCase {
     }
 
     func testAnImageRoundTripsFromSendToTheHostedBytes() async throws {
-        let session = try await signedInGuest()
+        let session = try await signedIn()
         XCTAssertTrue(session.canAttach)
         try await session.open("general")
         let attachment = try AttachmentPreparer.prepare(try png(width: 320, height: 180), title: "before.png",
@@ -87,7 +87,7 @@ final class UploadIntegrationTests: XCTestCase {
     }
 
     func testAFileOverTheServersLimitIsDroppedAndComesBackAsNotSent() async throws {
-        let session = try await signedInGuest(["--upload.max-mb", "1"])
+        let session = try await signedIn(["--upload.max-mb", "1"])
         try await session.open("general")
         let source = directory.appending(path: "big.bin")
         try Data(repeating: 1, count: 1_500_000).write(to: source)
@@ -105,7 +105,7 @@ final class UploadIntegrationTests: XCTestCase {
     }
 
     func testAnAvatarUploadSetsTheAvatarOnYou() async throws {
-        let session = try await signedInGuest()
+        let session = try await signedIn(asAdmin: true)
         XCTAssertTrue(session.canSetAvatar)
         let image = try AttachmentPreparer.prepareAvatar(try png(width: 640, height: 480), limits: session.mediaLimits?.avatar, into: directory)
         try await session.setAvatar(image)

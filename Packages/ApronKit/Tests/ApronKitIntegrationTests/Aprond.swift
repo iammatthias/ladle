@@ -16,6 +16,8 @@ final class Aprond: @unchecked Sendable {
 
     let port: Int
     let directory: URL
+    /// Signs in as the admin from any origin. `/avatar` needs an account that is not a guest.
+    let adminToken = "admin-token-\(UUID().uuidString)"
     private let process: Process
     private let log = LogBuffer()
 
@@ -28,7 +30,8 @@ final class Aprond: @unchecked Sendable {
     var url: URL { URL(string: "ws://127.0.0.1:\(port)/ws")! }
 
     /// Skips the test when the binary is missing, or fails it when `APRON_REQUIRE_SERVER=1`.
-    /// `arguments` go after the defaults, such as `--upload.max-mb 1`.
+    /// `arguments` go after the defaults, such as `--upload.max-mb 1`. The defaults let guests post
+    /// (read-only otherwise) and offer passkeys to the origin Ladle presents for this port.
     static func start(_ arguments: [String] = [], file: StaticString = #filePath, line: UInt = #line) async throws -> Aprond {
         guard FileManager.default.isExecutableFile(atPath: binary.path()) else {
             let message = "aprond not found at \(binary.path()); build apron-server-rust or set APROND"
@@ -48,10 +51,14 @@ final class Aprond: @unchecked Sendable {
         let copy = directory.appending(path: "aprond")
         try FileManager.default.copyItem(at: Self.binary, to: copy)
         port = try Self.freePort()
+        let tokenFile = directory.appending(path: "admin-token")
+        try adminToken.write(to: tokenFile, atomically: true, encoding: .utf8)
         process = Process()
         process.executableURL = copy
         process.currentDirectoryURL = directory
-        process.arguments = ["--store", "memory", "--addr", "127.0.0.1:\(port)", "--email.enable", "--email.sender", "log"] + arguments
+        process.arguments = ["--store", "memory", "--addr", "127.0.0.1:\(port)", "--email.enable", "--email.sender", "log",
+                             "--guest.posting", "--webauthn.origin", "https://127.0.0.1:\(port)",
+                             "--admin-token-file", tokenFile.path()] + arguments
         let stderr = Pipe()
         process.standardError = stderr
         process.standardOutput = FileHandle.nullDevice

@@ -153,6 +153,7 @@ final class ServerIntegrationTests: XCTestCase {
         XCTAssertEqual(reader.timeline("general").map { $0.body?["text"]?.stringValue }, (1 ... 7).map { "message \($0)" })
     }
 
+    /// A thread goes with its last member, so a second member keeps it while the first leaves.
     func testAThreadIsARoomWithAParent() async throws {
         let server = try await startServer()
         let session = try await signedInGuest(server)
@@ -167,6 +168,10 @@ final class ServerIntegrationTests: XCTestCase {
         let posted = try XCTUnwrap(postedResult)
         try await waitFor("thread message") { session.timeline(thread).map(\.messageID) == [posted] }
         XCTAssertEqual(session.timeline("general"), [])
+
+        let other = try await signedInGuest(server)
+        try await other.join(thread)
+        try await waitFor("second member joined") { other.joinedRoomIDs.contains(thread) }
 
         try await session.leave(thread)
         try await waitFor("left thread") { !session.joinedRoomIDs.contains(thread) }
