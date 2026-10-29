@@ -59,8 +59,13 @@ struct MessageRow: View {
     }
 
     private func head(_ name: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: Tokens.Space.s2) {
+        let roles = session.roles(of: message.from)
+        return HStack(alignment: .firstTextBaseline, spacing: Tokens.Space.s2) {
             Text(name).apText(.body, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
+                .layoutPriority(1)
+            if !roles.isEmpty {
+                RoleBadges(roles: roles).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+            }
             HStack(spacing: Tokens.Space.s2) {
                 Text(message.date, format: .dateTime.hour().minute())
                 if message.isEdited { Text("edited") }
@@ -119,7 +124,7 @@ struct MessageRow: View {
     }
 
     private func accessibilityText(name: String, mentionsYou: Bool) -> String {
-        var parts = [name]
+        var parts = [name] + session.roles(of: message.from)
         if mentionsYou { parts.append("mentions you") }
         if message.replyTo != nil {
             let target = message.replyTo.flatMap(session.store.message)

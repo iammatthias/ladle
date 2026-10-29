@@ -657,6 +657,11 @@ public final class ServerSession {
 
     public func displayName(for user: UserObject) -> String { users.displayName(for: user) }
 
+    /// A user's roles from the kept user object, else from the object given (a message's `from`).
+    public func roles(of user: UserObject) -> [String] {
+        users.user(user.userID).flatMap(UserObject.init)?.roles ?? user.roles
+    }
+
     /// This user read the room through `messageID`, as apron-web's `markRead` and `readPositions.read`: the position
     /// kept on this device moves forward, and with capability `activity` so does the read cursor,
     /// which goes to the server (§4.6) when it keeps cursors, for this user's other devices.

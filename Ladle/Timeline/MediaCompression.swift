@@ -25,7 +25,9 @@ enum MediaCompression {
         let input: AVAudioFile
         do { input = try AVAudioFile(forReading: source) } catch { throw Failure.unreadable }
         let seconds = Double(input.length) / input.processingFormat.sampleRate
-        guard let encoding = AudioEncoding.fitting(maxBytes: maxBytes, seconds: seconds) else { throw Failure.tooLong(maxBytes: maxBytes ?? 0) }
+        guard let encoding = AudioEncoding.fitting(maxBytes: maxBytes, seconds: seconds) else {
+            throw Failure.tooLong(maxBytes: maxBytes ?? 0)
+        }
         let destination = folder.appending(path: name)
         let output = try AVAudioFile(forWriting: destination, settings: [
             AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: encoding.sampleRate, AVNumberOfChannelsKey: 1,

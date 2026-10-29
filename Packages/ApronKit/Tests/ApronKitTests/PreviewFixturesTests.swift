@@ -54,5 +54,8 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertFalse(home.isReadOnlyGuest)
         XCTAssertEqual(UploadOffer(demo.mediaLimits?.upload).summary, "This server takes images and audio only.")
         XCTAssertEqual(home.users.user("chiara")?["status"]?.stringValue, "dnd")
+        XCTAssertEqual(["ada", "chiara", "dev", "eunji", "sam"].map { home.roles(of: UserObject(["user_id": .string($0)])!) },
+                       [["admin"], ["mod", "announce"], ["bot"], ["announce"], []], "role badges")
+        XCTAssertEqual(home.roles(of: UserObject(["user_id": "zed", "roles": ["bot"]])!), ["bot"], "an unknown user's roles come from the object given")
     }
 }

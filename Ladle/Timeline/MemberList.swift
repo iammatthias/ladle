@@ -49,7 +49,9 @@ struct MemberList: View {
             Avatar(name: name, userID: person.userID, presence: presence, size: .sm, image: session.avatarURL(of: person.userID))
                 .opacity(offline ? Tokens.Opacity.dim : 1)
             Text(name).apText(.ui).foregroundStyle(offline ? Palette.inkMuted : Palette.ink).lineLimit(1)
+                .layoutPriority(1)
             if you { Text("(you)").apText(.xs).foregroundStyle(Palette.inkMuted) }
+            RoleBadges(roles: session.roles(of: person)).opacity(offline ? Tokens.Opacity.dim : 1)
             Spacer(minLength: 0)
         }
         .frame(minHeight: Tokens.Size.touchTarget)
@@ -57,6 +59,6 @@ struct MemberList: View {
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: Tokens.Space.s4, bottom: 0, trailing: Tokens.Space.s4))
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel([name, you ? "you" : nil, presence.label].compactMap { $0 }.joined(separator: ", "))
+        .accessibilityLabel(([name, you ? "you" : nil] + session.roles(of: person) + [presence.label]).compactMap { $0 }.joined(separator: ", "))
     }
 }
