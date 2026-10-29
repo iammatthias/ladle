@@ -35,6 +35,15 @@ final class ApronLinkTests: XCTestCase {
         XCTAssertNil(ApronLink("https://link.apron.chat/?token=Hk41x9#server=wss://chat.example/ws"), "a credential in the query refuses the link")
     }
 
+    func testASignInLinkLeavesAsWrittenAndOtherApronLinksAsTheirWebForm() {
+        let server = URL(string: "wss://server.apron.chat")!
+        let signIn = URL(string: "https://link.apron.chat/#server=wss%3A%2F%2Fserver.apron.chat&token=apron_dev_abc")!
+        XCTAssertEqual(ApronLink.outbound(signIn, from: server), signIn)
+        XCTAssertEqual(ApronLink.outbound(URL(string: "apron:?room=general")!, from: server),
+                       URL(string: "https://link.apron.chat/#server=wss://server.apron.chat&room=general")!)
+        XCTAssertEqual(ApronLink.outbound(URL(string: "https://example.com/a")!, from: server), URL(string: "https://example.com/a")!)
+    }
+
     func testQueryKeysFollowTheFragmentKeys() {
         XCTAssertEqual(ApronLink("https://link.apron.chat/?room=random&message=7#server=wss://chat.example/ws&room=general"),
                        ApronLink(server: chat, room: "general", message: LogID("7")))

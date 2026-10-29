@@ -60,6 +60,18 @@ public enum MessageText {
         }
     }
 
+    /// The distinct code spans and blocks in the text as rendered, in order, such as the token
+    /// in a server's `/invite-device` notice, for copying on their own.
+    public static func code(_ body: JSONValue?) -> [String] {
+        var seen = Set<String>()
+        let text = attributed(body)
+        return text.runs.compactMap { run in
+            guard run.inlinePresentationIntent?.contains(.code) == true else { return nil }
+            let code = String(text[run.range].characters).trimmingCharacters(in: .whitespacesAndNewlines)
+            return code.isEmpty || !seen.insert(code).inserted ? nil : code
+        }
+    }
+
     /// The distinct links in the text as rendered, in order.
     public static func links(_ body: JSONValue?) -> [URL] {
         var seen = Set<URL>()
