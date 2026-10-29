@@ -179,6 +179,37 @@ final class ServerIntegrationTests: XCTestCase {
         try await waitFor("rejoined thread") { session.joinedRoomIDs.contains(thread) }
     }
 
+    /// A thread someone else started shows under its room, to a member of the room who did not
+    /// join it: live as it is created, after a reconnect that missed it, and after signing in later.
+    func testThreadsOthersStartedShowUnderTheirRoom() async throws {
+        let server = try await startServer()
+        let ada = try await signedInGuest(server)
+        let bob = makeSession(server)
+        bob.start()
+        try await waitFor("connected") { bob.status == .signedOut }
+        _ = try await bob.signIn(.emailProposal(address: "bob@example.com"))
+        _ = try await bob.signIn(.emailCode(try await server.emailCode(for: "bob@example.com")))
+        try await bob.open("general")
+
+        let liveResult = try await ada.createRoom(title: "Live", parentRoomID: "general")
+        let live = try XCTUnwrap(liveResult)
+        try await waitFor("live thread under general") { bob.roomTree.first?.threadIDs == [live] }
+
+        await bob.stop()
+        let missedResult = try await ada.createRoom(title: "Missed", parentRoomID: "general")
+        let missed = try XCTUnwrap(missedResult)
+        bob.start()
+        try await waitFor("resumed") { bob.status == .signedIn }
+        try await waitFor("missed thread under general") { bob.roomTree.first?.threadIDs == [live, missed] }
+
+        let carol = try await signedInGuest(server)
+        try await carol.open("general")
+        try await waitFor("earlier threads under general") { carol.roomTree.first?.threadIDs == [live, missed] }
+        XCTAssertEqual(carol.store.room(missed)?.parentRoomID, "general")
+        XCTAssertEqual(carol.title(of: missed), "Missed")
+        XCTAssertEqual(carol.joinedRoomIDs, ["general"])
+    }
+
     func testTwoServersAtOnceKeepSeparateIdentitiesAndRooms() async throws {
         let one = try await startServer()
         let two = try await startServer()
