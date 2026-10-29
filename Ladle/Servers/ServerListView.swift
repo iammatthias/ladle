@@ -83,7 +83,7 @@ private struct ServerRow: View {
         if session.status == .signedIn {
             return (session.you.map { TextDirection.isolated(session.displayName(for: $0)) } ?? "") + " on " + (session.record.url.host() ?? "")
         }
-        return ConnectionState(session.status)?.title(session.record) ?? ""
+        return session.unavailableMessage ?? ConnectionState(session.status)?.title(session.record) ?? ""
     }
 }
 
@@ -168,12 +168,13 @@ struct ServerRail: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .help(session.unavailableMessage ?? session.serverName)
         .contextMenu {
             Button("Sign In or Edit", systemImage: "pencil") { connecting = ConnectRequest(record: record) }
             Button("Remove", systemImage: "trash", role: .destructive) { removing = record }
         }
         .accessibilityLabel([session.serverName, record.url.host(), active ? "open" : nil, mentions > 0 ? "\(mentions) mentions" : unread ? "new messages" : nil,
-                             session.status == .signedIn ? nil : ConnectionState(session.status)?.title(record)]
+                             session.status == .signedIn ? nil : ConnectionState(session.status)?.title(record), session.unavailableMessage]
             .compactMap { $0 }.joined(separator: ", "))
         .accessibilityAddTraits(active ? .isSelected : [])
     }
