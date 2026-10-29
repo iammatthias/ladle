@@ -389,6 +389,57 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(clock.recorded, [])
     }
 
+    func testCloseCodesSayWhetherAndWhenToReconnect() {
+        XCTAssertEqual(CloseAdvice(CloseFrame(code: 1001, reason: "Connection idle; reconnect to recover")), .reconnect)
+        XCTAssertEqual(CloseAdvice(CloseFrame(code: 1011, reason: "Delivery failed; reconnect to recover")), .reconnect)
+        XCTAssertEqual(CloseAdvice(CloseFrame(code: 1008, reason: "Too many pending frames")), .reconnect)
+        XCTAssertEqual(CloseAdvice(CloseFrame(code: 1013, reason: "Demo capacity reached; try after daily reset")), .backOff)
+        XCTAssertEqual(CloseAdvice(CloseFrame(code: 1008, reason: "Authentication timed out")), .awaitSignIn)
+        XCTAssertEqual(CloseAdvice(CloseFrame(code: 1008, reason: "Removed by an admin")), .credentialsRevoked("Removed by an admin"))
+    }
+
+    func testAClosedOverReplacedCredentialsForgetsTheTokenAndWaitsForSignIn() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        await socket.close(code: 1008, reason: "Device token replaced; sign in with the new one")
+        await eventually("stopped") { session.status == .stopped(.signedOut) }
+        XCTAssertNil(try tokens.token(for: record.id))
+        XCTAssertNil(session.record.account)
+        XCTAssertEqual(session.signInNeeded, "Device token replaced; sign in with the new one")
+        XCTAssertEqual(clock.recorded, [])
+        XCTAssertEqual(transports.made.withLock { $0.count }, 1)
+    }
+
+    func testAConnectionThatNeverSignedInIsNotReopenedAfterTheAuthDeadline() async throws {
+        session.start()
+        let socket = await transport(0)
+        await eventually("signed out") { session.status == .signedOut }
+        await socket.close(code: 1008, reason: "Authentication timed out")
+        await eventually("stopped") { session.status == .stopped(.signedOut) }
+        XCTAssertNil(session.signInNeeded)
+        XCTAssertEqual(clock.recorded, [])
+    }
+
+    func testAPolicyCloseThatANewConnectionClearsReconnectsWithBackoff() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        await socket.close(code: 1008, reason: "Frame rate limit reached")
+        await eventually("backoff") { clock.recorded.count == 1 }
+        XCTAssertEqual(clock.recorded, [.seconds(1)])
+        XCTAssertEqual(try tokens.token(for: record.id), "t1")
+    }
+
+    func testATryAgainLaterCloseWaitsMinutes() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        await socket.close(code: 1013, reason: "Frame rate limit reached")
+        await eventually("backoff") { clock.recorded.count == 1 }
+        XCTAssertEqual(clock.recorded, [.seconds(120)])
+    }
+
     func testRetryAfterIsTheShortestReconnectDelay() async throws {
         session.start()
         let socket = await transport(0)

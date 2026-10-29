@@ -66,6 +66,8 @@ public actor Connection {
     /// The last error the server sent without an `id` (§1.1), such as `denied` or a
     /// `retry_after` at capacity. The server may close the connection after it.
     public private(set) var connectionError: RPCError?
+    /// The server's close frame, once it closed the connection with one.
+    public private(set) var closeFrame: CloseFrame?
 
     public init(transport: any FrameTransport, makeRequestID: @escaping @Sendable () -> String = { UUID().uuidString },
                 requestTimeout: Duration = Connection.defaultRequestTimeout) {
@@ -177,6 +179,10 @@ public actor Connection {
                 handle(try await transport.receive())
             } catch FrameTransportError.handshakeRejected(let status) {
                 finish(with: .rejected(status: status))
+                return
+            } catch FrameTransportError.closedByServer(let frame) {
+                closeFrame = frame
+                finish(with: .closed)
                 return
             } catch {
                 finish(with: .closed)
