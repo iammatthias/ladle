@@ -186,6 +186,22 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(ignored?.guestsMayPost, true, "settings count only with capability ext:settings")
     }
 
+    func testASignUpInviteSendsTheNameAndSavesTheNewAccountsOwnToken() async throws {
+        session.start()
+        let socket = await transport(0)
+        await eventually("signed out") { session.status == .signedOut }
+        XCTAssertTrue(SignIn.isSignUpInvite("apron_join_Qm7x"))
+        XCTAssertFalse(SignIn.isSignUpInvite("apron_invite_Qm7x"))
+        let signUp = Task { try await session.signIn(.signUp(invite: "apron_join_Qm7x", name: "  Ada Okafor ")) }
+        let sent = await frame(socket, 0)
+        XCTAssertEqual(sent, #"{"id":"c1","method":"auth","params":{"agent":"ladle-ios/test","name":"Ada Okafor","scheme":"token","token":"apron_join_Qm7x"}}"#)
+        await socket.deliver(["id": "c1", "result": ["you": ["user_id": "ada_1234", "name": "Ada Okafor", "roles": []], "token": "apron_invite_Zr8"]])
+        await socket.deliver(["id": "c2", "result": ["joined": []]])
+        _ = try await signUp.value
+        XCTAssertEqual(try tokens.token(for: record.id), "apron_invite_Zr8", "the account's own token, not the invite")
+        XCTAssertEqual(session.record.account, ServerRecord.Account(userID: "ada_1234", name: "Ada Okafor", scheme: "token"))
+    }
+
     func testEmailProposalThenCodeOnTheSameConnection() async throws {
         session.start()
         let socket = await transport(0)
