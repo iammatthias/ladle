@@ -746,7 +746,7 @@ final class ServerSessionTests: XCTestCase {
         await socket.deliver(["method": "reactions", "params": [
             "log_id": "203", "message_id": "201", "room_id": "general", "reactions": [["from": ["user_id": "ada"], "emojis": ["🎉", "❤"]]],
         ]])
-        await eventually("heart installed") { session.store.reactions(on: LogID("201")!)?.count == 2 }
+        await eventually("heart installed") { session.store.reactions(on: LogID("201")!)?.map(\.key) == ["❤", "🎉"] }
         try await expect(#"{"id":"c8","method":"reactions","params":{"emojis":["🎉"],"message_id":"201"}}"#) {
             try await self.session.toggleReaction("❤️", on: LogID("201")!)
         }
