@@ -34,15 +34,9 @@ public struct ServerInfo: Hashable, Sendable {
     }
 
     /// Whether the server keeps read cursors: `ext.settings.read_cursors` under capability
-    /// `ext:settings` (apron-web EXT.md), true unless it says `false`.
+    /// `ext:settings` (EXTENSIONS.md), true unless it says `false`.
     public var keepsReadCursors: Bool {
         !(has("ext:settings") && ext?["settings"]?["read_cursors"]?.boolValue == false)
-    }
-
-    /// Whether guests may post: `ext.settings.guest_posting` under capability `ext:settings`
-    /// (apron-web EXT.md §3.1), true unless it says `false`.
-    public var guestsMayPost: Bool {
-        !(has("ext:settings") && ext?["settings"]?["guest_posting"]?.boolValue == false)
     }
 
     private static func strings(_ value: JSONValue?) -> [String]? {

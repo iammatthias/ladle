@@ -79,8 +79,8 @@ struct TimelineView: View {
             .safeAreaInset(edge: .top, spacing: 0) { banner }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 Group {
-                    if session.isReadOnlyGuest {
-                        ReadOnlyGuestPrompt(session: session) { requestSignIn(session.record) }
+                    if !session.mayWrite {
+                        ReadOnlyPrompt(session: session) { requestSignIn(session.record) }
                     } else {
                         ComposerView(session: session, roomID: roomID, draft: $draft, onSend: send, onProblem: { problem = $0 })
                     }
@@ -247,9 +247,9 @@ struct TimelineView: View {
             }
             Button("Reply", systemImage: "arrowshape.turn.up.left") { draft = Draft(mode: .reply(message), attachments: draft.attachments) }
         } header: {
-            if session.isReadOnlyGuest { Text(ReadOnlyGuestPrompt.reason) }
+            if !session.mayWrite { Text(ReadOnlyPrompt.reason(session)) }
         }
-        .disabled(session.isReadOnlyGuest)
+        .disabled(!session.mayWrite)
         Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.plainText }
         if session.mayMove(message), !session.moveDestinations(for: message).isEmpty {
             Menu("Move To", systemImage: "arrow.right.square") {
@@ -265,7 +265,7 @@ struct TimelineView: View {
                 ShareLink(item: url)
             }
         }
-        if session.status == .signedIn, message.from.userID == session.you?.userID, session.server?.has("edit") == true {
+        if session.status == .signedIn, session.mayWrite, message.from.userID == session.you?.userID, session.server?.has("edit") == true {
             Button("Edit", systemImage: "pencil") { draft = Draft(mode: .edit(message), text: message.plainText) }
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
         }
@@ -585,17 +585,19 @@ struct SignInAction {
     func callAsFunction(_ record: ServerRecord) { open(record) }
 }
 
-/// In place of the composer for a guest on a server whose guests only read (apron-web EXT.md
-/// §3.1): why, and the sign-in sheet for this server, which also creates accounts.
-struct ReadOnlyGuestPrompt: View {
-    static let reason = "Guests can read here but not post, react, reply or start threads."
+/// In place of the composer for a user who may not write (`ServerSession.mayWrite`): why, and the
+/// sign-in sheet for this server, which also creates accounts.
+struct ReadOnlyPrompt: View {
+    static func reason(_ session: ServerSession) -> String {
+        "\(session.isGuest ? "Guests" : "You") can read here but not post, react, reply or start threads."
+    }
 
     let session: ServerSession
     let signIn: () -> Void
 
     var body: some View {
         ActionBanner(symbol: "person.crop.circle.badge.plus", title: "Sign in to join the conversation",
-                     detail: "\(Self.reason) Sign in or create an account on \(session.record.label).") {
+                     detail: "\(Self.reason(session)) Sign in or create an account on \(session.record.label).") {
             Button("Sign In", action: signIn).buttonStyle(PrimaryButtonStyle())
         }
         .padding(.horizontal, Tokens.Space.s4)

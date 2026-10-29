@@ -115,14 +115,16 @@ struct RoomListView: View {
                 if !isThread {
                     Section {
                         Button("New Thread", systemImage: "bubble.left.and.text.bubble.right") { naming = NewRoom(parent: roomID) }
-                            .disabled(session.isReadOnlyGuest)
+                            .disabled(!session.mayWrite)
                     } header: {
-                        if session.isReadOnlyGuest { Text(ReadOnlyGuestPrompt.reason) }
+                        if !session.mayWrite { Text(ReadOnlyPrompt.reason(session)) }
                     }
                 }
                 Button("Leave", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leaving = roomID }
+                    .disabled(!session.mayWrite)
             } else {
                 Button("Join", systemImage: "plus.circle") { perform { try await session.join(roomID) } }
+                    .disabled(!session.mayWrite)
             }
         }
     }

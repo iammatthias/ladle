@@ -103,11 +103,11 @@ final class ServerSessionTests: XCTestCase {
         await frames(transport, count: index + 1).last ?? ""
     }
 
-    private func signInAsGuest(on transport: FakeTransport) async throws {
+    private func signInAsGuest(on transport: FakeTransport, you: JSONValue = ["user_id": "ada", "name": "Ada"]) async throws {
         await eventually("signed out") { session.status == .signedOut }
         let signIn = Task { try await session.signIn(.guest(name: nil)) }
         _ = await frames(transport, count: 2)
-        await transport.deliver(["id": "c1", "result": ["you": ["user_id": "ada", "name": "Ada"], "token": "t1"]])
+        await transport.deliver(["id": "c1", "result": ["you": you, "token": "t1"]])
         await transport.deliver(["id": "c2", "result": ["joined": [["room_id": "general", "log_id": "100", "title": "General", "latest_log_id": "100", "history_log_id": "100"]]]])
         _ = try await signIn.value
     }
@@ -162,28 +162,52 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.record.account, ServerRecord.Account(userID: "guest_1", name: "Ada", scheme: "guest"))
     }
 
-    func testAGuestOnlyReadsWhereTheServerSaysGuestsDoNotPost() async throws {
-        let readOnly = queueTransport(capabilities: ["rooms", "ext:settings"], ext: ["settings": ["guest_posting": false]])
+    func testAUserOnlyReadsWherePermissionsSayWriteIsOff() async throws {
+        let readOnly = queueTransport(capabilities: ["rooms", "ext:permissions"])
         session.start()
-        try await signInAsGuest(on: readOnly)
-        XCTAssertFalse(session.server?.guestsMayPost ?? true)
-        XCTAssertTrue(session.isReadOnlyGuest)
+        try await signInAsGuest(on: readOnly, you: ["user_id": "guest_1", "name": "Guest", "ext": ["permissions": ["write": false]]])
+        XCTAssertTrue(session.isGuest)
+        XCTAssertFalse(session.mayWrite)
 
         let signIn = Task { try await session.signIn(.token("t9")) }
         _ = await frames(readOnly, count: 4)
-        await readOnly.deliver(["id": "c3", "result": ["you": ["user_id": "ada", "name": "Ada", "roles": []]]])
+        await readOnly.deliver(["id": "c3", "result": ["you": ["user_id": "ada", "name": "Ada", "ext": ["permissions": [:]]]]])
         await readOnly.deliver(["id": "c4", "result": ["joined": []]])
         _ = try await signIn.value
-        XCTAssertFalse(session.isReadOnlyGuest, "an account signed in with a token posts")
+        XCTAssertTrue(session.mayWrite, "an account the server lets write")
+
+        await readOnly.deliver(["method": "user", "params": ["you": ["user_id": "ada", "ext": ["permissions": ["write": false]]]]])
+        await eventually("write taken away") { !session.mayWrite }
+        XCTAssertFalse(session.isGuest, "write: false holds for any account, not only guests")
     }
 
-    func testGuestsPostUnlessTheServerSaysOtherwise() async throws {
+    func testPermissionsTakeTheirDefaultsKeyByKey() {
+        XCTAssertEqual(Permissions(["write": false, "add_members": true, "move_any": true]),
+                       { var p = Permissions(); p.write = false; p.addMembers = true; p.moveAny = true; return p }())
+        for value: JSONValue? in [nil, [:], ["write": "no", "move_any": 1], ["write", "move_any"]] {
+            XCTAssertEqual(Permissions(value), Permissions(), "\(String(describing: value))")
+        }
+    }
+
+    func testAGuestOnlyReadsOnAServerFromBeforePermissionsThatSaysGuestsDoNotPost() async throws {
+        let legacy = queueTransport(capabilities: ["rooms", "ext:settings"], ext: ["settings": ["guest_posting": false]])
+        session.start()
+        try await signInAsGuest(on: legacy)
+        XCTAssertFalse(session.mayWrite)
+
+        let signIn = Task { try await session.signIn(.token("t9")) }
+        _ = await frames(legacy, count: 4)
+        await legacy.deliver(["id": "c3", "result": ["you": ["user_id": "ada", "name": "Ada", "roles": []]]])
+        await legacy.deliver(["id": "c4", "result": ["joined": []]])
+        _ = try await signIn.value
+        XCTAssertTrue(session.mayWrite, "the old setting held only for guests")
+    }
+
+    func testGuestsWriteUnlessTheServerSaysOtherwise() async throws {
         let settingsWithoutTheKey = queueTransport(capabilities: ["rooms", "ext:settings"], ext: ["settings": ["read_cursors": true]])
         session.start()
         try await signInAsGuest(on: settingsWithoutTheKey)
-        XCTAssertFalse(session.isReadOnlyGuest)
-        let ignored = ServerInfo(params: ["apron": 9, "auth": ["guest"], "ext": ["settings": ["guest_posting": false]]])
-        XCTAssertEqual(ignored?.guestsMayPost, true, "settings count only with capability ext:settings")
+        XCTAssertTrue(session.mayWrite)
     }
 
     func testASignUpInviteSendsTheNameAndSavesTheNewAccountsOwnToken() async throws {
@@ -717,9 +741,10 @@ final class ServerSessionTests: XCTestCase {
     }
 
     func testAModeratorWithMoveAnyMovesSomeoneElsesMessageUntilThePermissionGoes() async throws {
-        let socket = try await signInWithRooms(["user_id": "mia", "name": "Mia", "roles": ["mod"], "ext": ["permissions": ["move_any", "add_members", 7]]],
+        let socket = try await signInWithRooms(["user_id": "mia", "name": "Mia", "roles": ["mod"], "ext": ["permissions": ["move_any": true, "add_members": true, "write": 7]]],
                                                capabilities: ["history", "edit", "rooms", "ext:permissions"])
-        XCTAssertEqual(session.permissions, ["move_any", "add_members"])
+        XCTAssertTrue(session.permissions.moveAny)
+        XCTAssertTrue(session.permissions.write, "a value of the wrong type takes the default")
         await socket.deliver(["method": "message", "params": [
             "message_id": "200", "log_id": "200", "room_id": "130", "from": ["user_id": "ada"],
             "body": ["text": "helo"], "reply_to": ["message_id": "150"], "ext": ["k": 1],
@@ -738,8 +763,8 @@ final class ServerSessionTests: XCTestCase {
         await socket.deliver(["id": "c3", "result": [:]])
         try await move.value
 
-        await socket.deliver(["method": "user", "params": ["you": ["user_id": "mia", "ext": ["permissions": []]]]])
-        await eventually("permissions cleared") { session.permissions.isEmpty }
+        await socket.deliver(["method": "user", "params": ["you": ["user_id": "mia", "ext": ["permissions": [:]]]]])
+        await eventually("permissions cleared") { session.permissions == Permissions() }
         XCTAssertFalse(session.mayMove(adas))
         XCTAssertTrue(session.mayMove(mine), "your own message moves without a permission")
     }
@@ -775,8 +800,9 @@ final class ServerSessionTests: XCTestCase {
     }
 
     func testPermissionsCountOnlyWithTheCapability() async throws {
-        _ = try await signInWithRooms(["user_id": "mia", "ext": ["permissions": ["move_any"]]], capabilities: ["history", "edit", "rooms"])
-        XCTAssertEqual(session.permissions, [])
+        _ = try await signInWithRooms(["user_id": "mia", "ext": ["permissions": ["move_any": true, "write": false]]], capabilities: ["history", "edit", "rooms"])
+        XCTAssertEqual(session.permissions, Permissions())
+        XCTAssertTrue(session.mayWrite)
         let other = MessageSnapshot(messageID: LogID("200")!, logID: LogID("200")!, roomID: "general", from: UserObject(["user_id": "ada"])!)
         XCTAssertFalse(session.mayMove(other))
     }

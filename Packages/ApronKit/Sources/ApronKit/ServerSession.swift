@@ -103,11 +103,16 @@ public final class ServerSession {
     /// The fraction written of each of this user's uploads in flight, by `embed_id` (§4.8.3).
     public internal(set) var uploadProgress: [String: Double] = [:]
 
-    /// Whether this user is a guest on a server whose guests only read (apron-web EXT.md §3.1): a
-    /// guest is an account that signed in with scheme `guest`. Such a user may not post, react,
-    /// reply or start threads until they sign in.
-    public var isReadOnlyGuest: Bool {
-        record.account?.scheme == "guest" && server?.guestsMayPost == false
+    /// Whether this account signed in with scheme `guest`.
+    public var isGuest: Bool { record.account?.scheme == "guest" }
+
+    /// Whether this user may write: post, react, reply, edit, move, delete, join, leave and start
+    /// threads (the `write` row of `ext:limits`). `permissions.write` says so; a server from before
+    /// EXTENSIONS.md said it for every guest with `ext.settings.guest_posting: false` instead.
+    public var mayWrite: Bool {
+        guard permissions.write else { return false }
+        let legacyReadOnlyGuests = server.map { $0.has("ext:settings") && $0.ext?["settings"]?["guest_posting"]?.boolValue == false } ?? false
+        return !(isGuest && legacyReadOnlyGuests)
     }
 
     /// Called when the account on `record` changes, so the owner can persist it.
@@ -574,11 +579,11 @@ public final class ServerSession {
         return params
     }
 
-    /// What this user may do beyond their own messages: `you.ext.permissions` under capability
-    /// `ext:permissions` (apron-web EXT.md §7). Read from `you` only.
-    public var permissions: Set<String> {
-        guard server?.has("ext:permissions") == true else { return [] }
-        return Set((you?.json["ext"]?["permissions"]?.arrayValue ?? []).compactMap(\.stringValue))
+    /// What this user may do: `you.ext.permissions` under capability `ext:permissions`
+    /// (EXTENSIONS.md). Read from `you` only; without the capability, the defaults.
+    public var permissions: Permissions {
+        guard server?.has("ext:permissions") == true else { return Permissions() }
+        return Permissions(you?.json["ext"]?["permissions"])
     }
 
     /// Whether to offer creating a top-level room. A server that tells each user what they may do
@@ -591,8 +596,8 @@ public final class ServerSession {
 
     /// Whether this user may move the message: their own, or anyone's with `move_any`.
     public func mayMove(_ message: MessageSnapshot) -> Bool {
-        guard status == .signedIn, server?.has("edit") == true, !isReadOnlyGuest, !message.isTombstone else { return false }
-        return message.from.userID == you?.userID || permissions.contains("move_any")
+        guard status == .signedIn, server?.has("edit") == true, mayWrite, !message.isTombstone else { return false }
+        return message.from.userID == you?.userID || permissions.moveAny
     }
 
     /// Where a message may move: into a thread of its room, or out of a thread to the room it
