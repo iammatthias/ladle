@@ -268,7 +268,7 @@ struct TimelineView: View {
                 ShareLink(item: url)
             }
         }
-        if session.status == .signedIn, session.mayWrite, message.from.userID == session.you?.userID, session.server?.has("edit") == true {
+        if session.status == .signedIn, session.mayWrite, session.isYou(message.from.userID), session.server?.has("edit") == true {
             Button("Edit", systemImage: "pencil") { draft = Draft(mode: .edit(message), text: message.plainText) }
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
         }

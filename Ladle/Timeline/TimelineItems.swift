@@ -69,7 +69,7 @@ extension ServerSession {
         guard let you else { return 0 }
         let read = readThrough(roomID)
         return timeline(roomID).count { message in
-            message.from.userID != you.userID && message.mentions(you.userID) && read.map { $0 < message.messageID } ?? true
+            !isYou(message.from.userID) && message.mentions(you.userID) && read.map { $0 < message.messageID } ?? true
         }
     }
 

@@ -107,4 +107,23 @@ final class ServerRecordTests: XCTestCase {
         reopened.advance("general", to: LogID("5")!, server: server, user: "ada")
         XCTAssertEqual(FileReadPositionStore(directory: directory).positions(server: server, user: "ada"), ["general": LogID("5")!])
     }
+
+    func testRenamingAnAccountMovesItsPositionsKeepingTheFurtherOfEach() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: "ladle-rename-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let server = UUID(uuidString: "00000000-0000-0000-0000-00000000000A")!
+        let file = FileReadPositionStore(directory: directory)
+        let memory = InMemoryReadPositionStore()
+        for store: any ReadPositionStore in [file, memory] {
+            store.advance("general", to: LogID("200")!, server: server, user: "ada")
+            store.advance("design", to: LogID("90")!, server: server, user: "ada")
+            store.advance("general", to: LogID("300")!, server: server, user: "lovelace")
+            store.advance("general", to: LogID("5")!, server: server, user: "bob")
+            store.rename(server: server, from: "ada", to: "lovelace")
+            XCTAssertEqual(store.positions(server: server, user: "lovelace"), ["general": LogID("300")!, "design": LogID("90")!])
+            XCTAssertEqual(store.positions(server: server, user: "ada"), [:])
+            XCTAssertEqual(store.positions(server: server, user: "bob"), ["general": LogID("5")!])
+        }
+        XCTAssertEqual(FileReadPositionStore(directory: directory).positions(server: server, user: "lovelace")["design"], LogID("90")!)
+    }
 }
