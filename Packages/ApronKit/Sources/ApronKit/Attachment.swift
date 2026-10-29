@@ -44,41 +44,59 @@ public enum AttachmentError: Error, Hashable, Sendable, LocalizedError {
     }
 }
 
-/// Fits a picked file to the server before it is attached, as apron-web does (EXT.md §6.1).
-///
-/// A still photo is re-encoded as JPEG, which also drops its metadata (location included), no
-/// larger than 2048 px or the server's `max_side`, stepping the quality down to fit `max_bytes`
-/// or a 5 MB aim. HEIC becomes JPEG because servers describe only PNG, JPEG, GIF and WebP as
-/// images. A PNG already within the limits and every other file (GIF, video, audio, documents)
-/// go as they are, refused up front only when the server's stated media rule them out.
+/// Carries out an `UploadPlan` for a picked file, as apron-web does (EXT.md §6.1). A still photo
+/// is re-encoded, which also drops its metadata (location included): as JPEG, or PNG where the
+/// server takes no JPEG, within the plan's side and size. HEIC must become JPEG because servers
+/// describe only PNG, JPEG, GIF and WebP as images. A PNG already within the limits goes as it is.
+/// Audio and video are re-encoded by the app (AVFoundation), which hands the result back here.
 public enum AttachmentPreparer {
-    public static let defaultMaxSide = 2048
-    public static let defaultImageBytes = 5 * 1024 * 1024
+    /// The MIME type a picked file goes out under: the picker's when it knows better than the
+    /// file's extension.
+    public static func contentType(of source: URL, declared: String?) -> String {
+        if let declared { return declared }
+        guard let type = UTType(filenameExtension: source.pathExtension) else { return "application/octet-stream" }
+        // `.m4a` files say `audio/x-m4a`; servers list AAC in MPEG-4 as `audio/mp4`.
+        if type.conforms(to: .mpeg4Audio) { return "audio/mp4" }
+        return type.preferredMIMEType ?? "application/octet-stream"
+    }
+
+    /// The type a picked file goes out under, and what fitting it to the server takes.
+    public static func plan(for source: URL, declared: String?, limits: MediaLimits.Category?) throws -> (type: String, plan: UploadPlan) {
+        let type = contentType(of: source, declared: declared)
+        return (type, UploadPlan.decide(type: type, byteCount: try byteCount(of: source), limits: limits))
+    }
 
     /// Writes the prepared file under `directory` and returns it. `title` is the picked name;
-    /// `contentType` is the picker's MIME type when it knows better than the extension.
+    /// `contentType` is the picker's MIME type when it knows better than the extension. A sound
+    /// or video that still needs re-encoding is refused as too large.
     public static func prepare(_ source: URL, title: String, contentType: String? = nil, limits: MediaLimits.Category?,
                                into directory: URL) throws -> Attachment {
-        let type = contentType.flatMap { UTType(mimeType: $0) } ?? UTType(filenameExtension: source.pathExtension) ?? .data
+        let (mime, plan) = try plan(for: source, declared: contentType, limits: limits)
+        let size = try byteCount(of: source)
         let folder = directory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        if type.conforms(to: .image), !type.conforms(to: .gif), let image = try reencodeIfNeeded(source, type: type, title: title,
-                                                                                                  limits: limits, into: folder) {
-            return image
+        switch plan {
+        case .refused(let reason):
+            throw AttachmentError.refused(reason)
+        case .audio, .video:
+            throw AttachmentError.refused(UploadPlan.refusal(mime, limits, size: size))
+        case .image(let target):
+            if let image = try reencodeIfNeeded(source, type: mime, size: size, title: title, target: target, limits: limits, into: folder) {
+                return image
+            }
+        case .asIs:
+            break
         }
-        let mime = contentType ?? type.preferredMIMEType ?? "application/octet-stream"
-        let size = try byteCount(of: source)
-        try check(size: size, type: mime, limits: limits)
         let destination = folder.appending(path: safeName(title))
         try FileManager.default.copyItem(at: source, to: destination)
-        let pixels = type.conforms(to: .image) ? pixelSize(of: destination) : nil
+        let pixels = mime.hasPrefix("image/") ? pixelSize(of: destination) : nil
         return Attachment(fileURL: destination, title: title, contentType: mime, byteCount: size,
                           pixelWidth: pixels?.width, pixelHeight: pixels?.height)
     }
 
     /// An avatar (§4.8.6) as apron-web makes one (EXT.md §6.1): the middle square of the image,
-    /// 512 px or the server's `max_side` if smaller, as JPEG within `max_bytes` or 256 KB, and
-    /// 256 px when 512 does not fit.
+    /// 512 px or the server's `max_side` if smaller, as JPEG (or PNG where the server's avatars
+    /// take no JPEG) within `max_bytes` or 256 KB, and 256 px when 512 does not fit.
     public static func prepareAvatar(_ source: URL, limits: MediaLimits.Category?, into directory: URL) throws -> Attachment {
         guard let image = CGImageSourceCreateWithURL(source as CFURL, nil),
               let full = CGImageSourceCreateThumbnailAtIndex(image, 0, [
@@ -86,28 +104,25 @@ public enum AttachmentPreparer {
                   kCGImageSourceThumbnailMaxPixelSize: 4096,
               ] as CFDictionary)
         else { throw AttachmentError.unreadable }
+        guard let target = UploadPlan.imageTarget(limits) else { throw AttachmentError.refused("This server doesn't take photos as avatars.") }
         let stated: MediaLimits.Limits
-        switch MediaLimits.verdict(for: "image/jpeg", in: limits) {
-        case .refused: throw AttachmentError.refused("This server doesn't take photos as avatars.")
-        case .unknown: stated = MediaLimits.Limits()
-        case .allowed(let limits): stated = limits
-        }
+        if case .allowed(let limits) = MediaLimits.verdict(for: target.type, in: limits) { stated = limits } else { stated = MediaLimits.Limits() }
         let side = min(full.width, full.height)
         guard let square = full.cropping(to: CGRect(x: (full.width - side) / 2, y: (full.height - side) / 2, width: side, height: side)) else {
             throw AttachmentError.unreadable
         }
         let maxBytes = stated.maxBytes ?? 262_144
-        for target in [512, 256].map({ min($0, stated.maxSide ?? $0, side) }) {
-            guard let scaled = scale(square, to: target) else { throw AttachmentError.unreadable }
-            for quality in [0.85, 0.7, 0.55] {
-                guard let data = jpeg(scaled, quality: quality) else { throw AttachmentError.unreadable }
-                guard data.count <= maxBytes else { continue }
+        let format: UTType = target.type == "image/png" ? .png : .jpeg
+        let name = format == .png ? "avatar.png" : "avatar.jpg"
+        for side in [512, 256].map({ min($0, stated.maxSide ?? $0, side) }) {
+            guard let scaled = scale(square, to: side) else { throw AttachmentError.unreadable }
+            for data in encodings(of: scaled, as: format) where data.count <= maxBytes {
                 let folder = directory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                let destination = folder.appending(path: "avatar.jpg")
+                let destination = folder.appending(path: name)
                 try data.write(to: destination)
-                return Attachment(fileURL: destination, title: "avatar.jpg", contentType: "image/jpeg", byteCount: data.count,
-                                  pixelWidth: target, pixelHeight: target)
+                return Attachment(fileURL: destination, title: name, contentType: target.type, byteCount: data.count,
+                                  pixelWidth: side, pixelHeight: side)
             }
         }
         throw AttachmentError.refused("This image can't be made small enough for an avatar.")
@@ -121,63 +136,43 @@ public enum AttachmentPreparer {
         return context.makeImage()
     }
 
-    /// Nil when the file can go as it is: a PNG within the limits.
-    private static func reencodeIfNeeded(_ source: URL, type: UTType, title: String, limits: MediaLimits.Category?,
-                                         into folder: URL) throws -> Attachment? {
+    /// Nil when the file can go as it is: a PNG within the limits of a server that takes PNG.
+    private static func reencodeIfNeeded(_ source: URL, type: String, size: Int, title: String, target: UploadPlan.ImageTarget,
+                                         limits: MediaLimits.Category?, into folder: URL) throws -> Attachment? {
         guard let image = CGImageSourceCreateWithURL(source as CFURL, nil), let pixels = pixelSize(of: image) else {
             throw AttachmentError.unreadable
         }
-        let jpegLimits: MediaLimits.Limits
-        switch MediaLimits.verdict(for: "image/jpeg", in: limits) {
-        case .refused: throw AttachmentError.refused("This server doesn't take photos.")
-        case .unknown: jpegLimits = MediaLimits.Limits()
-        case .allowed(let stated): jpegLimits = stated
-        }
-        let maxSide = min(defaultMaxSide, jpegLimits.maxSide ?? defaultMaxSide)
-        let maxBytes = jpegLimits.maxBytes ?? defaultImageBytes
-        if type.conforms(to: .png), max(pixels.width, pixels.height) <= maxSide,
-           let size = try? byteCount(of: source), size <= maxBytes,
+        if type == "image/png", max(pixels.width, pixels.height) <= target.maxSide, size <= target.maxBytes,
            MediaLimits.verdict(for: "image/png", in: limits) != .refused {
             return nil
         }
-        var side = min(maxSide, max(pixels.width, pixels.height))
-        while side >= 256 {
+        let format: UTType = target.type == "image/png" ? .png : .jpeg
+        let name = (title as NSString).deletingPathExtension + (format == .png ? ".png" : ".jpg")
+        for side in sides(from: min(target.maxSide, max(pixels.width, pixels.height))) {
             let options: [CFString: Any] = [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceThumbnailMaxPixelSize: side,
             ]
             guard let scaled = CGImageSourceCreateThumbnailAtIndex(image, 0, options as CFDictionary) else { throw AttachmentError.unreadable }
-            for quality in [0.85, 0.7, 0.55, 0.4] {
-                guard let data = jpeg(scaled, quality: quality) else { throw AttachmentError.unreadable }
-                if data.count <= maxBytes {
-                    let name = (title as NSString).deletingPathExtension + ".jpg"
-                    let destination = folder.appending(path: safeName(name))
-                    try data.write(to: destination)
-                    return Attachment(fileURL: destination, title: name, contentType: "image/jpeg", byteCount: data.count,
-                                      pixelWidth: scaled.width, pixelHeight: scaled.height)
-                }
+            for data in encodings(of: scaled, as: format) where data.count <= target.maxBytes {
+                let destination = folder.appending(path: safeName(name))
+                try data.write(to: destination)
+                return Attachment(fileURL: destination, title: name, contentType: target.type, byteCount: data.count,
+                                  pixelWidth: scaled.width, pixelHeight: scaled.height)
             }
-            side = side * 3 / 4
         }
         throw AttachmentError.refused("This photo can't be made small enough for this server.")
     }
 
-    /// Refuses a file the server's stated media rule out, naming the limit.
-    static func check(size: Int, type: String, limits: MediaLimits.Category?) throws {
-        let group = type.split(separator: "/").first.map(String.init) ?? "file"
-        let noun = ["image": "images", "video": "videos", "audio": "audio", "text": "text files"][group] ?? "files of this type"
-        switch MediaLimits.verdict(for: type, in: limits) {
-        case .unknown:
-            return
-        case .refused:
-            throw AttachmentError.refused("This server doesn't take \(noun).")
-        case .allowed(let stated):
-            if let maxBytes = stated.maxBytes, size > maxBytes {
-                let limit = ByteCountFormatter.string(fromByteCount: Int64(maxBytes), countStyle: .file)
-                throw AttachmentError.refused("This server takes \(noun) up to \(limit).")
-            }
-        }
+    /// The longest sides tried, largest first: three quarters of the last each time, down to 256 px.
+    static func sides(from start: Int) -> [Int] {
+        Array(sequence(first: start) { $0 * 3 / 4 }.prefix { $0 >= 256 })
+    }
+
+    /// The image encoded at each quality step, best first; PNG has only one.
+    private static func encodings(of image: CGImage, as format: UTType) -> some Sequence<Data> {
+        (format == .png ? [1.0] : [0.85, 0.7, 0.55, 0.4]).lazy.compactMap { encode(image, as: format, quality: $0) }
     }
 
     static func byteCount(of url: URL) throws -> Int {
@@ -185,9 +180,9 @@ public enum AttachmentPreparer {
         return size
     }
 
-    private static func jpeg(_ image: CGImage, quality: Double) -> Data? {
+    private static func encode(_ image: CGImage, as format: UTType, quality: Double) -> Data? {
         let data = NSMutableData()
-        guard let destination = CGImageDestinationCreateWithData(data, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        guard let destination = CGImageDestinationCreateWithData(data, format.identifier as CFString, 1, nil) else { return nil }
         CGImageDestinationAddImage(destination, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
         return CGImageDestinationFinalize(destination) ? data as Data : nil
     }

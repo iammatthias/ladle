@@ -168,6 +168,34 @@ final class AttachmentPreparerTests: XCTestCase {
         XCTAssertEqual([attachment.pixelWidth, attachment.pixelHeight], [300, 200])
     }
 
+    func testAPhotoBecomesAPNGWithinTheLimitsWhereTheServerTakesOnlyPNG() throws {
+        let source = try photo(width: 1600, height: 1200, type: .jpeg)
+        let attachment = try AttachmentPreparer.prepare(source, title: "a.jpeg", limits: ["image/png": .init(maxBytes: 400_000)], into: directory)
+        XCTAssertEqual(attachment.contentType, "image/png")
+        XCTAssertEqual(attachment.title, "a.png")
+        XCTAssertLessThanOrEqual(attachment.byteCount, 400_000)
+        XCTAssertEqual(try properties(attachment.fileURL)[kCGImagePropertyPixelWidth] as? Int, attachment.pixelWidth)
+    }
+
+    func testAnAvatarFitsCloudflaresAvatarLimit() throws {
+        let source = try photo(width: 3000, height: 2000, type: .heic)
+        let avatars: MediaLimits.Category = ["image/png": .init(maxBytes: 262_144), "image/jpeg": .init(maxBytes: 262_144)]
+        let avatar = try AttachmentPreparer.prepareAvatar(source, limits: avatars, into: directory)
+        XCTAssertEqual(avatar.contentType, "image/jpeg")
+        XCTAssertLessThanOrEqual(avatar.byteCount, 262_144)
+        let png = try AttachmentPreparer.prepareAvatar(source, limits: ["image/png": .init(maxBytes: 262_144)], into: directory)
+        XCTAssertEqual([png.contentType, png.title], ["image/png", "avatar.png"])
+        XCTAssertLessThanOrEqual(png.byteCount, 262_144)
+    }
+
+    func testASoundOrVideoStillTooLargeAfterReencodingIsRefused() throws {
+        let source = directory.appending(path: "talk.m4a")
+        try Data(repeating: 1, count: 4096).write(to: source)
+        XCTAssertThrowsError(try AttachmentPreparer.prepare(source, title: "talk.m4a", limits: ["audio/mp4": .init(maxBytes: 1024)], into: directory)) {
+            XCTAssertEqual($0 as? AttachmentError, .refused("This server takes audio up to 1 KB."))
+        }
+    }
+
     func testOtherFilesGoAsTheyAreUnlessTheServersMediaRuleThemOut() throws {
         let source = directory.appending(path: "clip.mov")
         try Data(repeating: 7, count: 4096).write(to: source)
@@ -179,11 +207,85 @@ final class AttachmentPreparerTests: XCTestCase {
             XCTAssertEqual($0 as? AttachmentError, .refused("This server takes videos up to 1 KB."))
         }
         XCTAssertThrowsError(try AttachmentPreparer.prepare(source, title: "clip.mov", limits: ["image/*": .init()], into: directory)) {
-            XCTAssertEqual($0 as? AttachmentError, .refused("This server doesn't take videos."))
+            XCTAssertEqual($0 as? AttachmentError, .refused("This server takes images only, not videos."))
         }
         let notes = directory.appending(path: "notes")
         try Data("hi".utf8).write(to: notes)
         XCTAssertEqual(try AttachmentPreparer.prepare(notes, title: "notes", limits: nil, into: directory).contentType, "application/octet-stream")
+    }
+}
+
+/// What Ladle does with each kind of file under a server's stated media, Cloudflare's demo first.
+final class UploadPlanTests: XCTestCase {
+    /// `ext.media.upload` of server.apron.chat (apron-server-cloudflare SPEC §4).
+    static let cloudflare: MediaLimits.Category = Dictionary(uniqueKeysWithValues: [
+        "image/png", "image/jpeg", "image/gif", "image/webp", "audio/webm", "audio/ogg", "audio/mp4",
+    ].map { ($0, MediaLimits.Limits(maxBytes: 5_242_880)) })
+    let mb = 1_048_576
+
+    func testOnCloudflarePhotosShrinkSoundsBecomeM4AAndVideosAndDocumentsAreRefused() {
+        let cf = Self.cloudflare
+        XCTAssertEqual(UploadPlan.decide(type: "image/heic", byteCount: 3 * mb, limits: cf),
+                       .image(.init(type: "image/jpeg", maxBytes: 5_242_880, maxSide: 2048)))
+        XCTAssertEqual(UploadPlan.decide(type: "image/gif", byteCount: mb, limits: cf), .asIs)
+        XCTAssertEqual(UploadPlan.decide(type: "image/gif", byteCount: 6 * mb, limits: cf), .refused("This server takes images up to 5 MB."))
+        XCTAssertEqual(UploadPlan.decide(type: "audio/mp4", byteCount: mb, limits: cf), .asIs)
+        XCTAssertEqual(UploadPlan.decide(type: "audio/mp4", byteCount: 6 * mb, limits: cf), .audio(maxBytes: 5_242_880))
+        XCTAssertEqual(UploadPlan.decide(type: "audio/mpeg", byteCount: mb, limits: cf), .audio(maxBytes: 5_242_880), "MP3 is not on the list")
+        XCTAssertEqual(UploadPlan.decide(type: "video/quicktime", byteCount: mb, limits: cf),
+                       .refused("This server takes images and audio only, not videos."))
+        XCTAssertEqual(UploadPlan.decide(type: "application/pdf", byteCount: 1000, limits: cf),
+                       .refused("This server takes images and audio only, not files of this type."))
+    }
+
+    func testAVideoIsCompressedToATypeTheServerTakes() {
+        let limits: MediaLimits.Category = ["video/mp4": .init(maxBytes: 10 * mb)]
+        XCTAssertEqual(UploadPlan.decide(type: "video/mp4", byteCount: 9 * mb, limits: limits), .asIs)
+        XCTAssertEqual(UploadPlan.decide(type: "video/mp4", byteCount: 11 * mb, limits: limits), .video(type: "video/mp4", maxBytes: 10 * mb))
+        XCTAssertEqual(UploadPlan.decide(type: "video/quicktime", byteCount: mb, limits: limits), .video(type: "video/mp4", maxBytes: 10 * mb))
+        XCTAssertEqual(UploadPlan.decide(type: "video/mp4", byteCount: 11 * mb, limits: ["video/quicktime": .init()]),
+                       .video(type: "video/quicktime", maxBytes: nil))
+    }
+
+    func testWithoutStatedMediaOnlyPhotosChange() {
+        XCTAssertEqual(UploadPlan.decide(type: "image/jpeg", byteCount: 9 * mb, limits: nil),
+                       .image(.init(type: "image/jpeg", maxBytes: 5 * mb, maxSide: 2048)))
+        for type in ["image/gif", "video/quicktime", "audio/x-wav", "application/pdf"] {
+            XCTAssertEqual(UploadPlan.decide(type: type, byteCount: 900 * mb, limits: nil), .asIs, type)
+        }
+    }
+
+    func testPhotosBecomePNGWhereTheServerTakesNoJPEGAndAreRefusedWhereItTakesNeither() {
+        XCTAssertEqual(UploadPlan.decide(type: "image/jpeg", byteCount: mb, limits: ["image/png": .init(maxBytes: mb, maxSide: 1024)]),
+                       .image(.init(type: "image/png", maxBytes: mb, maxSide: 1024)))
+        XCTAssertEqual(UploadPlan.decide(type: "image/jpeg", byteCount: mb, limits: ["image/webp": .init()]),
+                       .refused("This server doesn't take image/jpeg files."))
+        XCTAssertEqual(UploadPlan.decide(type: "audio/mpeg", byteCount: mb, limits: ["audio/ogg": .init()]),
+                       .refused("This server doesn't take audio/mpeg files."), "iOS writes no Ogg")
+    }
+
+    func testAudioTakesTheBestBitRateThatFits() {
+        XCTAssertEqual(AudioEncoding.fitting(maxBytes: nil, seconds: 7200)?.bitRate, 64_000)
+        XCTAssertEqual(AudioEncoding.fitting(maxBytes: 5_242_880, seconds: 300)?.bitRate, 64_000)
+        XCTAssertEqual(AudioEncoding.fitting(maxBytes: 5_242_880, seconds: 600)?.bitRate, 48_000)
+        XCTAssertEqual(AudioEncoding.fitting(maxBytes: 5_242_880, seconds: 1800)?.bitRate, 16_000)
+        XCTAssertNil(AudioEncoding.fitting(maxBytes: 5_242_880, seconds: 3600), "too long even at 16 kbit/s")
+    }
+
+    func testTheAttachMenuOffersWhatTheServerTakes() {
+        let cf = UploadOffer(Self.cloudflare)
+        XCTAssertEqual([cf.images, cf.videos, cf.audio, cf.otherFiles], [true, false, true, false])
+        XCTAssertEqual(cf.summary, "This server takes images and audio only.")
+        XCTAssertEqual(cf.contentTypes.first, .image)
+        XCTAssertTrue(cf.contentTypes.contains(.audio), "any sound, since it can become audio/mp4")
+        XCTAssertFalse(cf.contentTypes.contains { $0.conforms(to: .movie) })
+
+        let open = UploadOffer(nil)
+        XCTAssertEqual([open.images, open.videos, open.audio, open.otherFiles], [true, true, true, true])
+        XCTAssertNil(open.summary)
+        XCTAssertEqual(open.contentTypes, [.item])
+        XCTAssertEqual(UploadOffer(["*/*": .init(maxBytes: 1)]).contentTypes, [.item])
+        XCTAssertEqual(UploadOffer([:]).summary, "This server takes no files.")
     }
 }
 

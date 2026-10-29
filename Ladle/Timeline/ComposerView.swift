@@ -10,7 +10,9 @@ import SwiftUI
 /// With capability `embed:upload`, the attach menu adds photos and videos (PhotosPicker), a
 /// photo or video from the camera, files (the document picker), a voice note, or a pasted image.
 /// Each shows above the box as a tile while it is fitted to the server, and goes out with the
-/// message (§4.8.4). Without the capability the menu is not there.
+/// message (§4.8.4). Without the capability the menu is not there. Where the server states what
+/// it takes (`UploadOffer`), the pickers show only that, the rest is greyed out, and the menu
+/// says what the server takes.
 struct ComposerView: View {
     let session: ServerSession
     let roomID: String
@@ -73,8 +75,8 @@ struct ComposerView: View {
         }
         .animation(Motion.fast(reduceMotion), value: mentionQuery)
         .onChange(of: draft.mode.isActive, initial: true) { if draft.mode.isActive { focused = true } }
-        .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, maxSelectionCount: 10, matching: .any(of: [.images, .videos]),
-                      preferredItemEncoding: .compatible)
+        .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, maxSelectionCount: 10,
+                      matching: .any(of: (offer.images ? [.images] : []) + (offer.videos ? [.videos] : [])), preferredItemEncoding: .compatible)
         .onChange(of: photoItems) {
             for item in photoItems {
                 attach(contentType: nil) {
@@ -84,14 +86,14 @@ struct ComposerView: View {
             }
             photoItems = []
         }
-        .fileImporter(isPresented: $importingFiles, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
+        .fileImporter(isPresented: $importingFiles, allowedContentTypes: offer.contentTypes, allowsMultipleSelection: true) { result in
             switch result {
             case .success(let urls): for url in urls { attach(contentType: nil) { url } }
             case .failure(let error): onProblem(errorText(error))
             }
         }
         .fullScreenCover(isPresented: $usingCamera) {
-            CameraPicker { url in attach(contentType: nil) { url } }.ignoresSafeArea()
+            CameraPicker(videos: offer.videos) { url in attach(contentType: nil) { url } }.ignoresSafeArea()
         }
         .onChange(of: recorder.state) {
             if recorder.state == .denied { onProblem("Ladle can't use the microphone. Allow it in Settings to record voice notes.") }
@@ -123,19 +125,26 @@ struct ComposerView: View {
 
     private var attachMenu: some View {
         Menu {
-            Button("Photo Library", systemImage: "photo.on.rectangle") { pickingPhotos = true }
-            if CameraPicker.isAvailable {
-                Button("Take Photo or Video", systemImage: "camera") { usingCamera = true }
-            }
-            Button("Choose File", systemImage: "doc") { importingFiles = true }
-            if takesVoiceNotes {
+            Section {
+                Button(offer.videos ? "Photo Library" : "Photos", systemImage: "photo.on.rectangle") { pickingPhotos = true }
+                    .disabled(!offer.images && !offer.videos)
+                if CameraPicker.isAvailable {
+                    Button(offer.videos ? "Take Photo or Video" : "Take Photo", systemImage: "camera") { usingCamera = true }
+                        .disabled(!offer.images && !offer.videos)
+                }
+                Button("Choose File", systemImage: "doc") { importingFiles = true }
+                    .disabled(offer.contentTypes.isEmpty)
                 Button("Record Voice Note", systemImage: "mic") {
                     recorder.onLimit = { clip in attach(contentType: "audio/mp4") { clip } }
                     Task { await recorder.start(maxBytes: audioLimit) }
                 }
-            }
-            if UIPasteboard.general.hasImages {
-                Button("Paste Image", systemImage: "doc.on.clipboard") { pasteImages() }
+                .disabled(!takesVoiceNotes)
+                if UIPasteboard.general.hasImages {
+                    Button("Paste Image", systemImage: "doc.on.clipboard") { pasteImages() }
+                        .disabled(!offer.images)
+                }
+            } header: {
+                if let summary = offer.summary { Text(summary) }
             }
         } label: {
             Image(systemName: "plus")
@@ -150,6 +159,8 @@ struct ComposerView: View {
     }
 
     private var canAttach: Bool { session.canAttach && !isEdit }
+
+    private var offer: UploadOffer { UploadOffer(session.mediaLimits?.upload) }
 
     /// Voice notes go as `audio/mp4`; a server that states its media must take it.
     private var takesVoiceNotes: Bool {
