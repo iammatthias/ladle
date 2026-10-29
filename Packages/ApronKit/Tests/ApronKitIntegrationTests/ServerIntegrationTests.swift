@@ -115,7 +115,7 @@ final class ServerIntegrationTests: XCTestCase {
 
         try await session.toggleReaction("👍", on: first)
         try await waitFor("reaction installed") { session.store.reactions(on: first) != nil }
-        XCTAssertEqual(session.store.reactions(on: first), [ReplayStore.ReactionSummary(emoji: "👍", userIDs: [me])])
+        XCTAssertEqual(session.store.reactions(on: first), [ReplayStore.ReactionSummary(key: "👍", emoji: "👍", userIDs: [me])])
         try await session.toggleReaction("🎉", on: first)
         try await waitFor("second reaction") { session.store.reactions(on: first)?.count == 2 }
         try await session.toggleReaction("👍", on: first)

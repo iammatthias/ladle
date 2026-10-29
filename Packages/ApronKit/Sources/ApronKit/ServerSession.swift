@@ -614,12 +614,14 @@ public final class ServerSession {
         _ = try await request("message", ["message_id": message.messageID.json, "room_id": .string(message.roomID), "deleted": true])
     }
 
-    /// Adds the emoji to this user's set on the message, or removes it when present (§4.7).
+    /// Adds the entry to this user's set on the message, or removes it when present, comparing
+    /// entries without U+FE0F (§4.7).
     public func toggleReaction(_ emoji: String, on messageID: LogID) async throws {
         try require("reactions")
         guard let you else { throw Failure.notSignedIn }
         var mine = (store.reactions(on: messageID) ?? []).filter { $0.userIDs.contains(you.userID) }.map(\.emoji)
-        if let index = mine.firstIndex(of: emoji) { mine.remove(at: index) } else { mine.append(emoji) }
+        let key = ReactionEntry.key(emoji)
+        if let index = mine.firstIndex(where: { ReactionEntry.key($0) == key }) { mine.remove(at: index) } else { mine.append(emoji) }
         _ = try await request("reactions", ["message_id": messageID.json, "emojis": .array(mine.map(JSONValue.string))])
     }
 

@@ -149,22 +149,34 @@ public struct ReplayStore: Sendable, Equatable {
     }
 
     public struct ReactionSummary: Hashable, Sendable {
+        /// The entry as compared (`ReactionEntry.key`): one per summary.
+        public var key: String
+        /// The entry as shown: its fully-qualified spelling where any user sent one.
         public var emoji: String
         /// In string order.
         public var userIDs: [String]
     }
 
-    /// Reactions per emoji across every user's set, in code point order. Nil for a tombstone, an
-    /// unloaded message, or a message without a non-empty set.
+    /// Reactions per entry across every user's set, entries that differ only in U+FE0F counted
+    /// as one (§4.7), in code point order. Nil for a tombstone, an unloaded message, or a message
+    /// without a non-empty set.
     public func reactions(on messageID: LogID) -> [ReactionSummary]? {
         guard let snapshot = messages[messageID], !snapshot.isTombstone, let sets = reactions[messageID] else { return nil }
-        var users: [String: Set<String>] = [:]
+        var summaries: [String: ReactionSummary] = [:]
         for set in sets.values {
-            for emoji in set.emojis { users[emoji, default: []].insert(set.from.userID) }
+            for emoji in set.emojis {
+                let key = ReactionEntry.key(emoji)
+                var summary = summaries[key] ?? ReactionSummary(key: key, emoji: emoji, userIDs: [])
+                if emoji.unicodeScalars.count > summary.emoji.unicodeScalars.count { summary.emoji = emoji }
+                summary.userIDs.append(set.from.userID)
+                summaries[key] = summary
+            }
         }
-        if users.isEmpty { return nil }
-        return users.keys.sorted(by: codePointLess).map { emoji in
-            ReactionSummary(emoji: emoji, userIDs: users[emoji]!.sorted(by: codePointLess))
+        if summaries.isEmpty { return nil }
+        return summaries.values.sorted { codePointLess($0.key, $1.key) }.map { summary in
+            var sorted = summary
+            sorted.userIDs.sort(by: codePointLess)
+            return sorted
         }
     }
 
