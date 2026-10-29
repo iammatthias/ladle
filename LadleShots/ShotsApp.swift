@@ -128,7 +128,7 @@ enum Renderer {
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, draft: Draft(text: "Lunch :pa")) })
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
-                                roomID: .constant(PreviewFixtures.busyRoomID), connecting: .constant(nil)))
+                                roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))
         }
     }
 
