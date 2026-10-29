@@ -658,6 +658,56 @@ final class ServerSessionTests: XCTestCase {
                          reply: ["room_id": "300"]) { try await self.session.createRoom(title: "Deploy", parentRoomID: "general") }
     }
 
+    /// Signs in with a token as `you`, in `general` and its thread `130`, on a server listing `capabilities`.
+    private func signInWithRooms(_ you: JSONValue, capabilities: [String]) async throws -> FakeTransport {
+        try tokens.setToken("t1", for: record.id)
+        let socket = queueTransport(capabilities: capabilities)
+        session.start()
+        _ = await frames(socket, count: 2)
+        await socket.deliver(["id": "c1", "result": ["you": you]])
+        await socket.deliver(["id": "c2", "result": ["joined": [
+            ["room_id": "general", "log_id": "100", "title": "General", "latest_log_id": "100", "history_log_id": "100"],
+            ["room_id": "130", "log_id": "130", "parent_room_id": "general", "title": "Deploy", "latest_log_id": "130", "history_log_id": "130"],
+        ]]])
+        await eventually("signed in") { session.status == .signedIn && session.joinedRoomIDs.count == 2 }
+        return socket
+    }
+
+    func testAModeratorWithMoveAnyMovesSomeoneElsesMessageUntilThePermissionGoes() async throws {
+        let socket = try await signInWithRooms(["user_id": "mia", "name": "Mia", "roles": ["mod"], "ext": ["permissions": ["move_any", "add_members", 7]]],
+                                               capabilities: ["history", "edit", "rooms", "ext:permissions"])
+        XCTAssertEqual(session.permissions, ["move_any", "add_members"])
+        await socket.deliver(["method": "message", "params": [
+            "message_id": "200", "log_id": "200", "room_id": "130", "from": ["user_id": "ada"],
+            "body": ["text": "helo"], "reply_to": ["message_id": "150"], "ext": ["k": 1],
+        ]])
+        await socket.deliver(["method": "message", "params": ["message_id": "201", "log_id": "201", "room_id": "general", "from": ["user_id": "mia"], "body": ["text": "mine"]]])
+        await eventually("messages installed") { session.store.message(LogID("201")!) != nil }
+        let adas = try XCTUnwrap(session.store.message(LogID("200")!))
+        let mine = try XCTUnwrap(session.store.message(LogID("201")!))
+        XCTAssertTrue(session.mayMove(adas))
+        XCTAssertEqual(session.moveDestinations(for: adas), ["general"], "out of the thread")
+        XCTAssertEqual(session.moveDestinations(for: mine), ["130"], "into a thread")
+
+        let move = Task { try await session.move(adas, to: "general") }
+        let sent = await frame(socket, 2)
+        XCTAssertEqual(sent, #"{"id":"c3","method":"message","params":{"body":{"text":"helo"},"ext":{"k":1},"message_id":"200","reply_to":{"message_id":"150"},"room_id":"general"}}"#)
+        await socket.deliver(["id": "c3", "result": [:]])
+        try await move.value
+
+        await socket.deliver(["method": "user", "params": ["you": ["user_id": "mia", "ext": ["permissions": []]]]])
+        await eventually("permissions cleared") { session.permissions.isEmpty }
+        XCTAssertFalse(session.mayMove(adas))
+        XCTAssertTrue(session.mayMove(mine), "your own message moves without a permission")
+    }
+
+    func testPermissionsCountOnlyWithTheCapability() async throws {
+        _ = try await signInWithRooms(["user_id": "mia", "ext": ["permissions": ["move_any"]]], capabilities: ["history", "edit", "rooms"])
+        XCTAssertEqual(session.permissions, [])
+        let other = MessageSnapshot(messageID: LogID("200")!, logID: LogID("200")!, roomID: "general", from: UserObject(["user_id": "ada"])!)
+        XCTAssertFalse(session.mayMove(other))
+    }
+
     func testMentionsCommandsAndDoubleSlashMessages() async throws {
         session.start()
         let socket = await transport(0)

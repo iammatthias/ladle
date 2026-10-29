@@ -538,6 +538,40 @@ public final class ServerSession {
         _ = try await request("message", .object(params))
     }
 
+    /// Moves a message to another room (§4.4): a save with the new `room_id` and every other
+    /// client field as stored, which is all Cloudflare's demo accepts from a user moving someone
+    /// else's message.
+    public func move(_ message: MessageSnapshot, to roomID: String) async throws {
+        try require("edit")
+        var params: [String: JSONValue] = ["message_id": message.messageID.json, "room_id": .string(roomID)]
+        params["body"] = message.body
+        params["reply_to"] = message.replyTo.map { ["message_id": $0.json] }
+        params["ext"] = message.ext
+        _ = try await request("message", .object(params))
+    }
+
+    /// What this user may do beyond their own messages: `you.ext.permissions` under capability
+    /// `ext:permissions` (apron-web EXT.md §7). Read from `you` only.
+    public var permissions: Set<String> {
+        guard server?.has("ext:permissions") == true else { return [] }
+        return Set((you?.json["ext"]?["permissions"]?.arrayValue ?? []).compactMap(\.stringValue))
+    }
+
+    /// Whether this user may move the message: their own, or anyone's with `move_any`.
+    public func mayMove(_ message: MessageSnapshot) -> Bool {
+        guard status == .signedIn, server?.has("edit") == true, !isReadOnlyGuest, !message.isTombstone else { return false }
+        return message.from.userID == you?.userID || permissions.contains("move_any")
+    }
+
+    /// Where a message may move: into a thread of its room, or out of a thread to the room it
+    /// belongs to or another of that room's threads, as apron-web offers.
+    public func moveDestinations(for message: MessageSnapshot) -> [String] {
+        let family = store.room(message.roomID)?.parentRoomID ?? message.roomID
+        let threads = store.roomIDs.filter { store.room($0)?.parentRoomID == family }
+            .sorted { codePointLess(title(of: $0), title(of: $1)) }
+        return ([family] + threads).filter { $0 != message.roomID }
+    }
+
     public func delete(_ message: MessageSnapshot) async throws {
         try require("edit")
         _ = try await request("message", ["message_id": message.messageID.json, "room_id": .string(message.roomID), "deleted": true])
