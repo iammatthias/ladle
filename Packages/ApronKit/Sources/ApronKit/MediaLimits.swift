@@ -1,8 +1,8 @@
 import Foundation
 
-/// The server's media, from capability `ext:media` (apron-web EXT.md §6): origins besides its own
-/// that serve its files, and the types and sizes of file it takes as attachments and avatars.
-/// Without the capability nothing is known, and the server's 413 or 415 decides.
+/// The server's media, from capability `ext:media` (EXTENSIONS.md): origins besides its own that
+/// serve its files, and the types and sizes of file it takes as attachments, avatars and custom
+/// emoji. Without the capability nothing is known, and the server's 413 or 415 decides.
 public struct MediaLimits: Hashable, Sendable {
     public struct Limits: Hashable, Sendable {
         public var maxBytes: Int?
@@ -20,6 +20,8 @@ public struct MediaLimits: Hashable, Sendable {
     public var origins: [String]
     public var upload: Category?
     public var avatar: Category?
+    /// Images for custom emoji (`ext:emoji`); Ladle adds none, so nothing reads it yet.
+    public var emoji: Category?
 
     /// Nil without capability `ext:media`. Fields of the wrong type are ignored one by one.
     public init?(server: ServerInfo?) {
@@ -28,6 +30,7 @@ public struct MediaLimits: Hashable, Sendable {
         origins = (media?["origins"]?.arrayValue ?? []).compactMap { Self.origin($0.stringValue) }
         upload = Self.category(media?["upload"])
         avatar = Self.category(media?["avatar"])
+        emoji = Self.category(media?["emoji"])
     }
 
     /// What a category says about a file of `contentType`.
@@ -39,7 +42,8 @@ public struct MediaLimits: Hashable, Sendable {
         case allowed(Limits)
     }
 
-    /// The limits of the most specific pattern: the exact type, then its group, then `*/*`.
+    /// The limits of the most specific pattern alone: the exact type, then its group, then
+    /// `*/*`. Limits never combine across patterns.
     public static func verdict(for contentType: String, in category: Category?) -> Verdict {
         guard let category else { return .unknown }
         let type = contentType.split(separator: ";").first.map { $0.trimmingCharacters(in: .whitespaces).lowercased() } ?? ""
