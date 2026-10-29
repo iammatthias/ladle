@@ -176,6 +176,9 @@ public enum PreviewFixtures {
     /// The room whose uploads the media screenshots show.
     public static let mediaRoomID = "random"
 
+    /// The room whose link cards play `og` video and audio.
+    public static let linkRoomID = "design"
+
     private static func room(_ id: String, _ title: String, parent: String? = nil, members: [String],
                              description: String? = nil, isPrivate: Bool = false) -> JSONValue {
         var room: [String: JSONValue] = [
@@ -247,6 +250,14 @@ public enum PreviewFixtures {
                 line(-40, "eunji", "Three takes on the app icon: a ladle in profile, a ladle from above, and just the bowl."),
                 line(-38, "ada", "From above reads best at small sizes."),
                 line(-30, "sam", "Agree. The profile one turns into a spoon below 40 pt."),
+                line(-25, "sam", "The 20 pt walkthrough, if you want to see the glyph move.",
+                     embeds: [["kind": "link", "url": "https://home.example/clips/glyph", "og": [
+                         "title": "Ladle glyph at 20 pt", "description": "A thirty second pass over the bowl-only mark.", "site_name": "home.example",
+                         "image": media(7, "image/jpeg", 1200, 630), "video": media(8, "video/mp4", 1200, 630)]]]),
+                line(-24, "sam", "And the kettle, for the icon's sound.",
+                     embeds: [["kind": "link", "url": "https://home.example/clips/kettle", "og": [
+                         "title": "Kettle, close up", "description": "The whistle the glyph is named for.", "site_name": "home.example",
+                         "image": media(9, "image/jpeg", 1200, 630), "audio": media(10, "audio/mp4")]]]),
             ]),
             iconThread: history(iconThread, [
                 line(-20, "eunji", "Bowl-only, 2 pt stroke, rounded caps."),

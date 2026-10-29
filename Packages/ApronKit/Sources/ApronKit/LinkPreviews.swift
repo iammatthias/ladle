@@ -3,17 +3,23 @@ import Darwin
 import Foundation
 
 /// A preview this device fetched for a link the server did not describe: the page's title, its
-/// site, and a small JPEG of its image.
+/// site, a small JPEG of its image, and the direct video URL the page names, if any.
 public struct LinkPreview: Codable, Hashable, Sendable {
     public var title: String
     public var site: String
     public var image: Data?
+    public var video: URL?
 
-    public init(title: String, site: String, image: Data? = nil) {
+    public init(title: String, site: String, image: Data? = nil, video: URL? = nil) {
         self.title = title
         self.site = site
         self.image = image
+        self.video = video
     }
+
+    /// The video to play inline: the page's own, under the rules that let this device fetch the
+    /// page's image (`LinkPreviews.mayFetch`). Nil keeps the image.
+    public var playableVideo: URL? { video.flatMap { LinkPreviews.mayFetch($0) ? $0 : nil } }
 }
 
 extension MessageSnapshot {

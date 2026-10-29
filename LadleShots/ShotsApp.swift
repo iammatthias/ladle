@@ -18,7 +18,7 @@ struct ShotsApp: App {
 }
 
 enum Screen: String, CaseIterable {
-    case firstRun = "first-run", servers, connect, connectScanned = "connect-scanned", rooms, timeline, mention, members, reaction, attachments, media, viewer, ipad
+    case firstRun = "first-run", servers, connect, connectScanned = "connect-scanned", rooms, timeline, mention, members, reaction, attachments, media, links, viewer, ipad
     case textLimit = "text-limit", guestComposer = "guest-composer"
 }
 
@@ -105,6 +105,8 @@ enum Renderer {
             })
         case .media:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID) })
+        case .links:
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkRoomID) })
         case .viewer:
             AnyView(MediaViewer(items: home.mediaItems(in: PreviewFixtures.mediaRoomID),
                                 selection: home.mediaItems(in: PreviewFixtures.mediaRoomID).first?.id ?? ""))
@@ -176,6 +178,10 @@ final class FixtureMedia: URLProtocol {
             Self.photo(CGSize(width: 1600, height: 1200), hue: 0.02)
         } else if path.contains("embed_6/") {
             Self.photo(CGSize(width: 1200, height: 630), hue: 0.58)
+        } else if path.contains("embed_7/") {
+            Self.photo(CGSize(width: 1200, height: 630), hue: 0.75)
+        } else if path.contains("embed_9/") {
+            Self.photo(CGSize(width: 1200, height: 630), hue: 0.95)
         } else {
             nil
         }

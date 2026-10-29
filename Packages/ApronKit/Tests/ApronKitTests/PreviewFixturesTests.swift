@@ -49,6 +49,13 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.timeline(home.roomTree[1].threadIDs[0]).count, 4, "Release 0.2")
         XCTAssertEqual(home.unreadCount(in: home.roomTree[1].threadIDs[0]), 2)
         XCTAssertEqual(home.unreadCount(in: "design"), 0)
+        let players = home.timeline(PreviewFixtures.linkRoomID).flatMap(\.embedList).compactMap { $0.og?.player(policy: home.mediaPolicy) }
+        XCTAssertEqual(players.map { player -> String in
+            switch player {
+            case .video(_, let poster): poster == nil ? "video" : "video with poster"
+            case .audio(_, let cover): cover == nil ? "audio" : "audio with cover"
+            }
+        }, ["video with poster", "audio with cover"])
         XCTAssertEqual(demo.unreadCount(in: "lobby"), 3)
         XCTAssertTrue(demo.isReadOnlyGuest, "a guest on a server whose guests only read")
         XCTAssertFalse(home.isReadOnlyGuest)

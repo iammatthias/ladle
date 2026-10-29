@@ -13,7 +13,8 @@ extension LinkPreviews {
     static let settingKey = "showLinkPreviews"
 
     /// LinkPresentation follows redirects and reads the page's title and image; this keeps the
-    /// title, the final host as the site, and the image as a JPEG at most 840 px on its long side.
+    /// title, the final host as the site, the image as a JPEG at most 840 px on its long side, and the
+    /// direct video URL when the page names one (`remoteVideoURL`).
     /// A page without a title gives no preview.
     @MainActor static func fetchWithLinkPresentation(_ url: URL) async -> LinkPreview? {
         let provider = LPMetadataProvider()
@@ -27,7 +28,7 @@ extension LinkPreviews {
         if let provider = metadata.imageProvider, let data = await imageData(provider) {
             image = await Task.detached { thumbnail(data, maxPixel: 840) }.value
         }
-        return LinkPreview(title: title, site: site, image: image)
+        return LinkPreview(title: title, site: site, image: image, video: metadata.remoteVideoURL)
     }
 
     private static func imageData(_ provider: NSItemProvider) async -> Data? {
@@ -70,15 +71,13 @@ struct FetchedLinkCard<Placeholder: View>: View {
         // A ZStack, not a Group: an empty Group would drop the task with its only child.
         ZStack(alignment: .leading) {
             if enabled, let loaded {
-                LinkButton(url: url) {
-                    LinkCard(site: loaded.preview.site, title: loaded.preview.title) {
-                        if let image = loaded.image {
-                            Color.clear
-                                .aspectRatio(1.91, contentMode: .fit)
-                                .overlay { Image(uiImage: image).resizable().scaledToFill() }
-                                .clipped()
-                                .accessibilityHidden(true)
-                        }
+                let video = loaded.preview.playableVideo
+                LinkCard(site: loaded.preview.site, title: loaded.preview.title, link: url, playsPicture: video != nil) {
+                    if let video {
+                        VideoTile(url: video, name: loaded.preview.title, aspect: loaded.image.map { Double($0.size.width) / Double($0.size.height) },
+                                  poster: loaded.image.map { .fetched($0) }, inCard: true)
+                    } else if let image = loaded.image {
+                        Self.still(image)
                     }
                 }
                 .padding(.top, inset)
@@ -90,6 +89,14 @@ struct FetchedLinkCard<Placeholder: View>: View {
             guard enabled, let preview = await LinkPreviews.shared.preview(for: url), loaded?.preview != preview else { return }
             loaded = Self.decoded(preview)
         }
+    }
+
+    private static func still(_ image: UIImage) -> some View {
+        Color.clear
+            .aspectRatio(1.91, contentMode: .fit)
+            .overlay { Image(uiImage: image).resizable().scaledToFill() }
+            .clipped()
+            .accessibilityHidden(true)
     }
 
     private static func decoded(_ preview: LinkPreview) -> (preview: LinkPreview, image: UIImage?) {
