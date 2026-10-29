@@ -57,8 +57,9 @@ public enum SignInOutcome: Hashable, Sendable {
     case codeSent(to: String)
 }
 
-/// A token as a user pastes or scans it: the bare token, or a link (§A.4) whose `token` key
-/// holds it, such as `https://link.apron.chat/#server=wss://chat.example/ws&token=…`.
+/// A token as a user pastes or scans it: the bare token, or a sign-in link (link.apron.chat SPEC
+/// §2.1) whose `token` key holds it, such as `https://link.apron.chat/#server=wss://chat.example/ws&token=…`.
+/// An `apron:` URI never carries one (`ApronLink`).
 public struct TokenPayload: Hashable, Sendable {
     public var token: String
     /// The link's `server`, when it named one.
@@ -71,31 +72,13 @@ public struct TokenPayload: Hashable, Sendable {
 
     public init?(parsing text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return nil }
-        guard let pairs = Self.linkPairs(trimmed) else {
-            guard OpaqueID.isValid(trimmed) else { return nil }
-            token = trimmed
-            server = nil
+        if let link = ApronLink(trimmed) {
+            guard let token = link.token else { return nil }
+            self.init(token: token, server: link.server)
             return
         }
-        guard let token = pairs.first(where: { $0.name == "token" })?.value, !token.isEmpty else { return nil }
-        self.token = token
-        server = pairs.first(where: { $0.name == "server" })?.value.flatMap(URL.init(string:))
-    }
-
-    /// The form-encoded pairs after `https://…/#` or `apron:?`, or nil when the text is no link.
-    private static func linkPairs(_ text: String) -> [URLQueryItem]? {
-        let query: Substring
-        if text.hasPrefix("apron:?") {
-            query = text.dropFirst("apron:?".count)
-        } else if text.hasPrefix("https://"), let hash = text.firstIndex(of: "#") {
-            query = text[text.index(after: hash)...]
-        } else {
-            return nil
-        }
-        var components = URLComponents()
-        components.percentEncodedQuery = query.replacingOccurrences(of: "+", with: "%20")
-        return components.queryItems ?? []
+        guard OpaqueID.isValid(trimmed), !trimmed.lowercased().hasPrefix("apron:"), !trimmed.lowercased().hasPrefix("https://") else { return nil }
+        self.init(token: trimmed)
     }
 }
 

@@ -1100,7 +1100,8 @@ final class SignInValueTests: XCTestCase {
         XCTAssertEqual(TokenPayload(parsing: "  st_abc123\n"), TokenPayload(token: "st_abc123"))
         XCTAssertEqual(TokenPayload(parsing: "https://link.apron.chat/#server=wss://chat.example/ws&token=inv_Qm7x"),
                        TokenPayload(token: "inv_Qm7x", server: URL(string: "wss://chat.example/ws")))
-        XCTAssertEqual(TokenPayload(parsing: "apron:?token=Hk41&state=q8Rz"), TokenPayload(token: "Hk41"))
+        XCTAssertNil(TokenPayload(parsing: "apron:?server=wss://chat.example/ws&token=Hk41&state=q8Rz"), "an apron: URI carries no credential")
+        XCTAssertNil(TokenPayload(parsing: "https://chat.example/#server=wss://chat.example/ws&token=inv_Qm7x"), "only link.apron.chat's form")
         XCTAssertNil(TokenPayload(parsing: "https://link.apron.chat/#server=wss://chat.example/ws&room=general"))
         XCTAssertNil(TokenPayload(parsing: "two words"))
         XCTAssertNil(TokenPayload(parsing: ""))
@@ -1113,7 +1114,7 @@ final class SignInValueTests: XCTestCase {
         XCTAssertEqual(SignInFill(link, signingInTo: saved), .token("inv_Qm7x"))
         XCTAssertEqual(SignInFill("st_abc123", signingInTo: nil), .token("st_abc123"))
         XCTAssertEqual(SignInFill("st_abc123", signingInTo: saved), .token("st_abc123"))
-        XCTAssertEqual(SignInFill("apron:?token=Hk41", signingInTo: nil), .token("Hk41"))
+        XCTAssertNil(SignInFill("apron:?server=wss://chat.example/ws&token=Hk41", signingInTo: nil))
         XCTAssertEqual(SignInFill(link, signingInTo: URL(string: "wss://other.example/ws")!),
                        .otherServer(saved))
         XCTAssertNil(SignInFill("https://example.com/menu", signingInTo: nil))
