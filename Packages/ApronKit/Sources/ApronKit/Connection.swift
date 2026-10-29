@@ -19,6 +19,10 @@ public actor Connection {
 
     /// How long a request waits for its reply, as apron-web's `REQUEST_TIMEOUT_MS`.
     public static let defaultRequestTimeout = Duration.seconds(20)
+    /// Requests on the wire at once. Cloudflare's server closes a connection with more than 8
+    /// frames it has not processed (1008 "Too many pending frames"), and its guide asks for fewer
+    /// than 8 outstanding requests, and one `history` at a time.
+    public static let maxOutstanding = 7
 
     /// The latest `server` frame; each one fully replaces the previous (§3.1).
     public private(set) var server: ServerInfo?
@@ -33,6 +37,11 @@ public actor Connection {
     /// Which send of each request `id` is the latest, so an old timer cannot expire a retry.
     private var attempts: [String: Int] = [:]
     private var sent = 0
+    /// Requests sent and not yet answered, and the `history` among them.
+    private var outstanding: Set<String> = []
+    private var outstandingHistory: String?
+    /// Requests waiting for room on the wire, in call order.
+    private var held: [Request] = []
     private var serverWaiter: CheckedContinuation<ServerInfo, any Error>?
     private var reader: Task<Void, Never>?
     private var pinger: Task<Void, Never>?
@@ -97,20 +106,33 @@ public actor Connection {
     }
 
     /// Queues a request without waiting for its reply. Requests reach the wire in the order of
-    /// these calls, so a client can pipeline `room_list` right behind `auth` (§3.2.2).
+    /// these calls, so a client can pipeline `room_list` right behind `auth` (§3.2.2). While
+    /// `maxOutstanding` requests, or a `history` and another `history`, wait for replies, the
+    /// next one waits its turn; its timeout starts when it is sent.
     public func send(_ method: String, params: JSONValue? = nil, id: String? = nil) throws -> Reply {
         guard !isClosed else { throw Failure.closed }
         let request = Request(id: id ?? makeRequestID(), method: method, params: params)
         pending[request.id] = .waiting(nil)
-        outbox.yield(Outbound(text: request.encoded.serialized(), requestID: request.id))
-        sent += 1
-        let (timeout, attempt) = (requestTimeout, sent)
-        attempts[request.id] = attempt
-        Task { [weak self] in
-            try? await Task.sleep(for: timeout)
-            await self?.expire(request.id, attempt: attempt)
-        }
+        held.append(request)
+        sendHeld()
         return Reply(id: request.id, connection: self)
+    }
+
+    private func sendHeld() {
+        while let request = held.first, outstanding.count < Self.maxOutstanding,
+              request.method != "history" || outstandingHistory == nil {
+            held.removeFirst()
+            outstanding.insert(request.id)
+            if request.method == "history" { outstandingHistory = request.id }
+            outbox.yield(Outbound(text: request.encoded.serialized(), requestID: request.id))
+            sent += 1
+            let (timeout, attempt) = (requestTimeout, sent)
+            attempts[request.id] = attempt
+            Task { [weak self] in
+                try? await Task.sleep(for: timeout)
+                await self?.expire(request.id, attempt: attempt)
+            }
+        }
     }
 
     func reply(to id: String) async throws -> JSONValue {
@@ -133,6 +155,10 @@ public actor Connection {
     }
 
     private func resolve(_ id: String, with outcome: Result<JSONValue, any Error>) {
+        if outstanding.remove(id) != nil {
+            if outstandingHistory == id { outstandingHistory = nil }
+            sendHeld()
+        }
         switch pending[id] {
         case .waiting(let waiter?):
             pending[id] = nil
@@ -248,6 +274,7 @@ public actor Connection {
         pinger?.cancel()
         writer?.cancel()
         outbox.finish()
+        held = []
         for id in Array(pending.keys) { resolve(id, with: .failure(error)) }
         serverWaiter?.resume(throwing: error)
         serverWaiter = nil
