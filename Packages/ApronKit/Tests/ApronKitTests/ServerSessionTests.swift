@@ -353,12 +353,12 @@ final class ServerSessionTests: XCTestCase {
         }
 
         await eventually("first backoff") { clock.recorded.count == 1 }
-        XCTAssertEqual(session.status, .reconnecting(attempt: 1, delay: .milliseconds(500)))
+        XCTAssertEqual(session.status, .reconnecting(attempt: 1, delay: .seconds(1)))
         clock.release()
         await eventually("second backoff") { clock.recorded.count == 2 }
         clock.release()
         await eventually("third backoff") { clock.recorded.count == 3 }
-        XCTAssertEqual(clock.recorded, [.milliseconds(500), .seconds(1), .seconds(2)])
+        XCTAssertEqual(clock.recorded, [.seconds(1), .seconds(2), .seconds(4)])
         clock.release()
 
         let fourth = await transport(3)
@@ -374,8 +374,9 @@ final class ServerSessionTests: XCTestCase {
 
     func testBackoffDoublesToASixtySecondCap() {
         let delays = (1 ... 9).map { ServerSession.backoff(attempt: $0, jitter: 1) }
-        XCTAssertEqual(delays, [.milliseconds(500), .seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(32), .seconds(60), .seconds(60)])
-        XCTAssertEqual(ServerSession.backoff(attempt: 2, jitter: 0.8), .milliseconds(800))
+        XCTAssertEqual(delays, [.seconds(1), .seconds(2), .seconds(4), .seconds(8), .seconds(16), .seconds(32), .seconds(60), .seconds(60), .seconds(60)])
+        XCTAssertEqual(ServerSession.backoff(attempt: 2, jitter: 0.5), .seconds(1))
+        XCTAssertEqual(ServerSession.backoff(attempt: 9, jitter: 1.5), .seconds(90))
     }
 
     func testAConnectionLevelDenialStopsReconnecting() async throws {
@@ -435,7 +436,7 @@ final class ServerSessionTests: XCTestCase {
         session.start()
         await eventually("delay") { clock.recorded.count == 1 }
         XCTAssertNil(session.unavailableMessage)
-        XCTAssertEqual(clock.recorded, [.milliseconds(500)])
+        XCTAssertEqual(clock.recorded, [.seconds(1)])
         XCTAssertEqual(probes.requests.withLock { $0.count }, 1)
     }
 
@@ -445,7 +446,7 @@ final class ServerSessionTests: XCTestCase {
         session.start()
         await eventually("delay") { clock.recorded.count == 1 }
         XCTAssertNil(session.unavailableMessage)
-        XCTAssertEqual(clock.recorded, [.milliseconds(500)])
+        XCTAssertEqual(clock.recorded, [.seconds(1)])
     }
 
     func testARefusedOriginStopsWithTheServersReason() async throws {

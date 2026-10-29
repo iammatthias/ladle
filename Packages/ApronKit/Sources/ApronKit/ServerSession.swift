@@ -41,7 +41,7 @@ public final class ServerSession {
     public struct Environment: Sendable {
         public var makeTransport: @Sendable (ServerRecord) -> any FrameTransport
         public var sleep: @Sendable (Duration) async throws -> Void
-        /// A factor in [0.8, 1.2) applied to each backoff delay.
+        /// A factor in [0.5, 1.5) applied to each backoff delay.
         public var jitter: @Sendable () -> Double
         public var makeRequestID: @Sendable () -> String
         /// The unguessable `state` of an email proposal (§4.11.1).
@@ -61,7 +61,7 @@ public final class ServerSession {
         public init(
             makeTransport: @escaping @Sendable (ServerRecord) -> any FrameTransport,
             sleep: @escaping @Sendable (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
-            jitter: @escaping @Sendable () -> Double = { Double.random(in: 0.8 ..< 1.2) },
+            jitter: @escaping @Sendable () -> Double = { Double.random(in: 0.5 ..< 1.5) },
             makeRequestID: @escaping @Sendable () -> String = { UUID().uuidString },
             makeState: @escaping @Sendable () -> String = { UUID().uuidString + UUID().uuidString },
             agent: String = "ladle-ios/0.1",
@@ -268,10 +268,11 @@ public final class ServerSession {
         case unreachable
     }
 
-    /// `min(60 s, 0.5 s × 2^min(7, attempt − 1))`, scaled by `jitter`.
+    /// `min(60 s, 1 s × 2^min(6, attempt − 1))`, scaled by `jitter`: Cloudflare's client guide
+    /// asks for 1 s doubling to 60 s, ±50%.
     public static func backoff(attempt: Int, jitter: Double) -> Duration {
-        let exponent = min(7, max(0, attempt - 1))
-        let base = min(Duration.seconds(60), .milliseconds(500) * (1 << exponent))
+        let exponent = min(6, max(0, attempt - 1))
+        let base = min(Duration.seconds(60), .seconds(1) * (1 << exponent))
         return base * jitter
     }
 
