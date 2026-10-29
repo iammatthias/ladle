@@ -37,7 +37,7 @@ struct ComposerView: View {
             }
             if let target {
                 HStack(spacing: Tokens.Space.s2) {
-                    let who = Text(session.displayName(for: target.from)).fontWeight(.semibold).foregroundStyle(Palette.ink)
+                    let who = Text(TextDirection.isolated(session.displayName(for: target.from))).fontWeight(.semibold).foregroundStyle(Palette.ink)
                     (isEdit ? Text("Editing your message") : Text("Replying to \(who)"))
                         .apText(.ui)
                         .foregroundStyle(Palette.inkMuted)

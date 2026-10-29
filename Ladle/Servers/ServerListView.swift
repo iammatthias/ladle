@@ -81,7 +81,7 @@ private struct ServerRow: View {
 
     private var statusText: String {
         if session.status == .signedIn {
-            return (session.you.map(session.displayName(for:)) ?? "") + " on " + (session.record.url.host() ?? "")
+            return (session.you.map { TextDirection.isolated(session.displayName(for: $0)) } ?? "") + " on " + (session.record.url.host() ?? "")
         }
         return ConnectionState(session.status)?.title(session.record) ?? ""
     }

@@ -3,10 +3,11 @@ import Foundation
 /// A message body's text as styled runs with its links, as apron-web renders it (§3.5.2):
 /// `markdown` as inline CommonMark with raw HTML left as text, and in either format each bare
 /// `http(s)` URL and §A.4 `apron:?` link linked, except inside code and existing links. A link
-/// whose scheme apron-web would not link (`javascript:`, another app's) is dropped.
+/// whose scheme apron-web would not link (`javascript:`, another app's) is dropped. Bidirectional
+/// overrides are dropped too (§3.5.2).
 public enum MessageText {
     public static func attributed(_ body: JSONValue?) -> AttributedString {
-        let text = body?["text"]?.stringValue ?? ""
+        let text = TextDirection.withoutOverrides(body?["text"]?.stringValue ?? "")
         var out = AttributedString(text)
         if body?["format"]?.stringValue == "markdown" {
             let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)

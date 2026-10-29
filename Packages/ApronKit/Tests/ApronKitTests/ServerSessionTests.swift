@@ -950,7 +950,7 @@ final class SignInValueTests: XCTestCase {
         XCTAssertEqual(users.displayName(for: UserObject(["user_id": "carol", "name": "Carol"])!), "Carol")
         XCTAssertEqual(users.displayName(for: UserObject(["user_id": "dave"])!), "dave")
         users.merge(UserObject(["user_id": "ada2", "name": "Ada"])!)
-        XCTAssertEqual(users.displayName(for: UserObject(["user_id": "ada"])!), "Ada (@ada)")
+        XCTAssertEqual(users.displayName(for: UserObject(["user_id": "ada"])!), "\u{2068}Ada\u{2069} (@ada)")
     }
 
     func testLogIDNeighbours() {

@@ -76,7 +76,7 @@ extension ServerSession {
     func isPrivate(_ roomID: String) -> Bool { store.room(roomID)?.isPrivate == true }
 
     func roomDescription(_ roomID: String) -> String? {
-        store.room(roomID)?.description?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
+        store.room(roomID)?.description?.stringValue.flatMap { $0.isEmpty ? nil : TextDirection.withoutOverrides($0) }
     }
 
     /// The people in a room, online first, each section by name.

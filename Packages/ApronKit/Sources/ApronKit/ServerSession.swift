@@ -110,7 +110,7 @@ public final class ServerSession {
         guard record.label == ServerRecord.defaultLabel(for: record.url),
               let title = server?.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty
         else { return record.label }
-        return title
+        return TextDirection.withoutOverrides(title)
     }
 
     /// The server's `avatar` (§3.1), where avatars may load from.
@@ -750,7 +750,7 @@ public final class ServerSession {
     }
 
     public func title(of roomID: String) -> String {
-        store.room(roomID)?.title?.stringValue.flatMap { $0.isEmpty ? nil : $0 } ?? roomID
+        TextDirection.withoutOverrides(store.room(roomID)?.title?.stringValue.flatMap { $0.isEmpty ? nil : $0 } ?? roomID)
     }
 
     /// The joined rooms, each with the threads known under it, by title. A joined thread whose

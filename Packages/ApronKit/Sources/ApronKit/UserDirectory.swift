@@ -22,15 +22,16 @@ public struct UserDirectory: Hashable, Sendable {
         kept[userID].map(JSONValue.object)
     }
 
-    /// The name to show: the kept `name`, else the recorded one, else the `user_id`. Shown as
-    /// `Name (@user_id)` when another known user has the same name (§3.3.1).
+    /// The name to show: the kept `name`, else the recorded one, else the `user_id`, without
+    /// bidirectional overrides (§3.5.2). Shown as `Name (@user_id)`, the name isolated, when
+    /// another known user has the same name (§3.3.1).
     public func displayName(for user: UserObject) -> String {
         let name = name(of: user.userID, recorded: user.json)
-        guard let name else { return user.userID }
+        guard let name else { return TextDirection.withoutOverrides(user.userID) }
         let clash = kept.contains { userID, fields in
             userID != user.userID && fields["name"]?.stringValue == name
         }
-        return clash ? "\(name) (@\(user.userID))" : name
+        return clash ? "\(TextDirection.isolated(name)) (@\(user.userID))" : TextDirection.withoutOverrides(name)
     }
 
     private func name(of userID: String, recorded: JSONValue) -> String? {
