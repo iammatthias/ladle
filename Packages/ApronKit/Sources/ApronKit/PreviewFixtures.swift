@@ -85,11 +85,11 @@ public enum PreviewFixtures {
 
     private static let people: [String: JSONValue] = [
         "sam": ["user_id": "sam", "name": "Sam", "status": "online"],
-        "ada": ["user_id": "ada", "name": "Ada Okafor", "status": "online"],
+        "ada": ["user_id": "ada", "name": "Ada Okafor", "status": "online", "roles": ["admin"]],
         "bram": ["user_id": "bram", "name": "Bram", "status": "idle"],
-        "chiara": ["user_id": "chiara", "name": "Chiara", "status": "dnd"],
-        "dev": ["user_id": "dev", "name": "Dev", "status": "offline"],
-        "eunji": ["user_id": "eunji", "name": "Eun-ji", "status": "online"],
+        "chiara": ["user_id": "chiara", "name": "Chiara", "status": "dnd", "roles": ["mod", "announce"]],
+        "dev": ["user_id": "dev", "name": "Dev", "status": "offline", "roles": ["bot"]],
+        "eunji": ["user_id": "eunji", "name": "Eun-ji", "status": "online", "roles": ["announce"]],
     ]
 
     private struct Line {

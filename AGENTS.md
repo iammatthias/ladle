@@ -152,8 +152,8 @@ clone), which is only a worked example.
   the temporary directory (cleared at launch), the camera; `VoiceRecorder`: voice notes as
   `audio/mp4`), `Media/` (`MediaLoader`: images decoded at their shown size and files for Quick
   Look, no cookies; `MediaViewer`: the room's images full screen, as the web's viewer), `Design/`
-  (`Tokens.swift`, generated; `Apron`: colors by job, text roles, motion; `People`: avatars and
-  StatusDot; `Components`: the web's UnreadCount, Callout, ActionBanner, EmptyState, buttons).
+  (`Tokens.swift`, generated; `Apron`: colors by job, text roles, motion; `People`: avatars,
+  StatusDot and RoleBadges; `Components`: the web's UnreadCount, Callout, ActionBanner, EmptyState, buttons).
   `Servers/KeychainStore.swift` is the only place a secret is persisted (generic password,
   service `app.ladle.ios.token`, account = server id).
 - `LadleTests/`: hermetic app tests (no network, no server).
@@ -225,7 +225,8 @@ never restart its services or kill its processes). Screens are reviewed on this 
 plus `LadleShots/ShotsApp.swift`. It seeds `PreviewFixtures` (and a fetched preview for the busy room's wiki link) and renders, at 390x844 pt
 (compact width) in dark and light: the first run (no servers), the server list, Connect, Connect after a scanned sign-in, the room list, the busy room, the
 mention list, the member list and the reaction picker, the composer with attachments, a room
-of uploads (image, video, file, audio, pending), and the media viewer; the busy room at AX3; and the iPad
+of uploads (image, video, file, audio, pending), the media viewer, the composer over the text
+limit, and a read-only guest's sign-in prompt on the demo server; the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with

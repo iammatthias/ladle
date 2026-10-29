@@ -208,3 +208,35 @@ struct Avatar: View {
                        blue: encode(-0.0041960863 * l_ - 0.7034186147 * m_ + 1.7076147010 * s_), alpha: 1)
     }
 }
+
+/// The web's RoleBadges: a user's roles as small outlined caps beside their name, `admin` in
+/// accent, `bot` in denim, any other role (`mod`, or a label such as `announce`) as written in
+/// muted ink. Roles are for display only (§3.3). Badges that don't fit drop off the end whole.
+struct RoleBadges: View {
+    let roles: [String]
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            ForEach(Array(stride(from: roles.count, to: 0, by: -1)), id: \.self) { count in
+                HStack(spacing: 4) { ForEach(roles.prefix(count), id: \.self, content: badge) }
+            }
+            EmptyView()
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(roles.joined(separator: ", "))
+    }
+
+    private func badge(_ role: String) -> some View {
+        let tone = role == "admin" ? Palette.accent : role == "bot" ? Palette.denim : nil
+        return Text(role)
+            .textCase(.uppercase)
+            .tracking(0.3)
+            .apText(.caps, .semibold)
+            .lineLimit(1)
+            .foregroundStyle(tone ?? Palette.inkMuted)
+            .padding(.horizontal, 5)
+            .frame(height: 16)
+            .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.sm).strokeBorder(tone?.opacity(0.55) ?? Palette.lineStrong))
+            .fixedSize()
+    }
+}
