@@ -66,6 +66,12 @@ clone), which is only a worked example.
       A token in any result replaces the saved one; a `.token` sign-in without one keeps the
       presented token; a guest result without one clears it. The email code goes on the
       connection that proposed (§4.11.2); `pendingEmail` is cleared on every disconnect.
+    - A `user` `you` whose `user_id` differs from this account's is a rename (§3.3.3: `you`
+      replaces the connection's identity), as is a `new` with an `old` naming it. The saved
+      `ServerRecord.account`, the `ReadPositionStore` entries and the queued messages move to
+      the new id, `UserDirectory.rename` moves the kept object and makes the old id read as the
+      new one (for others' `{new, old}` too), and `isYou` still counts the old id's logged
+      messages as yours. A rename while offline cannot be told from another account.
     - `serverName` is the label the user gave the server, else its `title` (§3.1), else its
       host; the server list and rail show it with the host, and `serverAvatarURL` (the frame's
       `avatar` where avatars may load) in place of the initials.

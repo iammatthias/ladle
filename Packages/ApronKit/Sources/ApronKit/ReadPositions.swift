@@ -9,6 +9,8 @@ public protocol ReadPositionStore: Sendable {
     func positions(server: UUID, user: String) -> [String: LogID]
     /// Keeps `position` for the room if it is further than the one kept.
     func advance(_ roomID: String, to position: LogID, server: UUID, user: String)
+    /// Re-keys the positions kept for `old` under `new`, keeping the further of the two per room.
+    func rename(server: UUID, from old: String, to new: String)
 }
 
 /// `read-positions.json` in the store's directory: `{server id: {user id: {room id: message id}}}`,
@@ -35,6 +37,20 @@ public struct FileReadPositionStore: ReadPositionStore {
         try? data.write(to: fileURL, options: .atomic)
     }
 
+    public func rename(server: UUID, from old: String, to new: String) {
+        var all = load()
+        guard old != new, let moved = all[server.uuidString]?.removeValue(forKey: old) else { return }
+        var kept = all[server.uuidString, default: [:]][new, default: [:]]
+        for (roomID, position) in moved {
+            guard let moved = LogID(position) else { continue }
+            if let current = kept[roomID].flatMap(LogID.init), current >= moved { continue }
+            kept[roomID] = position
+        }
+        all[server.uuidString, default: [:]][new] = kept
+        guard let data = try? JSONSerialization.data(withJSONObject: all, options: [.sortedKeys, .prettyPrinted]) else { return }
+        try? data.write(to: fileURL, options: .atomic)
+    }
+
     private func load() -> [String: [String: [String: String]]] {
         guard let data = try? Data(contentsOf: fileURL) else { return [:] }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: [String: [String: String]]] ?? [:]
@@ -55,6 +71,16 @@ public final class InMemoryReadPositionStore: ReadPositionStore {
         kept.withLock { all in
             if let current = all[server]?[user]?[roomID], current >= position { return }
             all[server, default: [:]][user, default: [:]][roomID] = position
+        }
+    }
+
+    public func rename(server: UUID, from old: String, to new: String) {
+        kept.withLock { all in
+            guard old != new, let moved = all[server]?.removeValue(forKey: old) else { return }
+            for (roomID, position) in moved {
+                if let current = all[server, default: [:]][new]?[roomID], current >= position { continue }
+                all[server, default: [:]][new, default: [:]][roomID] = position
+            }
         }
     }
 }

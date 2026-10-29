@@ -111,6 +111,7 @@ public final class ServerSession {
     public private(set) var readCursors: [String: LogID] = [:]
     /// How far this user has read each room on this device.
     public private(set) var readPositions: [String: LogID] = [:]
+    private var formerUserIDs: Set<String> = []
     /// The fraction written of each of this user's uploads in flight, by `embed_id` (§4.8.3).
     public internal(set) var uploadProgress: [String: Double] = [:]
     /// Custom emoji catalogs fetched, by `catalog_url` (`ext:emoji`).
@@ -332,6 +333,25 @@ public final class ServerSession {
 
     private static let roomListParams: JSONValue = ["filter": "joined", "members": true]
 
+    /// The signed-in account changed its `user_id` (§3.3.3: `you` replaces the connection's
+    /// identity; logged records keep the old one, which clients may treat as the new). The saved
+    /// account, the read positions and the queued messages follow it, and the old id stays ours.
+    private func followRename(from old: String, to new: String) {
+        users.rename(from: old, to: new)
+        formerUserIDs.insert(old)
+        positions.rename(server: record.id, from: old, to: new)
+        for index in outbox.indices where outbox[index].userID == old { outbox[index].userID = new }
+        if let kept = users.user(new).flatMap(UserObject.init) { you = kept }
+        if let account = record.account {
+            setAccount(ServerRecord.Account(userID: new, name: account.name, scheme: account.scheme))
+        }
+    }
+
+    /// Whether `userID` is this account's, now or before it changed its `user_id`.
+    public func isYou(_ userID: String) -> Bool {
+        userID == you?.userID || formerUserIDs.contains(userID)
+    }
+
     private func setAccount(_ account: ServerRecord.Account?) {
         guard record.account != account else { return }
         record.account = account
@@ -346,6 +366,7 @@ public final class ServerSession {
         histories = [:]
         readCursors = [:]
         readPositions = [:]
+        formerUserIDs = []
     }
 
     // MARK: Frames
@@ -367,12 +388,19 @@ public final class ServerSession {
             mergeUsers(params?["users"])
         case "user":
             if let current = UserObject(params?["you"]) {
+                if let you, current.userID != you.userID { followRename(from: you.userID, to: current.userID) }
                 users.merge(current)
                 if current.userID == you?.userID, let kept = users.user(current.userID) { you = UserObject(kept) }
             }
-            if let current = UserObject(params?["new"]) { users.merge(current) }
+            if let current = UserObject(params?["new"]) {
+                if let old = UserObject(params?["old"]), old.userID != current.userID {
+                    if old.userID == you?.userID { followRename(from: old.userID, to: current.userID) } else { users.rename(from: old.userID, to: current.userID) }
+                }
+                users.merge(current)
+                if current.userID == you?.userID, let kept = users.user(current.userID) { you = UserObject(kept) }
+            }
         case "activity":
-            if let you, params?["from"]?["user_id"]?.stringValue == you.userID,
+            if you != nil, let sender = params?["from"]?["user_id"]?.stringValue, isYou(sender),
                let roomID = OpaqueID.validated(params?["room_id"]), let read = LogID(params?["read_message_id"]),
                readCursors[roomID].map({ $0 < read }) ?? true {
                 readCursors[roomID] = read
@@ -558,7 +586,7 @@ public final class ServerSession {
         public let mentions: [String]
         public let attachments: [Attachment]
         /// Who queued it; it sends only as that user.
-        public let userID: String?
+        public internal(set) var userID: String?
         public let queuedAt: Date
         public var state: State
     }
@@ -664,7 +692,7 @@ public final class ServerSession {
     /// Whether this user may move the message: their own, or anyone's with `move_any`.
     public func mayMove(_ message: MessageSnapshot) -> Bool {
         guard status == .signedIn, server?.has("edit") == true, mayWrite, !message.isTombstone else { return false }
-        return message.from.userID == you?.userID || permissions.moveAny
+        return isYou(message.from.userID) || permissions.moveAny
     }
 
     /// Where a message may move: into a thread of its room, or out of a thread to the room it
@@ -766,8 +794,8 @@ public final class ServerSession {
     /// message, since one sent from another device says the room was read up to it, even if it
     /// was deleted since. Nil when nothing is known.
     public func readThrough(_ roomID: String) -> LogID? {
-        guard let you else { return nil }
-        let newestOwn = store.messages(in: roomID).last { $0.from.userID == you.userID }?.messageID
+        guard you != nil else { return nil }
+        let newestOwn = store.messages(in: roomID).last { isYou($0.from.userID) }?.messageID
         return [readPositions[roomID], readCursors[roomID], newestOwn].compactMap { $0 }.max()
     }
 
@@ -786,17 +814,17 @@ public final class ServerSession {
             }
             if !reached, olderAvailable { return nil }
             if message.isTombstone { continue }
-            return message.from.userID == you?.userID ? nil : message.messageID
+            return isYou(message.from.userID) ? nil : message.messageID
         }
         return nil
     }
 
     /// Loaded messages from others after `readThrough`, or all of them when nothing is known.
     public func unreadCount(in roomID: String) -> Int {
-        guard let you else { return 0 }
+        guard you != nil else { return 0 }
         let read = readThrough(roomID)
         return timeline(roomID).count { message in
-            message.from.userID != you.userID && read.map { $0 < message.messageID } ?? true
+            !isYou(message.from.userID) && read.map { $0 < message.messageID } ?? true
         }
     }
 

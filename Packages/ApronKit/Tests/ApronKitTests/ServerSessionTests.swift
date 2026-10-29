@@ -1024,6 +1024,55 @@ final class ServerSessionTests: XCTestCase {
         await eventually("sent and removed") { session.outbox.isEmpty }
     }
 
+    func testYouWithANewUserIDIsTheAccountRenamedAndEverythingKeptFollowsIt() async throws {
+        session.start()
+        let socket = await transport(0)
+        var saved: [ServerRecord.Account?] = []
+        session.onRecordChange = { saved.append($0.account) }
+        try await signInAsGuest(on: socket, you: ["user_id": "ada", "name": "Ada", "avatar": "https://chat.example/a.png"])
+        await socket.deliver(["method": "message", "params": ["message_id": "200", "log_id": "200", "room_id": "general", "from": ["user_id": "ada", "name": "Ada"], "body": ["text": "old"]]])
+        await socket.deliver(["method": "message", "params": ["message_id": "201", "log_id": "201", "room_id": "general", "from": ["user_id": "bob", "name": "Bob"], "body": ["text": "hi"]]])
+        await eventually("messages") { session.store.messages(in: "general").count == 2 }
+        await session.markRead("general", through: LogID("201")!)
+        session.post("in flight", in: "general")
+        _ = await frame(socket, 2)
+
+        await socket.deliver(["method": "user", "params": ["you": ["user_id": "lovelace", "name": "Ada L"]]])
+        await eventually("renamed") { session.you?.userID == "lovelace" }
+
+        XCTAssertEqual(session.you?.json["avatar"]?.stringValue, "https://chat.example/a.png", "the kept profile moves to the new id")
+        XCTAssertEqual(session.you?.json["name"]?.stringValue, "Ada L")
+        XCTAssertEqual(session.record.account, ServerRecord.Account(userID: "lovelace", name: "Ada", scheme: "guest"))
+        XCTAssertEqual(saved.last??.userID, "lovelace")
+        XCTAssertEqual(session.outbox.map(\.userID), ["lovelace"])
+        XCTAssertEqual(session.outbox.first?.state, .sending, "the queue is not failed")
+        XCTAssertEqual(positions.positions(server: record.id, user: "lovelace"), ["general": LogID("201")!])
+        XCTAssertEqual(positions.positions(server: record.id, user: "ada"), [:])
+        XCTAssertEqual(session.readPositions, ["general": LogID("201")!])
+        XCTAssertEqual(session.users.user("ada")?["name"]?.stringValue, "Ada L", "the old id reads as the new one")
+        XCTAssertTrue(session.isYou("ada"))
+        XCTAssertFalse(session.isYou("bob"))
+        XCTAssertEqual(session.unreadCount(in: "general"), 0, "the old id's messages are still yours")
+
+        await socket.deliver(["id": "q-c3", "result": ["message_id": "300"]])
+        await eventually("sent") { session.outbox.isEmpty }
+    }
+
+    func testANewWithOldIsAnotherAccountRenamedAndItsRecordsStillShowItsName() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        await socket.deliver(["method": "user", "params": ["new": ["user_id": "bob", "name": "Bob", "avatar": "https://chat.example/b.png"]]])
+        await socket.deliver(["method": "user", "params": ["new": ["user_id": "robert", "name": "Robert"], "old": ["user_id": "bob", "name": "Bob"]]])
+        await eventually("renamed") { session.users.user("robert")?["name"]?.stringValue == "Robert" }
+
+        XCTAssertEqual(session.users.user("robert")?["avatar"]?.stringValue, "https://chat.example/b.png")
+        XCTAssertEqual(session.users.user("bob")?["user_id"]?.stringValue, "robert")
+        XCTAssertEqual(session.displayName(for: UserObject(["user_id": "bob", "name": "Bob"])!), "Robert")
+        XCTAssertEqual(session.you?.userID, "ada")
+        XCTAssertFalse(session.isYou("bob"))
+    }
+
     func testARefusedQueuedMessageStaysAsNotSent() async throws {
         session.start()
         let socket = await transport(0)

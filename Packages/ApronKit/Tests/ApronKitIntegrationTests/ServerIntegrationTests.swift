@@ -91,6 +91,44 @@ final class ServerIntegrationTests: XCTestCase {
         XCTAssertEqual(session.joinedRoomIDs, ["general"])
     }
 
+    func testAnAdminRenamingTheSignedInAccountMovesTheOpenConnectionToTheNewUserID() async throws {
+        let server = try await startServer()
+        let positions = InMemoryReadPositionStore()
+        let environment = ServerSession.Environment(makeTransport: { WebSocketTransport(url: $0.url, origin: $0.origin) })
+        let account = ServerSession(record: ServerRecord(url: server.url), tokens: InMemoryTokenStore(), positions: positions, environment: environment)
+        sessions.append(account)
+        account.start()
+        try await waitFor("connected") { account.status == .signedOut }
+        _ = try await account.signIn(.emailProposal(address: "ada@example.com"))
+        _ = try await account.signIn(.emailCode(try await server.emailCode(for: "ada@example.com")))
+        let old = try XCTUnwrap(account.you?.userID)
+        try await waitFor("joined") { account.joinedRoomIDs.contains("general") }
+        let sentFirst = try await account.send("before", in: "general")
+        let first = try XCTUnwrap(sentFirst)
+        let watcher = try await signedInGuest(server)
+        try await waitFor("watching") { watcher.joinedRoomIDs.contains("general") }
+        await account.markRead("general", through: first)
+
+        let admin = makeSession(server)
+        admin.start()
+        try await waitFor("connected") { admin.status == .signedOut }
+        try await admin.signIn(.token(server.adminToken))
+        try await waitFor("admin joined") { admin.joinedRoomIDs.contains("general") }
+        _ = try await admin.send("/rename \(old) ada_renamed", in: "general")
+
+        try await waitFor("account follows") { account.you?.userID == "ada_renamed" }
+        XCTAssertEqual(account.record.account?.userID, "ada_renamed")
+        XCTAssertEqual(positions.positions(server: account.record.id, user: "ada_renamed")["general"], first)
+        XCTAssertEqual(positions.positions(server: account.record.id, user: old), [:])
+        XCTAssertTrue(account.isYou(old))
+        let sentAfter = try await account.send("after", in: "general")
+        let after = try XCTUnwrap(sentAfter)
+        XCTAssertEqual(account.store.message(after)?.from.userID, "ada_renamed", "the open connection acts as the new id")
+
+        try await waitFor("room-mate learns") { watcher.users.current(old) == "ada_renamed" }
+        XCTAssertFalse(watcher.isYou(old))
+    }
+
     func testSendReplyEditReactAndDeleteLandInTheReplayStore() async throws {
         let server = try await startServer()
         let session = try await signedInGuest(server)
