@@ -744,6 +744,21 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertTrue(session.mayMove(mine), "your own message moves without a permission")
     }
 
+    func testEditSendsTheStoredExtAndReplyAgain() async throws {
+        let socket = try await signInWithRooms(["user_id": "mia"], capabilities: ["history", "edit", "rooms"])
+        await socket.deliver(["method": "message", "params": [
+            "message_id": "200", "log_id": "200", "room_id": "general", "from": ["user_id": "mia"],
+            "body": ["text": "helo"], "reply_to": ["message_id": "150"], "ext": ["k": 1],
+        ]])
+        await eventually("message installed") { session.store.message(LogID("200")!) != nil }
+        let original = try XCTUnwrap(session.store.message(LogID("200")!))
+        let edit = Task { try await session.edit(original, text: "hello") }
+        let sent = await frame(socket, 2)
+        XCTAssertEqual(sent, #"{"id":"c3","method":"message","params":{"body":{"text":"hello"},"ext":{"k":1},"message_id":"200","reply_to":{"message_id":"150"},"room_id":"general"}}"#)
+        await socket.deliver(["id": "c3", "result": [:]])
+        try await edit.value
+    }
+
     func testOnlyAdminsAndModeratorsCreateRoomsWhereTheServerStatesPermissions() async throws {
         let socket = try await signInWithRooms(["user_id": "mia", "roles": []], capabilities: ["rooms", "ext:permissions"])
         XCTAssertFalse(session.mayCreateRooms)
