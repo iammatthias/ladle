@@ -251,6 +251,13 @@ struct TimelineView: View {
         }
         .disabled(session.isReadOnlyGuest)
         Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.plainText }
+        if session.mayMove(message), !session.moveDestinations(for: message).isEmpty {
+            Menu("Move To", systemImage: "arrow.right.square") {
+                ForEach(session.moveDestinations(for: message), id: \.self) { roomID in
+                    Button(session.title(of: roomID)) { perform { try await session.move(message, to: roomID) } }
+                }
+            }
+        }
         ForEach(MessageText.links(message.body).prefix(3), id: \.self) { url in
             Menu(url.host() ?? url.absoluteString, systemImage: "link") {
                 Button("Open Link", systemImage: "arrow.up.right.square") { openURL(url) }

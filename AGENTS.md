@@ -48,6 +48,10 @@ clone), which is only a worked example.
     - `isReadOnlyGuest`: signed in with scheme `guest` on a server whose `ext.settings` says
       `guest_posting: false` (EXT.md §3.1). The timeline then shows a sign-in prompt in place of
       the composer, and react, reply and New Thread are off with the reason.
+    - `permissions` is `you.ext.permissions` under capability `ext:permissions` (EXT.md §7).
+      `move` saves a message with a new `room_id` and its other client fields as stored;
+      `mayMove` allows your own messages, and anyone's with `move_any`. The message menu offers
+      Move To the room's threads, or out of a thread to its room and that room's other threads.
     - Reconnect: pending requests fail with `Connection.Failure.closed` (no same-id resend),
       then `backoff(attempt:jitter:)` = min(60 s, 0.5 s × 2^min(7, attempt − 1)) × [0.8, 1.2),
       never below a `retry_after`. Attempts restart after 30 s signed in. An id-less `denied`
