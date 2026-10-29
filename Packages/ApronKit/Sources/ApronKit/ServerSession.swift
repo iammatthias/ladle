@@ -551,9 +551,9 @@ public final class ServerSession {
         try require("edit")
         var body = message.body?.objectValue ?? [:]
         body["text"] = .string(text)
-        var params: [String: JSONValue] = ["message_id": message.messageID.json, "room_id": .string(message.roomID), "body": .object(body)]
-        if let replyTo = message.replyTo { params["reply_to"] = ["message_id": replyTo.json] }
-        _ = try await request("message", .object(params))
+        var snapshot = message
+        snapshot.body = .object(body)
+        _ = try await request("message", .object(save(snapshot, in: message.roomID)))
     }
 
     /// Moves a message to another room (§4.4): a save with the new `room_id` and every other
@@ -561,11 +561,17 @@ public final class ServerSession {
     /// else's message.
     public func move(_ message: MessageSnapshot, to roomID: String) async throws {
         try require("edit")
+        _ = try await request("message", .object(save(message, in: roomID)))
+    }
+
+    /// A save of `message` in `roomID` (§4.4 replaces the client fields): its `body`, `reply_to`
+    /// and `ext` as stored.
+    private func save(_ message: MessageSnapshot, in roomID: String) -> [String: JSONValue] {
         var params: [String: JSONValue] = ["message_id": message.messageID.json, "room_id": .string(roomID)]
         params["body"] = message.body
         params["reply_to"] = message.replyTo.map { ["message_id": $0.json] }
         params["ext"] = message.ext
-        _ = try await request("message", .object(params))
+        return params
     }
 
     /// What this user may do beyond their own messages: `you.ext.permissions` under capability
