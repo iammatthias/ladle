@@ -1261,6 +1261,36 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertTrue(session.outbox.isEmpty)
     }
 
+    func testAnUploadLimitHoldsBackOnlyTheMessageWithTheFile() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        let photo = Attachment(fileURL: URL(filePath: "/tmp/photo.png"), title: "photo.png", contentType: "image/png", byteCount: 10)
+        session.post("look", in: "general", attachments: [photo])
+        session.post("anyway", in: "general")
+        _ = await frame(socket, 2)
+        await socket.deliver(["id": "q-c3", "error": ["code": -32002, "message": "Daily upload limit reached",
+                                                      "data": ["retry_after": 40_000, "ext": ["limits": "upload"]]]])
+        let next = await frame(socket, 3)
+        XCTAssertEqual(next, #"{"id":"q-c4","method":"message","params":{"body":{"format":"plain","text":"anyway"},"room_id":"general"}}"#)
+        XCTAssertEqual(session.outbox.first?.state, .failed("Daily upload limit reached"))
+        XCTAssertEqual(clock.recorded, [])
+    }
+
+    func testAWriteLimitWaitsItsRetryAfterAndResendsWithTheSameID() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        session.post("hello", in: "general")
+        _ = await frame(socket, 2)
+        await socket.deliver(["id": "q-c3", "error": ["code": -32002, "message": "Posting limit reached",
+                                                      "data": ["retry_after": 3, "ext": ["limits": "write"]]]])
+        await eventually("waiting") { clock.recorded == [.seconds(3)] }
+        clock.release()
+        let resent = await frame(socket, 3)
+        XCTAssertEqual(resent, #"{"id":"q-c3","method":"message","params":{"body":{"format":"plain","text":"hello"},"room_id":"general"}}"#)
+    }
+
     func testOperationsNeedASignedInConnection() async throws {
         do {
             try await session.send("hi", in: "general")
