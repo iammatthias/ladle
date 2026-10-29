@@ -49,12 +49,19 @@ struct ConnectView: View {
                         Text(record == nil ? "Connect to a server" : "Sign in again, or change this server")
                             .apText(.field).foregroundStyle(Palette.inkMuted)
                         if let description = existing?.server?.description {
-                            Text((try? AttributedString(markdown: description)) ?? AttributedString(description))
-                                .apText(.ui).foregroundStyle(Palette.inkMuted)
+                            EmojiText(text: MessageText.markdown(description, emoji: existing?.emojiCatalog), catalog: existing?.emojiCatalog, role: .ui)
+                                .apText(.ui).foregroundStyle(Palette.inkMuted).tint(Palette.denim)
+                                .written(in: TextDirection(of: description))
+                                .task(id: existing?.server?.emojiCatalogURL) { await existing?.loadEmojiCatalog(for: description) }
                         }
                     }
-                    if let welcome = session?.server?.welcome ?? existing?.server?.welcome {
-                        Callout { Text((try? AttributedString(markdown: welcome)) ?? AttributedString(welcome)) }
+                    if let greeter = session ?? existing, let welcome = greeter.server?.welcome {
+                        Callout {
+                            EmojiText(text: MessageText.markdown(welcome, emoji: greeter.emojiCatalog), catalog: greeter.emojiCatalog, role: .ui)
+                                .tint(Palette.denim)
+                                .written(in: TextDirection(of: welcome))
+                        }
+                        .task(id: greeter.server?.emojiCatalogURL) { await greeter.loadEmojiCatalog(for: welcome) }
                     }
                     if let reason = existing?.signInNeeded {
                         ActionBanner(symbol: "person.crop.circle.badge.exclamationmark", title: "Signed out", detail: reason, tone: Palette.warn) { EmptyView() }

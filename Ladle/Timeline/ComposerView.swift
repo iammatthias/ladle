@@ -34,6 +34,10 @@ struct ComposerView: View {
                 MentionPicker(session: session, people: candidates(query), pick: pick)
                     .padding(.horizontal, Tokens.Space.s4)
                     .padding(.bottom, Tokens.Space.s1)
+            } else if let query = emojiQuery, let found = session.emojiCatalog?.search(query, limit: 6), !found.isEmpty {
+                EmojiSuggestions(emoji: found, pick: insert)
+                    .padding(.horizontal, Tokens.Space.s4)
+                    .padding(.bottom, Tokens.Space.s1)
             }
             if let target {
                 HStack(spacing: Tokens.Space.s2) {
@@ -82,6 +86,8 @@ struct ComposerView: View {
             .padding(.bottom, Tokens.Space.s2)
         }
         .animation(Motion.fast(reduceMotion), value: mentionQuery)
+        .animation(Motion.fast(reduceMotion), value: emojiQuery)
+        .task(id: emojiQuery != nil) { if emojiQuery != nil { await session.loadEmojiCatalog() } }
         .onChange(of: draft.mode.isActive, initial: true) { if draft.mode.isActive { focused = true } }
         .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, maxSelectionCount: 10,
                       matching: .any(of: (offer.images ? [.images] : []) + (offer.videos ? [.videos] : [])), preferredItemEncoding: .compatible)
@@ -264,6 +270,19 @@ struct ComposerView: View {
         guard let word = draft.text.split(separator: " ", omittingEmptySubsequences: false).last,
               word.hasPrefix("@"), !word.contains("\n") else { return nil }
         return String(word.dropFirst())
+    }
+
+    /// The name being typed after `:`, for the custom emoji list (`ext:emoji`).
+    private var emojiQuery: String? {
+        guard let word = draft.text.split(separator: " ", omittingEmptySubsequences: false).last,
+              word.hasPrefix(":"), word.count > 1, CustomEmoji.isKey(word + ":") else { return nil }
+        return String(word.dropFirst())
+    }
+
+    /// Puts the key in place of the `:name` being typed, then a space.
+    private func insert(_ emoji: CustomEmoji) {
+        guard let colon = draft.text.range(of: ":", options: .backwards) else { return }
+        draft.text.replaceSubrange(colon.lowerBound..., with: emoji.key + " ")
     }
 
     private func candidates(_ query: String) -> [UserObject] {

@@ -27,7 +27,8 @@ public enum PreviewFixtures {
         let environment = ServerSession.Environment(
             makeTransport: { record in PreviewServer(script: scripts[record.id] ?? home) },
             sleep: { _ in try await Task.sleep(for: .seconds(3600)) },
-            jitter: { 1 }
+            jitter: { 1 },
+            fetchEmojiCatalog: { _ in emojiCatalog.serializedData() }
         )
         let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment)
         try? tokens.setToken("preview", for: homeID)
@@ -44,6 +45,7 @@ public enum PreviewFixtures {
             for roomID in script.histories.keys.sorted(by: codePointLess) {
                 try? await session.open(roomID)
             }
+            await session.loadEmojiCatalog()
         }
         return store
     }
@@ -59,8 +61,25 @@ public enum PreviewFixtures {
 
     private static let greeting: JSONValue = [
         "apron": 9, "auth": ["token", "guest"], "agent": "aprond/0.9",
-        "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity", "command", "embed:upload"],
+        "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity", "command", "embed:upload", "ext:emoji"],
+        "ext": ["emoji": ["catalog_url": "https://home.example/emoji/catalog.json"]],
     ]
+
+    /// Home's custom emoji: the demo's `:apron:`, an animated one with a still copy, a wide one,
+    /// and a hidden one. LadleShots answers the images with generated pictures.
+    private static let emojiCatalog: JSONValue = [
+        ":apron:": ["url": .string(emojiURL("apron")), "width": 512, "height": 512],
+        ":partyparrot:": ["url": .string(emojiURL("partyparrot")), "static_url": .string(emojiURL("partyparrot-still")),
+                          "category": "Parrots", "tags": ["party", "celebrate"]],
+        ":shipit:": ["url": .string(emojiURL("shipit")), "width": 64, "height": 32, "alt": "Squirrel in a hat"],
+        ":oldlogo:": ["url": .string(emojiURL("apron")), "hidden": true],
+    ]
+
+    public static func emojiURL(_ name: String) -> String { "https://home.example/emoji/\(name)" }
+
+    /// The room that shows custom emoji in text, a description and reactions, and a line written
+    /// right to left.
+    public static let emojiRoomID = "kitchen"
 
     /// The `server` frame of Cloudflare's demo, server.apron.chat, without its push and welcome,
     /// with its avatar on the fixture's host.
@@ -241,6 +260,7 @@ public enum PreviewFixtures {
                 room(iconThread, "Icon sketches", parent: "design", members: ["sam", "eunji"]),
                 room("random", "random", members: ["sam", "ada", "bram", "chiara"]),
                 room("ops", "ops", members: ["sam", "dev"], isPrivate: true),
+                room("kitchen", "kitchen", members: ["sam", "ada", "bram", "eunji"], description: "Pots, pans and :apron:"),
             ],
             "users": .array(people.keys.sorted().map { people[$0]! }),
         ],
@@ -279,6 +299,13 @@ public enum PreviewFixtures {
                 line(-54, "chiara", "And it whistles.", embeds: [upload(4, "kettle.m4a", og: ["audio": media(4, "audio/mp4")])]),
                 line(-53, "sam", "Mine is still uploading", embeds: [["embed_id": "embed_5", "kind": "upload", "title": "my-pot.jpg"]]),
             ]),
+            "kitchen": history("kitchen", [
+                line(-130, "ada", "Shipped the new glaze :apron: :partyparrot:",
+                     reactions: [":partyparrot:": ["sam", "bram"], ":apron:": ["sam"], ":retired:": ["bram"], "👍": ["eunji"]]),
+                line(-128, "eunji", "שלום! הסמל נראה מצוין גם מימין לשמאל :apron:", reactions: ["❤️": ["ada"]]),
+                line(-127, "bram", "Keys in code stay text: `:shipit:`. Out of it, two at once :shipit::shipit:"),
+                line(-126, "sam", "Lunch at 12:30:partyparrot:"),
+            ]),
             "ops": history("ops", [
                 line(-300, "dev", "Rotated the TLS cert on home. Next renewal in 60 days."),
                 line(-290, "sam", "Thanks!"),
@@ -286,7 +313,7 @@ public enum PreviewFixtures {
         ],
         readCursors: [
             "general": message(9), releaseThread: message(17), "design": message(-30),
-            iconThread: message(-18), "random": message(-90), "ops": message(-290),
+            iconThread: message(-18), "random": message(-90), "ops": message(-290), "kitchen": message(-126),
         ],
         notices: [[
             "room_id": "general", "from": ["user_id": "~room", "name": "general"],

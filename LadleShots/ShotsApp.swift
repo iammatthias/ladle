@@ -20,6 +20,7 @@ struct ShotsApp: App {
 enum Screen: String, CaseIterable {
     case firstRun = "first-run", servers, connect, connectScanned = "connect-scanned", rooms, timeline, mention, members, reaction, attachments, media, links, viewer, ipad
     case textLimit = "text-limit", guestComposer = "guest-composer"
+    case emoji, emojiPicker = "emoji-picker", emojiShortcode = "emoji-shortcode"
 }
 
 @MainActor
@@ -119,6 +120,12 @@ enum Renderer {
             AnyView(NavigationStack {
                 if let demo = store.session(for: PreviewFixtures.demoID) { TimelineView(session: demo, roomID: "lobby") }
             })
+        case .emoji:
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID) })
+        case .emojiPicker:
+            AnyView(ReactionPicker(session: home) { _ in })
+        case .emojiShortcode:
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, draft: Draft(text: "Lunch :pa")) })
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), connecting: .constant(nil)))
@@ -174,8 +181,10 @@ final class FixtureMedia: URLProtocol {
 
     override func startLoading() {
         let path = request.url?.path() ?? ""
-        let photo: Data? = if request.url?.absoluteString == PreviewFixtures.demoAvatarURL {
+        let photo: Data? = if request.url?.absoluteString == PreviewFixtures.demoAvatarURL || path == "/emoji/apron" {
             Self.icon()
+        } else if path.hasPrefix("/emoji/") {
+            Self.emoji(path.dropFirst("/emoji/".count))
         } else if path.contains("embed_1/") {
             Self.photo(CGSize(width: 1600, height: 1200), hue: 0.02)
         } else if path.contains("embed_6/") {
@@ -237,6 +246,28 @@ final class FixtureMedia: URLProtocol {
             UIColor(red: 0.98, green: 0.94, blue: 0.86, alpha: 1).setFill()
             context.cgContext.fillEllipse(in: CGRect(x: 56, y: 96, width: 144, height: 104))
             context.fill(CGRect(x: 120, y: 40, width: 16, height: 80))
+        }
+    }
+
+    /// The fixture catalog's other emoji: a parrot in motion (a still copy in grey) and a wide
+    /// squirrel's hat.
+    static func emoji(_ name: Substring) -> Data {
+        let size = name == "shipit" ? CGSize(width: 128, height: 64) : CGSize(width: 128, height: 128)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).pngData { context in
+            let c = context.cgContext
+            switch name {
+            case "shipit":
+                UIColor(red: 0.45, green: 0.3, blue: 0.2, alpha: 1).setFill()
+                c.fillEllipse(in: CGRect(x: 8, y: 40, width: 112, height: 20))
+                c.fill(CGRect(x: 36, y: 6, width: 56, height: 44))
+            default:
+                (name == "partyparrot" ? UIColor(red: 0.2, green: 0.75, blue: 0.35, alpha: 1) : UIColor.gray).setFill()
+                c.fillEllipse(in: CGRect(x: 14, y: 14, width: 100, height: 100))
+                UIColor(red: 0.98, green: 0.7, blue: 0.1, alpha: 1).setFill()
+                c.fill(CGRect(x: 84, y: 52, width: 36, height: 20))
+            }
         }
     }
 
