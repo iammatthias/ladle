@@ -23,6 +23,10 @@ public actor Connection {
     /// frames it has not processed (1008 "Too many pending frames"), and its guide asks for fewer
     /// than 8 outstanding requests, and one `history` at a time.
     public static let maxOutstanding = 7
+    /// The largest frame Cloudflare's server reads; a larger one closes the connection (1009).
+    public static let maxFrameBytes = 16_384
+    /// The longest request `id` it takes.
+    public static let maxIDBytes = 128
 
     /// The latest `server` frame; each one fully replaces the previous (§3.1).
     public private(set) var server: ServerInfo?
@@ -41,7 +45,7 @@ public actor Connection {
     private var outstanding: Set<String> = []
     private var outstandingHistory: String?
     /// Requests waiting for room on the wire, in call order.
-    private var held: [Request] = []
+    private var held: [(id: String, method: String, text: String)] = []
     private var serverWaiter: CheckedContinuation<ServerInfo, any Error>?
     private var reader: Task<Void, Never>?
     private var pinger: Task<Void, Never>?
@@ -112,8 +116,10 @@ public actor Connection {
     public func send(_ method: String, params: JSONValue? = nil, id: String? = nil) throws -> Reply {
         guard !isClosed else { throw Failure.closed }
         let request = Request(id: id ?? makeRequestID(), method: method, params: params)
+        let text = request.encoded.serialized()
+        try Self.checkSize(text, id: request.id)
         pending[request.id] = .waiting(nil)
-        held.append(request)
+        held.append((request.id, method, text))
         sendHeld()
         return Reply(id: request.id, connection: self)
     }
@@ -124,7 +130,7 @@ public actor Connection {
             held.removeFirst()
             outstanding.insert(request.id)
             if request.method == "history" { outstandingHistory = request.id }
-            outbox.yield(Outbound(text: request.encoded.serialized(), requestID: request.id))
+            outbox.yield(Outbound(text: request.text, requestID: request.id))
             sent += 1
             let (timeout, attempt) = (requestTimeout, sent)
             attempts[request.id] = attempt
@@ -174,7 +180,20 @@ public actor Connection {
     /// Queues a notification, such as `ping`, behind every earlier frame.
     public func notify(_ method: String, params: JSONValue? = nil) throws {
         guard !isClosed else { throw Failure.closed }
-        outbox.yield(Outbound(text: WireNotification(method: method, params: params).encoded.serialized()))
+        let text = WireNotification(method: method, params: params).encoded.serialized()
+        try Self.checkSize(text, id: nil)
+        outbox.yield(Outbound(text: text))
+    }
+
+    /// A frame the server would close the connection over fails here instead, as the server's
+    /// `too_large` would, and is never sent.
+    private static func checkSize(_ text: String, id: String?) throws {
+        if let id, id.utf8.count > maxIDBytes {
+            throw RPCError(code: RPCError.Code.tooLarge, message: "The request id is over \(maxIDBytes) bytes.")
+        }
+        guard text.utf8.count <= maxFrameBytes else {
+            throw RPCError(code: RPCError.Code.tooLarge, message: "Too large to send: a frame holds \(maxFrameBytes.formatted()) bytes.")
+        }
     }
 
     /// Seconds between pings from the latest `server` frame; nil when the server wants none.

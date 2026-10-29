@@ -293,6 +293,29 @@ final class ConnectionTests: XCTestCase {
         await connection.close()
     }
 
+    func testAFrameOverSixteenKiBFailsWithoutBeingSent() async throws {
+        let (connection, transport) = makeConnection()
+        await transport.deliver(greeting)
+        _ = try await connection.connect()
+        do {
+            _ = try await connection.request("message", params: ["body": ["text": .string(String(repeating: "é", count: 8_200))]])
+            XCTFail("a frame over 16 KiB is refused")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.code, RPCError.Code.tooLarge)
+        }
+        do {
+            _ = try await connection.request("me", id: String(repeating: "x", count: 129))
+            XCTFail("an id over 128 bytes is refused")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.code, RPCError.Code.tooLarge)
+        }
+        _ = try await connection.send("me")
+        var outgoing = transport.sent.makeAsyncIterator()
+        let first = await outgoing.next()
+        XCTAssertEqual(first, #"{"id":"c2","method":"me"}"#, "nothing refused reached the wire")
+        await connection.close()
+    }
+
     func testServerCloseFailsPendingRequestsAndFinishesTheStream() async throws {
         let (connection, transport) = makeConnection()
         await transport.deliver(greeting)
