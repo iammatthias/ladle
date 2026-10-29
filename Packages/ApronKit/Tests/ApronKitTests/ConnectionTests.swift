@@ -255,6 +255,44 @@ final class ConnectionTests: XCTestCase {
         await connection.close()
     }
 
+    func testAtMostSevenRequestsWaitForRepliesAtOnce() async throws {
+        let (connection, transport) = makeConnection()
+        await transport.deliver(greeting)
+        _ = try await connection.connect()
+        var replies: [Connection.Reply] = []
+        for _ in 1 ... 9 { replies.append(try await connection.send("me")) }
+        var outgoing = transport.sent.makeAsyncIterator()
+        for _ in 1 ... 7 { _ = await outgoing.next() }
+        try await Task.sleep(for: .milliseconds(50))
+        let sentBeforeAReply = await transport.sentLog.count
+        XCTAssertEqual(sentBeforeAReply, 7)
+        await transport.deliver(["id": "c1", "result": [:]])
+        let eighth = await outgoing.next()
+        XCTAssertEqual(eighth, #"{"id":"c8","method":"me"}"#)
+        _ = try await replies[0].value
+        await connection.close()
+    }
+
+    func testASecondHistoryWaitsForTheFirstAndTheRequestsBehindItKeepTheirOrder() async throws {
+        let (connection, transport) = makeConnection()
+        await transport.deliver(greeting)
+        _ = try await connection.connect()
+        _ = try await connection.send("history", params: ["room_id": "a"])
+        _ = try await connection.send("history", params: ["room_id": "b"])
+        _ = try await connection.send("me")
+        var outgoing = transport.sent.makeAsyncIterator()
+        let first = await outgoing.next()
+        try await Task.sleep(for: .milliseconds(50))
+        let sentBeforeAReply = await transport.sentLog
+        XCTAssertEqual(sentBeforeAReply, [first].compactMap { $0 })
+        XCTAssertEqual(first, #"{"id":"c1","method":"history","params":{"room_id":"a"}}"#)
+        await transport.deliver(["id": "c1", "result": [:]])
+        let second = await outgoing.next()
+        let third = await outgoing.next()
+        XCTAssertEqual([second, third], [#"{"id":"c2","method":"history","params":{"room_id":"b"}}"#, #"{"id":"c3","method":"me"}"#])
+        await connection.close()
+    }
+
     func testServerCloseFailsPendingRequestsAndFinishesTheStream() async throws {
         let (connection, transport) = makeConnection()
         await transport.deliver(greeting)
