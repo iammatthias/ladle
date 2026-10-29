@@ -285,7 +285,7 @@ Each section has one action button at its bottom, within reach.
 - If the connection drops, `pendingEmail` clears and the code no longer works on a new connection (§4.11.2). Say "The connection dropped, so that code no longer works. Send a new code." Never just "Invalid code".
 - A `retry_after` on Send Code counts down on the button.
 
-**Guest section.** **Name (optional)**, then **Continue as Guest**. A guest account whose only way back is the saved token gets a callout in You (3.11), per §3.2.1's SHOULD.
+**Guest section.** No name field: the server picks a guest's name (Cloudflare's demo names every guest `Guest <n>` and ignores a requested one), so the section only says so. A guest account whose only way back is the saved token gets a callout in You (3.11), per §3.2.1's SHOULD.
 
 **QR scanner.**
 
