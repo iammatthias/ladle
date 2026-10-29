@@ -744,6 +744,21 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertTrue(session.mayMove(mine), "your own message moves without a permission")
     }
 
+    func testOnlyAdminsAndModeratorsCreateRoomsWhereTheServerStatesPermissions() async throws {
+        let socket = try await signInWithRooms(["user_id": "mia", "roles": []], capabilities: ["rooms", "ext:permissions"])
+        XCTAssertFalse(session.mayCreateRooms)
+        for (roles, may) in [(["announce"], false), (["mod"], true), (["moderator"], true), (["admin", "bot"], true)] {
+            await socket.deliver(["method": "user", "params": ["you": ["user_id": "mia", "roles": .array(roles.map(JSONValue.string))]]])
+            await eventually("roles \(roles)") { session.you?.roles == roles }
+            XCTAssertEqual(session.mayCreateRooms, may, "\(roles)")
+        }
+    }
+
+    func testAnyoneCreatesRoomsWhereTheServerStatesNoPermissions() async throws {
+        _ = try await signInWithRooms(["user_id": "mia"], capabilities: ["rooms"])
+        XCTAssertTrue(session.mayCreateRooms)
+    }
+
     func testPermissionsCountOnlyWithTheCapability() async throws {
         _ = try await signInWithRooms(["user_id": "mia", "ext": ["permissions": ["move_any"]]], capabilities: ["history", "edit", "rooms"])
         XCTAssertEqual(session.permissions, [])

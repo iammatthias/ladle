@@ -42,7 +42,9 @@ struct RoomListView: View {
                     Spacer()
                     if session.status == .signedIn, session.server?.has("rooms") == true {
                         Menu {
-                            Button("New Room", systemImage: "plus") { naming = NewRoom(parent: nil) }
+                            if session.mayCreateRooms {
+                                Button("New Room", systemImage: "plus") { naming = NewRoom(parent: nil) }
+                            }
                             Button("Browse Rooms", systemImage: "magnifyingglass") { browsing = true }
                         } label: {
                             Image(systemName: "plus").foregroundStyle(Palette.inkMuted).touchTarget()

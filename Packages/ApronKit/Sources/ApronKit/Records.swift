@@ -14,6 +14,11 @@ public struct UserObject: Hashable, Sendable {
     }
 }
 
+extension UserObject {
+    /// The user's roles (§3.3), for display: `admin`, `mod`, `bot`, or labels such as `announce`.
+    public var roles: [String] { json["roles"]?.arrayValue?.compactMap(\.stringValue) ?? [] }
+}
+
 /// A room record (§4.2): the client fields only. Delivery fields live in `RoomDelivery`.
 public struct RoomRecord: Hashable, Sendable {
     public var roomID: String
