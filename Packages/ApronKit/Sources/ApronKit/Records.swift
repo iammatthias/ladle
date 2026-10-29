@@ -76,7 +76,7 @@ public struct ReactionSet: Hashable, Sendable {
     public var messageID: LogID
     public var roomID: String?
     public var from: UserObject
-    /// Distinct, in arrival order.
+    /// Distinct by `ReactionEntry.key`, in arrival order.
     public var emojis: [String]
 }
 
@@ -246,7 +246,7 @@ extension ReactionSet {
         return elements.compactMap { element in
             guard let from = UserObject(element["from"]), let emojis = element["emojis"]?.arrayValue else { return nil }
             var seen = Set<String>()
-            let distinct = emojis.compactMap(\.stringValue).filter { seen.insert($0).inserted }
+            let distinct = emojis.compactMap(\.stringValue).filter { seen.insert(ReactionEntry.key($0)).inserted }
             return ReactionSet(logID: logID, messageID: messageID, roomID: roomID, from: from, emojis: distinct)
         }
     }

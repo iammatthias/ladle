@@ -29,6 +29,9 @@ clone), which is only a worked example.
     snapshots by `message_id`, reaction sets by `(message_id, user_id)`, memberships by
     `(room_id, user_id)`) under the replay rule, member-list seeding as of a position, re-homing
     on moves, and the README's logical projection. `ext` stays a `JSONValue`.
+  - `ReactionEntry`: a `reactions` entry (§4.7) is one emoji sequence or a key, such as a custom
+    emoji's `:name:`. Entries compare without U+FE0F (`key`): a set, the summaries and
+    `toggleReaction` treat ❤ and ❤️ as one, and a summary shows the fully-qualified spelling.
   - `Connection`: an actor over a `FrameTransport`. `connect()` returns the first `server` frame,
     `request` matches replies by `id`, `notifications` streams the rest, pings at `server.ping`.
     One writer task sends frames in call order; `send` queues a request and returns a `Reply` to

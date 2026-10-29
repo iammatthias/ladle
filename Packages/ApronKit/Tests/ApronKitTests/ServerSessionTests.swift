@@ -719,9 +719,16 @@ final class ServerSessionTests: XCTestCase {
         try await expect(#"{"id":"c7","method":"reactions","params":{"emojis":["🎉"],"message_id":"201"}}"#) {
             try await self.session.toggleReaction("👍", on: LogID("201")!)
         }
-        try await expect(#"{"id":"c8","method":"room_join","params":{"room_id":"ops"}}"#) { try await self.session.join("ops") }
-        try await expect(#"{"id":"c9","method":"room_leave","params":{"room_id":"ops"}}"#) { try await self.session.leave("ops") }
-        try await expect(#"{"id":"c10","method":"room_set","params":{"parent_room_id":"general","title":"Deploy"}}"#,
+        await socket.deliver(["method": "reactions", "params": [
+            "log_id": "203", "message_id": "201", "room_id": "general", "reactions": [["from": ["user_id": "ada"], "emojis": ["🎉", "❤"]]],
+        ]])
+        await eventually("heart installed") { session.store.reactions(on: LogID("201")!)?.count == 2 }
+        try await expect(#"{"id":"c8","method":"reactions","params":{"emojis":["🎉"],"message_id":"201"}}"#) {
+            try await self.session.toggleReaction("❤️", on: LogID("201")!)
+        }
+        try await expect(#"{"id":"c9","method":"room_join","params":{"room_id":"ops"}}"#) { try await self.session.join("ops") }
+        try await expect(#"{"id":"c10","method":"room_leave","params":{"room_id":"ops"}}"#) { try await self.session.leave("ops") }
+        try await expect(#"{"id":"c11","method":"room_set","params":{"parent_room_id":"general","title":"Deploy"}}"#,
                          reply: ["room_id": "300"]) { try await self.session.createRoom(title: "Deploy", parentRoomID: "general") }
     }
 

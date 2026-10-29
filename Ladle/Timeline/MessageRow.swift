@@ -215,7 +215,7 @@ struct ReactionBar: View {
 
     var body: some View {
         FlowLayout(spacing: Tokens.Space.s1) {
-            ForEach(reactions, id: \.emoji) { reaction in
+            ForEach(reactions, id: \.key) { reaction in
                 let mine = session.you.map { reaction.userIDs.contains($0.userID) } ?? false
                 let names = reaction.userIDs.map { session.users.user($0).flatMap(UserObject.init).map(session.displayName(for:)) ?? $0 }
                 Button { onReact(reaction.emoji) } label: {
