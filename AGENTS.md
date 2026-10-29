@@ -441,4 +441,4 @@ Fallbacks: email with a typed code (§4.11). Optional later paths, not implement
   reuse.
 - Never commit `Config/Domains.xcconfig`, a token, or the owner's personal identifiers. The team
   ID and bundle ID are fine.
-- Commit on a branch with `git commit -F <file>`; never push from an agent session.
+- Commit with `git commit -F <file>` and keep main current on origin. Never force-push.
