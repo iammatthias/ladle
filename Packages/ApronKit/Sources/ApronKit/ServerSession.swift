@@ -575,6 +575,14 @@ public final class ServerSession {
         return Set((you?.json["ext"]?["permissions"]?.arrayValue ?? []).compactMap(\.stringValue))
     }
 
+    /// Whether to offer creating a top-level room. A server that tells each user what they may do
+    /// (`ext:permissions`, as Cloudflare's demo) lets only admins and moderators create one;
+    /// elsewhere anyone may. Threads are open to everyone who may post.
+    public var mayCreateRooms: Bool {
+        guard server?.has("ext:permissions") == true else { return true }
+        return !Set(you?.roles ?? []).isDisjoint(with: ["admin", "mod", "moderator"])
+    }
+
     /// Whether this user may move the message: their own, or anyone's with `move_any`.
     public func mayMove(_ message: MessageSnapshot) -> Bool {
         guard status == .signedIn, server?.has("edit") == true, !isReadOnlyGuest, !message.isTombstone else { return false }
