@@ -704,7 +704,10 @@ public final class ServerSession {
                                id: item.id)
                 outbox.removeAll { $0.id == item.id }
             } catch let error as RPCError {
-                if let wait = error.retryAfter {
+                if error.retryAfter != nil, error.limitCategory == "upload" {
+                    // Only uploads are paused, for as long as a day: the text behind it goes on.
+                    mark(item.id, .failed(error.message.isEmpty ? "This server takes no more uploads for now." : error.message))
+                } else if let wait = error.retryAfter {
                     try? await environment.sleep(wait)
                 } else if error.code == RPCError.Code.tooLarge {
                     mark(item.id, .failed(item.attachments.isEmpty ? "Too long for this server." : "Too large for this server."))
@@ -994,4 +997,8 @@ extension RPCError {
         guard code == Code.retryAfter, let seconds = data?["retry_after"]?.doubleValue, seconds > 0 else { return nil }
         return .seconds(min(seconds, 86_400))
     }
+
+    /// What a `retry_after` holds back (`data.ext.limits`, extension `ext:limits`): `read`,
+    /// `write` or `upload`, or nil when it names none.
+    var limitCategory: String? { data?["ext"]?["limits"]?.stringValue }
 }
