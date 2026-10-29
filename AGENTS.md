@@ -187,6 +187,10 @@ clone), which is only a worked example.
     its syntax (code keeps its text, a link shows its text, each block a line, typed line breaks
     kept, mentions as written), cut to a line count and length. The reply quote and every
     one-line preview (`previewText`) use it.
+  - Apron links in a message show as links in its text only: Ladle draws no card or chip for a
+    place, so apron-web's rule (#155: a sender's preview embed for a place hides under the
+    card the client draws for it) has nothing to hide, and a `link` embed's `og` for an Apron
+    link shows as any other.
   - `LinkPreviews`: previews this device fetches for links the server did not describe (the
     user's choice over §4.8.1's "clients don't fetch third-party pages"). `unfurlURL` picks one
     link per message, the first `mayFetch` allows among its first three (text links, then `link`
