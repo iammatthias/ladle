@@ -206,7 +206,10 @@ clone), which is only a worked example.
   seconds, or a notice says the room lacks it; a `user` opens the member list. Room lists
   and timelines resolve relative links in their server's content against that server
   (`resolvingLinks(from:)`); one reaching the root has no sender and opens nothing. The
-  message menu's Copy Link, and Copy Link and Share on a link in a message, write the web form;
+  message menu's Copy Link, and Copy Link and Share on a link in a message or notice, write the web form
+  (`ApronLink.outbound`), except a sign-in link, which stays as written so it keeps its token, and
+  opens the saved server's sign-in sheet with the token filled in; a notice's long-press menu
+  offers Copy Text, each code span on its own (`MessageText.code`) and its links;
   a server added through the Connect sheet opens once its sign-in succeeds),
   `Servers/` (the server list and iPad rail, `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the

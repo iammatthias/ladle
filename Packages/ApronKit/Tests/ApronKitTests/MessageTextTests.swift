@@ -19,6 +19,18 @@ final class MessageTextTests: XCTestCase {
                        ["https://github.com/apron-chat/apron/pull/12", "apron:?room=general"])
     }
 
+    func testAnInviteDeviceNoticeHasItsLinkAndItsCodeToCopy() {
+        let link = "https://link.apron.chat/#server=wss%3A%2F%2Fserver.apron.chat&token=apron_dev_abc"
+        let text = [
+            "This token signs in as you (`ada_1`) on your device **phone**. Keep it secret.",
+            "```\napron_dev_abc\n```",
+            "Or open this link on **phone**, which signs you in there with any Apron app: <\(link)>",
+        ].joined(separator: "\n\n")
+        let body: JSONValue = ["text": .string(text), "format": "markdown"]
+        XCTAssertEqual(MessageText.links(body), [URL(string: link)!])
+        XCTAssertEqual(MessageText.code(body), ["ada_1", "apron_dev_abc"])
+    }
+
     func testBareLinksAsApronWebFindsThem() {
         XCTAssertEqual(links("go to http://example.com"), ["http://example.com -> http://example.com"])
         XCTAssertEqual(links("see https://example.com/a?b=1&c=2 now", markdown: true),

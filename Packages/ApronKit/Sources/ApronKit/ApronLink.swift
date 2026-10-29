@@ -77,6 +77,15 @@ public struct ApronLink: Hashable, Sendable {
         otherKeys = all.filter { !Self.known.contains($0.key) }
     }
 
+    /// What a tap opens, and Copy Link and Share hand on, for a link in content from `sender`: an
+    /// Apron link as its absolute web form (§1, §5), and any other link as written. So is a
+    /// sign-in link, whose web form would drop its token (§2.1), such as the one in the server's
+    /// `/invite-device` notice.
+    public static func outbound(_ url: URL, from sender: URL) -> URL {
+        guard let link = ApronLink(url), link.token == nil else { return url }
+        return link.resolved(against: sender).webURL ?? url
+    }
+
     /// A relative link made absolute against the server that sent the content holding it (§5).
     public func resolved(against sender: URL) -> ApronLink {
         var link = self

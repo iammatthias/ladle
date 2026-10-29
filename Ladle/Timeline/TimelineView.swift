@@ -53,7 +53,10 @@ struct TimelineView: View {
                         row(item).id(item.id)
                     }
                     ForEach(Array(session.notices.enumerated()).filter { $0.element.roomID == roomID }, id: \.offset) { _, notice in
-                        Callout(title: noticeTitle(notice)) { Text(rendered(notice.body)) }
+                        Callout(title: noticeTitle(notice)) { Text(rendered(notice.body)).tint(Palette.denim) }
+                            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Tokens.Radius.md))
+                            .contextMenu { noticeActions(notice) }
+                            .accessibilityActions { noticeActions(notice) }
                             .padding(.horizontal, Tokens.Space.s4)
                             .padding(.top, Tokens.Space.s3)
                     }
@@ -300,19 +303,38 @@ struct TimelineView: View {
                 }
             }
         }
-        ForEach(MessageText.links(message.body).prefix(3), id: \.self) { url in
-            // An Apron link leaves its server as its absolute web form (§1, §5).
-            let shared = ApronLink(url).flatMap { $0.resolved(against: session.record.url).webURL } ?? url
+        linkActions(message.body)
+        if session.status == .signedIn, session.mayWrite, session.isYou(message.from.userID), session.server?.has("edit") == true {
+            Button("Edit", systemImage: "pencil") { draft = Draft(mode: .edit(message), text: message.plainText) }
+            Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
+        }
+    }
+
+    /// Open, Copy Link and Share for each of a body's first three links.
+    @ViewBuilder
+    private func linkActions(_ body: JSONValue?) -> some View {
+        ForEach(MessageText.links(body).prefix(3), id: \.self) { url in
+            let shared = ApronLink.outbound(url, from: session.record.url)
             Menu(url.host() ?? url.absoluteString, systemImage: "link") {
                 Button("Open Link", systemImage: "arrow.up.right.square") { openURL(url) }
                 Button("Copy Link", systemImage: "doc.on.doc") { UIPasteboard.general.url = shared }
                 ShareLink(item: shared)
             }
         }
-        if session.status == .signedIn, session.mayWrite, session.isYou(message.from.userID), session.server?.has("edit") == true {
-            Button("Edit", systemImage: "pencil") { draft = Draft(mode: .edit(message), text: message.plainText) }
-            Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
+    }
+
+    /// A notice's menu, as a message's without what a notice can't take (reactions, replies,
+    /// edits): its text, its code (a token, a command) on its own, as apron-web's copy buttons
+    /// on a notice's code, and its links.
+    @ViewBuilder
+    private func noticeActions(_ notice: Notice) -> some View {
+        Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = MessageText.plain(notice.body) }
+        ForEach(MessageText.code(notice.body).prefix(3), id: \.self) { code in
+            Button { UIPasteboard.general.string = code } label: {
+                Label { Text("Copy \(Text(code).monospaced())").lineLimit(1) } icon: { Image(systemName: "chevron.left.forwardslash.chevron.right") }
+            }
         }
+        linkActions(notice.body)
     }
 
     private var isEditing: Bool {
