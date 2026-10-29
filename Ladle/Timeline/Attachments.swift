@@ -38,13 +38,25 @@ enum AttachmentStaging {
         return folder
     }
 
-    /// Fits a picked file to the server off the main thread (`AttachmentPreparer`). A
-    /// security-scoped URL from the document picker stays open while it is copied.
+    /// Fits a picked file to the server off the main thread, as its `UploadPlan` says: a sound
+    /// or video is re-encoded here first (`MediaCompression`), and `AttachmentPreparer` does the
+    /// rest. A security-scoped URL from the document picker stays open while it is read.
     static func prepare(_ source: URL, name: String, contentType: String?, limits: MediaLimits.Category?) async throws -> Attachment {
         try await Task.detached(priority: .userInitiated) {
             let scoped = source.startAccessingSecurityScopedResource()
             defer { if scoped { source.stopAccessingSecurityScopedResource() } }
-            return try AttachmentPreparer.prepare(source, title: name, contentType: contentType, limits: limits, into: directory)
+            let base = (name as NSString).deletingPathExtension
+            let reencoded: URL
+            switch try AttachmentPreparer.plan(for: source, declared: contentType, limits: limits).plan {
+            case .audio(let maxBytes):
+                reencoded = try MediaCompression.audio(source, maxBytes: maxBytes, named: base + ".m4a", into: importFolder())
+            case .video(let type, let maxBytes):
+                let name = base + (type == "video/mp4" ? ".mp4" : ".mov")
+                reencoded = try await MediaCompression.video(source, type: type, maxBytes: maxBytes, named: name, into: importFolder())
+            default:
+                return try AttachmentPreparer.prepare(source, title: name, contentType: contentType, limits: limits, into: directory)
+            }
+            return try AttachmentPreparer.prepare(reencoded, title: reencoded.lastPathComponent, limits: limits, into: directory)
         }.value
     }
 }
@@ -157,8 +169,9 @@ struct AttachmentTile: View {
     }
 }
 
-/// The system camera for a photo or a video, where the device has one.
+/// The system camera for a photo, or a video where the server takes videos, on a device with one.
 struct CameraPicker: UIViewControllerRepresentable {
+    var videos = true
     let took: (URL) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -167,7 +180,7 @@ struct CameraPicker: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIImagePickerController {
         let picker = UIImagePickerController()
         picker.sourceType = .camera
-        picker.mediaTypes = [UTType.image.identifier, UTType.movie.identifier]
+        picker.mediaTypes = [UTType.image.identifier] + (videos ? [UTType.movie.identifier] : [])
         picker.delegate = context.coordinator
         return picker
     }

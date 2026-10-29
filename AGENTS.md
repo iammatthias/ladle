@@ -78,10 +78,17 @@ clone), which is only a worked example.
     `MediaPolicy` loads media only from the server's own HTTP origin (from its WebSocket URL),
     the origins `ext:media` names, and small `data:image` URLs; avatars may also be any
     `https:` image. `MediaLimits` reads `ext:media` (apron-web EXT.md §6), which aprond does not
-    advertise, so there a 413 or 415 on the write decides. `AttachmentPreparer` re-encodes a
-    still photo as JPEG within 2048 px (or `max_side`) and 5 MB (or `max_bytes`), which drops
-    its metadata, location included; HEIC must become JPEG because servers describe only PNG,
-    JPEG, GIF and WebP as images. `prepareAvatar` crops the middle square at 512 px.
+    advertise, so there a 413 or 415 on the write decides. `UploadPlan.decide` says what a file
+    needs to fit the `upload` category: nothing, a still image re-encoded (JPEG, else PNG where
+    the server takes no JPEG) within 2048 px (or `max_side`) and 5 MB (or `max_bytes`), which
+    drops its metadata, location included, a sound re-encoded as AAC `audio/mp4` at the
+    `AudioEncoding` step that fits, a video exported as `video/mp4` or `video/quicktime`, or a
+    refusal that names the limit. A server that takes no video (Cloudflare's demo takes images
+    and audio) refuses videos; no poster frame is sent in their place. `UploadOffer` is what the
+    attach menu offers and the pickers show. `AttachmentPreparer` carries out the image plans
+    (ImageIO, so `swift test` covers it) and `MediaCompression` in the app the sound and video
+    ones (AVFoundation). `prepareAvatar` crops the middle square at 512 px within the `avatar`
+    category.
   - `send` and `post` take attachments as `upload` embeds; `ServerSession+Uploads` writes each
     to the `write_url` the result lists, in request order, through `Environment.writeEmbed`
     (`EmbedWriter.live`, a URLSession `PUT`), and keeps `uploadProgress` by `embed_id`. A
