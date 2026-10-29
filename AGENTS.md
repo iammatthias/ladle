@@ -104,7 +104,10 @@ clone), which is only a worked example.
       room record or history result, kept in `ReplayStore` per room and never lowered; raising
       it drops the snapshots whose `log_id` is below it, with their reactions, and refuses late
       ones. Each opened room keeps a checkpoint that live records advance; after a reconnect it
-      pages forward from `checkpoint + 1`.
+      pages forward from `checkpoint + 1`. A second `open` while the first page loads waits for
+      it. `reveal(_:in:)` pages back 200 changes at a time until the timeline holds a message a
+      link names, the loaded history reaches past it, or the floor stops it, so the timeline
+      stays one unbroken run. A page arriving after an older one leaves paging where it is.
     - Threads: a thread's record is in its own log (§4.3.1), not its room's, so a member of the
       room who has not joined it learns of it from `room_update` `updated` while connected, and
       otherwise only from `room_list {parent_room_id, filter: not_joined}` (§4.2.1). `open` and
@@ -163,7 +166,7 @@ clone), which is only a worked example.
     bare `http(s)` URLs and `apron:?` links linked in either format outside code and existing
     links, with apron-web's trimming of trailing punctuation; links on schemes apron-web's
     sanitizer refuses are dropped. Web links open in the default browser (`OpenURLAction`'s
-    system action); Apron links go to `DeepLink`. Neither reference server describes links:
+    system action); Apron links open in the app (`ApronLink`). Neither reference server describes links:
     both drop a sender's `og`, so a `link` embed arrives as its kind and URL and shows the
     fallback card, as on the web.
   - `MessageText.plain` and `snippet` (`MessageText+Plain.swift`): a body as plain text for where it
@@ -179,7 +182,14 @@ clone), which is only a worked example.
     names, and non-public address literals; a public name that redirects inward is not caught. Previews are
     cached in memory and as JSON in `Caches/LinkPreviews` (7 days, 1 day for a failure; the
     fetch time is in the file, not its timestamp), with at most 3 fetches at once.
-  - `SignIn`, `TokenPayload` (a bare token or a §A.4 link with `token`), `SignInFill` (what a
+  - `ApronLink` (link.apron.chat SPEC §1, §2, §4, §5): the one reader and writer of Apron links.
+    It reads the web form's fragment, then a link.apron.chat query's keys, and the `apron:?`
+    URI; first value wins, unknown keys are kept for writers, `room` and `user` must be opaque
+    IDs, `message` a `LogID` with a `room`, `server` `wss` or a loopback `ws`. A credential
+    (`token`, `state`) comes only from a web fragment; one in the query refuses the link, one
+    in an `apron:` URI is dropped. `webURL` writes the web form, never with a credential, and
+    `resolved(against:)` makes a relative link absolute.
+  - `SignIn`, `TokenPayload` (a bare token or a sign-in link read by `ApronLink`), `SignInFill` (what a
     scanned or pasted sign-in fills in: server and token when adding a server, the token alone
     otherwise, or the other server a saved server's link names), `UserDirectory` (one kept
     user object per `user_id`, merge rules, `Name (@user_id)` on clashes).
@@ -189,7 +199,13 @@ clone), which is only a worked example.
 - `Ladle/`: the app, views only; logic belongs in ApronKit where `swift test` reaches it. The
   design follows apron-web, the official web client (see "Design").
   `App/` (`RootView`: one pane at a time in compact width, a split view with the server rail,
-  rooms, room and member column in regular width; `@SceneStorage` restoration; `apron:` links;
+  rooms, room and member column in regular width; `@SceneStorage` restoration; Apron links,
+  which open a saved server's room and pass the link's message or member to the timeline as
+  its `place`: the message is revealed, scrolled to and highlighted on `hover` for two
+  seconds, or a notice says the room lacks it; a `user` opens the member list. Room lists
+  and timelines resolve relative links in their server's content against that server
+  (`resolvingLinks(from:)`); one reaching the root has no sender and opens nothing. The
+  message menu's Copy Link, and Copy Link and Share on a link in a message, write the web form;
   a server added through the Connect sheet opens once its sign-in succeeds),
   `Servers/` (the server list and iPad rail, `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
