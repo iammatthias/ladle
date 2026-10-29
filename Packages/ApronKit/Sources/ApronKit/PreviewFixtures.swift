@@ -31,7 +31,7 @@ public enum PreviewFixtures {
         )
         let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment)
         try? tokens.setToken("preview", for: homeID)
-        for (id, url, label) in [(homeID, "wss://home.example/ws", "Home"), (demoID, "wss://demo.apron.example/ws", "Apron Demo")] {
+        for (id, url, label) in [(homeID, "wss://home.example/ws", "Home"), (demoID, "wss://demo.apron.example/ws", nil)] {
             store.add(ServerRecord(id: id, url: URL(string: url)!, label: label))
         }
         for (id, script) in scripts {
@@ -62,7 +62,8 @@ public enum PreviewFixtures {
         "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity", "command", "embed:upload"],
     ]
 
-    /// The `server` frame of Cloudflare's demo, server.apron.chat, without its push and welcome.
+    /// The `server` frame of Cloudflare's demo, server.apron.chat, without its push and welcome,
+    /// with its avatar on the fixture's host.
     private static let cloudflareGreeting: JSONValue = {
         let images = ["image/png", "image/jpeg", "image/gif", "image/webp"]
         let limits = { (types: [String], bytes: Int) -> JSONValue in
@@ -70,6 +71,8 @@ public enum PreviewFixtures {
         }
         return [
             "apron": 9, "auth": ["webauthn", "token", "guest"], "signup": ["webauthn", "token"], "agent": "apron-cloudflare-demo/9",
+            "title": "Apron Demo", "description": "The public demo of [Apron](https://github.com/shazow/apron), an open chat protocol.",
+            "avatar": .string(demoAvatarURL),
             "capabilities": ["history", "edit", "rooms", "reactions", "command", "activity", "embed:upload", "status", "ext",
                              "ext:settings", "ext:limits", "ext:media", "ext:permissions"],
             "ext": [
@@ -169,6 +172,9 @@ public enum PreviewFixtures {
         if let alt { media["alt"] = .string(alt) }
         return .object(media)
     }
+
+    /// The demo's server avatar; LadleShots answers it with a generated icon.
+    public static let demoAvatarURL = "https://demo.apron.example/icon-512.png"
 
     /// Hosted files; LadleShots answers these URLs with generated media.
     public static func fileURL(_ n: Int) -> String { "https://home.example/files/embed_\(n)/s\(n)" }

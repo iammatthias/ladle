@@ -169,12 +169,14 @@ enum Renderer {
 /// Answers the fixtures' hosted files (`PreviewFixtures.fileURL`) with generated media, and
 /// stages the composer's attachments, so the media screens render without a network.
 final class FixtureMedia: URLProtocol {
-    override class func canInit(with request: URLRequest) -> Bool { request.url?.host() == "home.example" }
+    override class func canInit(with request: URLRequest) -> Bool { ["home.example", "demo.apron.example"].contains(request.url?.host()) }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         let path = request.url?.path() ?? ""
-        let photo: Data? = if path.contains("embed_1/") {
+        let photo: Data? = if request.url?.absoluteString == PreviewFixtures.demoAvatarURL {
+            Self.icon()
+        } else if path.contains("embed_1/") {
             Self.photo(CGSize(width: 1600, height: 1200), hue: 0.02)
         } else if path.contains("embed_6/") {
             Self.photo(CGSize(width: 1200, height: 630), hue: 0.58)
@@ -221,6 +223,20 @@ final class FixtureMedia: URLProtocol {
             c.fill(CGRect(x: size.width / 2 - 40, y: body.minY - 46, width: 80, height: 36))
             UIColor.white.withAlphaComponent(0.35).setFill()
             c.fillEllipse(in: CGRect(x: body.minX + w * 0.12, y: body.minY + 60, width: w * 0.12, height: h * 0.45))
+        }
+    }
+
+    /// A server icon: a rust square with a cream bowl.
+    static func icon() -> Data {
+        let size = CGSize(width: 256, height: 256)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        return UIGraphicsImageRenderer(size: size, format: format).pngData { context in
+            UIColor(red: 0.72, green: 0.33, blue: 0.2, alpha: 1).setFill()
+            context.fill(CGRect(origin: .zero, size: size))
+            UIColor(red: 0.98, green: 0.94, blue: 0.86, alpha: 1).setFill()
+            context.cgContext.fillEllipse(in: CGRect(x: 56, y: 96, width: 144, height: 104))
+            context.fill(CGRect(x: 120, y: 40, width: 16, height: 80))
         }
     }
 

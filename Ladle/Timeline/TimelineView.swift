@@ -316,7 +316,7 @@ struct TimelineView: View {
         switch notice.from.userID {
         case "~private": "Only you can see this"
         case "~room": nil
-        case "~server": session.record.label
+        case "~server": session.serverName
         default: session.displayName(for: notice.from)
         }
     }
@@ -597,7 +597,7 @@ struct ReadOnlyPrompt: View {
 
     var body: some View {
         ActionBanner(symbol: "person.crop.circle.badge.plus", title: "Sign in to join the conversation",
-                     detail: "\(Self.reason(session)) Sign in or create an account on \(session.record.label).") {
+                     detail: "\(Self.reason(session)) Sign in or create an account on \(session.serverName).") {
             Button("Sign In", action: signIn).buttonStyle(PrimaryButtonStyle())
         }
         .padding(.horizontal, Tokens.Space.s4)

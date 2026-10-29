@@ -85,9 +85,10 @@ final class ServerSessionTests: XCTestCase {
     }
 
     /// Queues a transport whose greeting lists `capabilities`, with `ext` when given.
-    private func queueTransport(capabilities: [String], ext: JSONValue? = nil) -> FakeTransport {
+    private func queueTransport(capabilities: [String], ext: JSONValue? = nil, more: [String: JSONValue] = [:]) -> FakeTransport {
         var params: [String: JSONValue] = ["apron": 9, "auth": ["email", "token", "guest"], "capabilities": .array(capabilities.map(JSONValue.string))]
         if let ext { params["ext"] = ext }
+        params.merge(more) { _, new in new }
         let transport = FakeTransport()
         transports.queued.withLock { $0.append(transport) }
         Task { await transport.deliver(["method": "server", "params": .object(params)]) }
@@ -201,6 +202,29 @@ final class ServerSessionTests: XCTestCase {
         await legacy.deliver(["id": "c4", "result": ["joined": []]])
         _ = try await signIn.value
         XCTAssertTrue(session.mayWrite, "the old setting held only for guests")
+    }
+
+    func testTheServersTitleAndAvatarNameItUnlessTheUserDid() async throws {
+        _ = queueTransport(capabilities: [], more: ["title": " Apron Demo ", "description": "The *public* demo", "avatar": "https://cdn.example/icon.png"])
+        session.start()
+        await eventually("greeted") { session.server != nil }
+        XCTAssertEqual(session.serverName, "Apron Demo")
+        XCTAssertEqual(session.server?.description, "The *public* demo")
+        XCTAssertEqual(session.serverAvatarURL, URL(string: "https://cdn.example/icon.png"))
+
+        var named = record
+        named.label = "Work"
+        let renamed = ServerSession(record: named, tokens: tokens, positions: positions, environment: .live)
+        XCTAssertEqual(renamed.serverName, "Work", "the user's own name wins")
+        XCTAssertEqual(ServerSession(record: record, tokens: tokens, positions: positions, environment: .live).serverName, "chat.example",
+                       "the address without a title")
+    }
+
+    func testAServerAvatarLoadsOnlyWhereAvatarsMay() async throws {
+        _ = queueTransport(capabilities: [], more: ["avatar": "http://cdn.example/icon.png"])
+        session.start()
+        await eventually("greeted") { session.server != nil }
+        XCTAssertNil(session.serverAvatarURL)
     }
 
     func testGuestsWriteUnlessTheServerSaysOtherwise() async throws {

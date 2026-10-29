@@ -60,7 +60,7 @@ struct RoomListView: View {
         .environment(\.defaultMinListRowHeight, Tokens.Size.touchTarget)
         .background(Palette.chrome)
         .safeAreaInset(edge: .bottom, spacing: 0) { profileBar }
-        .navigationTitle(session.record.label)
+        .navigationTitle(session.serverName)
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $browsing) { BrowseRoomsView(session: session) }
         .alert(naming?.parent == nil ? "New Room" : "New Thread", isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
@@ -79,7 +79,7 @@ struct RoomListView: View {
         } message: { roomID in
             Text(session.isPrivate(roomID) ? "It is private, so you need an invitation to come back." : "You can join it again from Browse Rooms.")
         }
-        .confirmationDialog("Sign out of \(session.record.label)?", isPresented: $signingOut, titleVisibility: .visible) {
+        .confirmationDialog("Sign out of \(session.serverName)?", isPresented: $signingOut, titleVisibility: .visible) {
             Button("Sign Out", role: .destructive) { Task { await session.signOut() } }
         } message: {
             Text(session.record.account?.scheme == "guest" || session.record.account?.scheme == "token"
@@ -139,7 +139,7 @@ struct RoomListView: View {
         }
         switch session.status {
         case .signedOut where session.server != nil:
-            return AnyView(ActionBanner(symbol: "person.crop.circle.badge.exclamationmark", title: "Sign in to \(session.record.label)",
+            return AnyView(ActionBanner(symbol: "person.crop.circle.badge.exclamationmark", title: "Sign in to \(session.serverName)",
                                         detail: session.signInNeeded) {
                 Button("Sign In", action: onSignIn).buttonStyle(PrimaryButtonStyle())
             })
@@ -161,7 +161,7 @@ struct RoomListView: View {
         if let you = session.you {
             let name = session.displayName(for: you)
             Menu {
-                Section(name + " on " + session.record.label) {
+                Section(name + " on " + session.serverName) {
                     if session.canSetAvatar {
                         Button("Change Avatar", systemImage: "person.crop.circle") { pickingAvatar = true }
                     }
@@ -173,7 +173,7 @@ struct RoomListView: View {
                         .overlay { if settingAvatar { ProgressView().controlSize(.small) } }
                     VStack(alignment: .leading, spacing: 0) {
                         Text(name).apText(.ui, .semibold).foregroundStyle(Palette.ink)
-                        Text("on \(session.record.label)").apText(.sm).foregroundStyle(Palette.inkMuted)
+                        Text("on \(session.serverName)").apText(.sm).foregroundStyle(Palette.inkMuted)
                     }
                     Spacer(minLength: 0)
                 }
@@ -185,7 +185,7 @@ struct RoomListView: View {
             .buttonStyle(.plain)
             .background(Palette.chrome)
             .overlay(alignment: .top) { Rectangle().fill(Palette.line).frame(height: 1) }
-            .accessibilityLabel("Your profile on \(session.record.label): \(name)")
+            .accessibilityLabel("Your profile on \(session.serverName): \(name)")
             .photosPicker(isPresented: $pickingAvatar, selection: $avatarItem, matching: .images, preferredItemEncoding: .compatible)
             .onChange(of: avatarItem) {
                 guard let item = avatarItem else { return }
@@ -344,7 +344,7 @@ private struct BrowseRoomsView: View {
                 if roomIDs == nil {
                     ProgressView()
                 } else if roomIDs?.isEmpty == true {
-                    EmptyState(title: "No other rooms", detail: "You are in every room you can see on \(session.record.label).") { EmptyView() }
+                    EmptyState(title: "No other rooms", detail: "You are in every room you can see on \(session.serverName).") { EmptyView() }
                 }
             }
             .navigationTitle("Browse Rooms")

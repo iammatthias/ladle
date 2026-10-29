@@ -5,7 +5,7 @@ import XCTest
 final class PreviewFixturesTests: XCTestCase {
     func testTheSeedHoldsEveryStateTheScreenshotsShow() async throws {
         let store = await PreviewFixtures.makeStore()
-        XCTAssertEqual(store.records.map(\.label), ["Home", "Apron Demo"])
+        XCTAssertEqual(store.records.map(\.label), ["Home", "demo.apron.example"])
         let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
         let demo = try XCTUnwrap(store.session(for: PreviewFixtures.demoID))
         XCTAssertEqual(home.status, .signedIn)
@@ -58,6 +58,8 @@ final class PreviewFixturesTests: XCTestCase {
         }, ["video with poster", "audio with cover"])
         XCTAssertEqual(demo.unreadCount(in: "lobby"), 3)
         XCTAssertFalse(demo.mayWrite, "a guest the demo lets only read")
+        XCTAssertEqual(demo.serverName, "Apron Demo", "named by its title")
+        XCTAssertEqual(demo.serverAvatarURL?.absoluteString, PreviewFixtures.demoAvatarURL)
         XCTAssertTrue(home.mayWrite)
         XCTAssertEqual(UploadOffer(demo.mediaLimits?.upload).summary, "This server takes images and audio only.")
         XCTAssertEqual(home.users.user("chiara")?["status"]?.stringValue, "dnd")

@@ -103,6 +103,22 @@ public final class ServerSession {
     /// The fraction written of each of this user's uploads in flight, by `embed_id` (§4.8.3).
     public internal(set) var uploadProgress: [String: Double] = [:]
 
+    /// What to call this server: the name the user gave it, else the server's `title` (§3.1),
+    /// else its host. Shown with the host where the user picks a server, so a server can't pass
+    /// as another by copying its title.
+    public var serverName: String {
+        guard record.label == ServerRecord.defaultLabel(for: record.url),
+              let title = server?.title?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty
+        else { return record.label }
+        return title
+    }
+
+    /// The server's `avatar` (§3.1), where avatars may load from.
+    public var serverAvatarURL: URL? {
+        guard let avatar = server?.avatar, let url = URL(string: avatar), mediaPolicy.allowsAvatar(url) else { return nil }
+        return url
+    }
+
     /// Whether this account signed in with scheme `guest`.
     public var isGuest: Bool { record.account?.scheme == "guest" }
 

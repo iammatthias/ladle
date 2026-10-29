@@ -49,6 +49,9 @@ clone), which is only a worked example.
       A token in any result replaces the saved one; a `.token` sign-in without one keeps the
       presented token; a guest result without one clears it. The email code goes on the
       connection that proposed (§4.11.2); `pendingEmail` is cleared on every disconnect.
+    - `serverName` is the label the user gave the server, else its `title` (§3.1), else its
+      host; the server list and rail show it with the host, and `serverAvatarURL` (the frame's
+      `avatar` where avatars may load) in place of the initials.
     - `mayWrite`: false with `permissions.write == false` (EXTENSIONS.md `ext:permissions`), or
       for a guest (scheme `guest`) on a server from before EXTENSIONS.md whose `ext.settings`
       says `guest_posting: false`. The timeline then shows a sign-in prompt in place of the
