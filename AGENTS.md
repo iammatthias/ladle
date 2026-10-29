@@ -128,7 +128,8 @@ clone), which is only a worked example.
       this user's newest loaded message; `unreadCount(in:)` counts loaded messages from others
       after it, all of them when nothing is known. `markRead(_:through:)` moves the position,
       and with capability `activity` the cursor, sending the frame unless `ext:settings` says
-      `read_cursors: false` (`ServerInfo.keepsReadCursors`). The timeline calls it when the
+      `read_cursors: false` (`ServerInfo.keepsReadCursors`), at most once per room every
+      `readCursorInterval` (5 s), the newest cursor going when the interval is up. The timeline calls it when the
       pane is on screen in the active app, at the bottom and loaded.
       A room opens at its latest message. apron-web's `landAtDivider` opens at the New line
       (pages back up to `DIVIDER_PAGES`, then `until(..., JUMP_WAIT_MS)` waits for the divider

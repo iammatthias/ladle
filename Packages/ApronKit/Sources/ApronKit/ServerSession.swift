@@ -60,6 +60,9 @@ public final class ServerSession {
         public var fetchEmojiCatalog: @Sendable (URL) async throws -> Data
         /// The GET of `?apron_connection_status=1` after a failed upgrade.
         public var fetchConnectionStatus: ConnectionStatusFetch
+        /// The least time between two read cursors sent for one room. Each is a frame, and
+        /// Cloudflare's server closes a connection over 60 frames a minute.
+        public var readCursorInterval: Duration
 
         public init(
             makeTransport: @escaping @Sendable (ServerRecord) -> any FrameTransport,
@@ -72,7 +75,8 @@ public final class ServerSession {
             stableAfter: Duration = .seconds(30),
             writeEmbed: @escaping EmbedWrite = EmbedWriter.live,
             fetchEmojiCatalog: @escaping @Sendable (URL) async throws -> Data = EmojiCatalogFetch.live,
-            fetchConnectionStatus: @escaping ConnectionStatusFetch = ConnectionStatusProbe.live
+            fetchConnectionStatus: @escaping ConnectionStatusFetch = ConnectionStatusProbe.live,
+            readCursorInterval: Duration = .seconds(5)
         ) {
             self.makeTransport = makeTransport
             self.sleep = sleep
@@ -85,6 +89,7 @@ public final class ServerSession {
             self.writeEmbed = writeEmbed
             self.fetchEmojiCatalog = fetchEmojiCatalog
             self.fetchConnectionStatus = fetchConnectionStatus
+            self.readCursorInterval = readCursorInterval
         }
 
         public static let live = Environment(makeTransport: { record in
@@ -843,15 +848,30 @@ public final class ServerSession {
     /// This user read the room through `messageID`, as apron-web's `markRead` and `readPositions.read`: the position
     /// kept on this device moves forward, and with capability `activity` so does the read cursor,
     /// which goes to the server (§4.6) when it keeps cursors, for this user's other devices.
-    /// Neither ever moves back.
+    /// Neither ever moves back. A room's cursor goes at most once a `readCursorInterval`; one
+    /// that moves sooner goes when the interval is up, as the newest then.
     public func markRead(_ roomID: String, through messageID: LogID) async {
-        guard status == .signedIn, let server, let connection, you != nil else { return }
+        guard status == .signedIn, let server, connection != nil, you != nil else { return }
         advancePosition(roomID, to: messageID)
         guard server.has("activity"), readCursors[roomID].map({ $0 < messageID }) ?? true else { return }
         readCursors[roomID] = messageID
-        guard server.keepsReadCursors else { return }
-        try? await connection.notify("activity", params: ["room_id": .string(roomID), "read_message_id": messageID.json])
+        guard server.keepsReadCursors, !cursorsWaiting.contains(roomID) else { return }
+        if let last = cursorSentAt[roomID] {
+            let wait = environment.readCursorInterval - (ContinuousClock.now - last)
+            if wait > .zero {
+                cursorsWaiting.insert(roomID)
+                try? await Task.sleep(for: wait)
+                cursorsWaiting.remove(roomID)
+            }
+        }
+        guard status == .signedIn, let connection, let cursor = readCursors[roomID] else { return }
+        cursorSentAt[roomID] = .now
+        try? await connection.notify("activity", params: ["room_id": .string(roomID), "read_message_id": cursor.json])
     }
+
+    /// When each room's cursor last went, and the rooms whose next one waits for the interval.
+    @ObservationIgnored private var cursorSentAt: [String: ContinuousClock.Instant] = [:]
+    @ObservationIgnored private var cursorsWaiting: Set<String> = []
 
     private func advancePosition(_ roomID: String, to messageID: LogID) {
         guard let you, readPositions[roomID].map({ $0 < messageID }) ?? true else { return }

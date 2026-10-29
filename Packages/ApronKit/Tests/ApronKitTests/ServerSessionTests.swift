@@ -91,7 +91,8 @@ final class ServerSessionTests: XCTestCase {
             makeState: { "state-1" },
             agent: "ladle-ios/test",
             pageSize: 3,
-            fetchConnectionStatus: { [probes] url, origin in try probes.answer(url, origin) }
+            fetchConnectionStatus: { [probes] url, origin in try probes.answer(url, origin) },
+            readCursorInterval: .milliseconds(100)
         )
         session = ServerSession(record: record, tokens: tokens, positions: positions, environment: environment)
     }
@@ -813,6 +814,23 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.readCursors, ["general": LogID("260")!])
         XCTAssertEqual(session.readPositions, ["general": LogID("260")!])
         XCTAssertEqual(positions.positions(server: record.id, user: "ada"), ["general": LogID("260")!])
+    }
+
+    func testReadCursorsAreThrottledToTheNewestOncePerInterval() async throws {
+        let socket = queueTransport(capabilities: ["history", "rooms", "activity"])
+        session.start()
+        try await signInAsGuest(on: socket)
+        let marks = (201 ... 210).map { id in Task { await session.markRead("general", through: LogID(String(id))!) } }
+        for mark in marks { await mark.value }
+        let sent = await frames(socket, count: 4)
+        try await Task.sleep(for: .milliseconds(250))
+        let all = await socket.sentLog
+        XCTAssertEqual(Array(all[2...]), [
+            #"{"method":"activity","params":{"read_message_id":"201","room_id":"general"}}"#,
+            #"{"method":"activity","params":{"read_message_id":"210","room_id":"general"}}"#,
+        ])
+        XCTAssertEqual(sent.count, 4)
+        XCTAssertEqual(session.readPositions, ["general": LogID("210")!])
     }
 
     func testWithoutTheActivityCapabilityReadingMovesOnlyThePosition() async throws {
