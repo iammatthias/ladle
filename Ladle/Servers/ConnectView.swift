@@ -23,7 +23,6 @@ struct ConnectView: View {
     @State private var token = ""
     @State private var email = ""
     @State private var code = ""
-    @State private var guestName = ""
     @State private var scanning = false
     /// The token a scan, paste or link filled in, while the field still holds it.
     @State private var receivedToken: String?
@@ -198,13 +197,8 @@ struct ConnectView: View {
                 } hint: { EmptyView() }
             }
         case .guest:
-            field("Display name") {
-                TextField("", text: $guestName, prompt: Text("How others see you").foregroundStyle(Palette.inkMuted))
-                    .apText(.field)
-                    .textContentType(.nickname)
-            } hint: {
-                Text("No token needed; the server picks a guest identity. Signing out of a guest account loses it.")
-            }
+            Text("No token needed. The server picks a guest name for you, such as Guest 12. Signing out of a guest account loses it.")
+                .apText(.sm).foregroundStyle(Palette.inkMuted)
         }
     }
 
@@ -399,7 +393,7 @@ struct ConnectView: View {
                         outcome = try await session.signIn(.emailCode(code.trimmingCharacters(in: .whitespaces)))
                     }
                 case .guest:
-                    outcome = try await session.signIn(.guest(name: guestName))
+                    outcome = try await session.signIn(.guest(name: nil))
                 }
                 if case .signedIn = outcome {
                     onSignedIn(session.record.id)
