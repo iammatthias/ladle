@@ -107,9 +107,12 @@ final class MediaPolicyTests: XCTestCase {
         let info = server(["media": [
             "upload": ["image/*": ["max_bytes": 5_242_880, "max_side": 2048], "IMAGE/GIF": ["max_bytes": 1000], "audio/*": [:],
                        "bad": ["max_bytes": 1], "video/mp4": "nope", "text/plain": ["max_bytes": -3]],
+            "emoji": ["*/*": ["max_bytes": 9], "image/png": ["max_bytes": 262_144]],
         ]], capabilities: ["ext:media"])
         let limits = try XCTUnwrap(MediaLimits(server: info))
         XCTAssertNil(limits.avatar)
+        XCTAssertEqual(MediaLimits.verdict(for: "image/png", in: limits.emoji), .allowed(.init(maxBytes: 262_144)))
+        XCTAssertEqual(MediaLimits.verdict(for: "image/gif", in: limits.emoji), .allowed(.init(maxBytes: 9)), "*/* when nothing nearer matches")
         XCTAssertEqual(MediaLimits.verdict(for: "image/gif", in: limits.upload), .allowed(.init(maxBytes: 1000)))
         XCTAssertEqual(MediaLimits.verdict(for: "image/jpeg", in: limits.upload), .allowed(.init(maxBytes: 5_242_880, maxSide: 2048)))
         XCTAssertEqual(MediaLimits.verdict(for: "audio/mp4; codecs=mp4a", in: limits.upload), .allowed(.init()))

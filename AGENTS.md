@@ -98,8 +98,9 @@ clone), which is only a worked example.
     its `upload` is pending until `url`, then an image, video or audio from `og`, or a file.
     `MediaPolicy` loads media only from the server's own HTTP origin (from its WebSocket URL),
     the origins `ext:media` names, and small `data:image` URLs; avatars may also be any
-    `https:` image. `MediaLimits` reads `ext:media` (apron-web EXT.md §6), which aprond does not
-    advertise, so there a 413 or 415 on the write decides. `UploadPlan.decide` says what a file
+    `https:` image. `MediaLimits` reads `ext:media` (EXTENSIONS.md): `upload`, `avatar` and `emoji`,
+    each file taking the limits of its most specific pattern alone. Without the capability a
+    413 or 415 on the write decides. `UploadPlan.decide` says what a file
     needs to fit the `upload` category: nothing, a still image re-encoded (JPEG, else PNG where
     the server takes no JPEG) within 2048 px (or `max_side`) and 5 MB (or `max_bytes`), which
     drops its metadata, location included, a sound re-encoded as AAC `audio/mp4` at the
