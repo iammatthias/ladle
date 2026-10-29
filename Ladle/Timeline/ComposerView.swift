@@ -5,7 +5,8 @@ import SwiftUI
 /// The web's Composer: one raised box with a strong edge that turns accent on focus, the field,
 /// and Send. A reply or edit shows its line above the box. Typing `@` opens the mention list
 /// above it (the web's MentionPicker). With a hardware keyboard, Return sends and Shift-Return
-/// starts a new line; Escape cancels a reply or edit.
+/// starts a new line; Escape cancels a reply or edit. Text is held to `TextLimit`: a counter shows
+/// in the last 512 bytes, and past the limit Send is off and the composer says why.
 ///
 /// With capability `embed:upload`, the attach menu adds photos and videos (PhotosPicker), a
 /// photo or video from the camera, files (the document picker), a voice note, or a pasted image.
@@ -50,6 +51,13 @@ struct ComposerView: View {
                 }
                 .padding(.leading, Tokens.Space.s4)
                 .padding(.trailing, Tokens.Space.s2)
+            }
+            if textLimit.isOver {
+                Label("Too long to send by \(-textLimit.remaining) bytes. A message holds \(TextLimit.maxBytes.formatted()) bytes of text; emoji and accented letters take more than one.",
+                      systemImage: "exclamationmark.circle")
+                    .apText(.sm)
+                    .foregroundStyle(Palette.danger)
+                    .padding(.horizontal, Tokens.Space.s4)
             }
             if !draft.attachments.isEmpty, !isEdit {
                 AttachmentTray(attachments: draft.attachments) { id in draft.attachments.removeAll { $0.id == id } }
@@ -117,6 +125,14 @@ struct ComposerView: View {
                 send()
                 return .handled
             }
+        if textLimit.showsCounter {
+            Text(textLimit.remaining.formatted())
+                .apText(.sm, .medium)
+                .monospacedDigit()
+                .foregroundStyle(textLimit.isOver ? Palette.danger : Palette.inkMuted)
+                .frame(minHeight: Tokens.Control.md)
+                .accessibilityLabel(textLimit.isOver ? "\(-textLimit.remaining) bytes over the limit" : "\(textLimit.remaining) bytes left")
+        }
         Button("Send") { send() }
             .buttonStyle(PrimaryButtonStyle())
             .disabled(!canSend)
@@ -161,6 +177,8 @@ struct ComposerView: View {
     private var canAttach: Bool { session.canAttach && !isEdit }
 
     private var offer: UploadOffer { UploadOffer(session.mediaLimits?.upload) }
+
+    private var textLimit: TextLimit { TextLimit(draft.text) }
 
     /// Voice notes go as `audio/mp4`; a server that states its media must take it.
     private var takesVoiceNotes: Bool {
@@ -238,7 +256,7 @@ struct ComposerView: View {
     private var canSend: Bool {
         let preparing = draft.attachments.contains { $0.attachment == nil }
         let ready = isEdit ? [] : draft.attachments.compactMap(\.attachment)
-        return canWrite && !preparing && (!draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !ready.isEmpty)
+        return canWrite && !preparing && !textLimit.isOver && (!draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !ready.isEmpty)
     }
 
     /// The word being typed after `@`, when there is one.

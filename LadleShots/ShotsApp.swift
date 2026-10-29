@@ -19,6 +19,7 @@ struct ShotsApp: App {
 
 enum Screen: String, CaseIterable {
     case firstRun = "first-run", servers, connect, connectScanned = "connect-scanned", rooms, timeline, mention, members, reaction, attachments, media, viewer, ipad
+    case textLimit = "text-limit"
 }
 
 @MainActor
@@ -107,6 +108,11 @@ enum Renderer {
         case .viewer:
             AnyView(MediaViewer(items: home.mediaItems(in: PreviewFixtures.mediaRoomID),
                                 selection: home.mediaItems(in: PreviewFixtures.mediaRoomID).first?.id ?? ""))
+        case .textLimit:
+            AnyView(NavigationStack {
+                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID,
+                             draft: Draft(text: String(repeating: "Release notes for 0.2, every change since August. ", count: 82) + "🎉"))
+            })
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), connecting: .constant(nil)))
