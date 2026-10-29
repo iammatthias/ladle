@@ -135,6 +135,18 @@ clone), which is only a worked example.
       (pages back up to `DIVIDER_PAGES`, then `until(..., JUMP_WAIT_MS)` waits for the divider
       to render before scrolling to it); Ladle does not yet, because that scroll needs
       on-device verification, and the Simulator does not run here.
+    - Commands: no server lists its commands in the `server` frame, so `loadCommands(in:)`
+      sends `/help` when the composer first shows a command word, once per connection, and
+      again only when `you`'s `user_id` or roles change; `commands` keeps the last list across
+      reconnects. Both reference servers send `/help`'s `~private` notice before the `{}`
+      result (§1), and a result can resume before its notice is applied, so the session does
+      not tie the notice to the result: the first notice in the asked room that `CommandHelp`
+      reads as a list is the answer, and stays out of `notices`. A `/help` the user
+      types shows, and refreshes `commands`. A failed request is not retried on that connection.
+  - `CommandHelp`: the one reader of `/help`'s text (`` - `<usage>`: <summary> `` per line,
+    every line, from `~private` only), so a structured form (shazow/apron#85) can replace it
+    here; `query(in:)` is the command word a draft is typing (after `/`, not `//`, before any
+    space).
   - `SessionStore`: every server's session, the saved list, and account persistence.
   - Uploads (§4.8.3, §4.8.4, §4.8.6), as apron-web does them. `Embed` parses an embed once;
     its `upload` is pending until `url`, then an image, video or audio from `og`, or a file.
@@ -213,7 +225,8 @@ clone), which is only a worked example.
   a server added through the Connect sheet opens once its sign-in succeeds),
   `Servers/` (the server list and iPad rail, `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
-  mention list and the custom emoji `:` list, reaction picker (custom emoji by category first),
+  mention list, the custom emoji `:` list and the command list (`CommandSuggestions`: usage and
+  summary, scrolling past five rows; picking fills `/name ` and keeps the keyboard up), reaction picker (custom emoji by category first),
   member list, `CustomEmojiViews`: `EmojiText` draws each marked key as its image at the line's
   height inside one `Text`, read by VoiceOver as its `alt`, `ReactionGlyph` an emoji, a custom
   emoji's image or a dashed placeholder for a key the catalog lacks, `EmojiImages` the images,
@@ -313,7 +326,8 @@ mention list, the member list and the reaction picker, the composer with attachm
 of uploads (image, video, file, audio, pending), the media viewer, the composer over the text
 limit, a read-only guest's sign-in prompt on the demo server, custom emoji in text, a
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
-with the custom emoji, and the composer's `:` list; the busy room at AX3; and the iPad
+with the custom emoji, the composer's `:` list, and its command list (`/inv`, answered by
+`PreviewServer`'s `/help`); the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with

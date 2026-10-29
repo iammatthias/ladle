@@ -52,10 +52,25 @@ public actor PreviewServer: FrameTransport {
         case "history":
             let roomID = params?["room_id"]?.stringValue ?? ""
             deliver(["id": id, "result": script.histories[roomID] ?? ["messages": [], "more": false]])
+        case "command" where params?["body"]?["text"]?.stringValue == "/help":
+            deliver(["method": "message", "params": [
+                "room_id": params?["room_id"] ?? "general", "from": ["user_id": "~private", "name": "System message to you"],
+                "body": ["text": .string(Self.help), "format": "markdown"],
+            ]])
+            deliver(["id": id, "result": [:]])
         default:
             deliver(["id": id, "result": [:]])
         }
     }
+
+    /// What apron-server-rust's `/help` lists for an account with no roles.
+    static let help = """
+    - `/help`: list the commands you can use here
+    - `/avatar`: with one image attached: set your avatar
+    - `/invite-device <name>`: get a token that signs in as you on another device, named <name>; at most 3 names, and a name again replaces its token
+    - `/invite-bot`: get a token that signs in as your bot, named after you; again, it replaces the token and renames the bot
+    - `/passkeys [remove <n>]`: list your account's passkeys, or remove one of them
+    """
 
     public func receive() async throws -> String {
         if !inbox.isEmpty { return inbox.removeFirst() }
