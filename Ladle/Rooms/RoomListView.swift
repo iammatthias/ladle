@@ -111,7 +111,12 @@ struct RoomListView: View {
         if session.server?.has("rooms") == true, session.status == .signedIn {
             if session.joinedRoomIDs.contains(roomID) {
                 if !isThread {
-                    Button("New Thread", systemImage: "bubble.left.and.text.bubble.right") { naming = NewRoom(parent: roomID) }
+                    Section {
+                        Button("New Thread", systemImage: "bubble.left.and.text.bubble.right") { naming = NewRoom(parent: roomID) }
+                            .disabled(session.isReadOnlyGuest)
+                    } header: {
+                        if session.isReadOnlyGuest { Text(ReadOnlyGuestPrompt.reason) }
+                    }
                 }
                 Button("Leave", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leaving = roomID }
             } else {

@@ -162,6 +162,30 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.record.account, ServerRecord.Account(userID: "guest_1", name: "Ada", scheme: "guest"))
     }
 
+    func testAGuestOnlyReadsWhereTheServerSaysGuestsDoNotPost() async throws {
+        let readOnly = queueTransport(capabilities: ["rooms", "ext:settings"], ext: ["settings": ["guest_posting": false]])
+        session.start()
+        try await signInAsGuest(on: readOnly)
+        XCTAssertFalse(session.server?.guestsMayPost ?? true)
+        XCTAssertTrue(session.isReadOnlyGuest)
+
+        let signIn = Task { try await session.signIn(.token("t9")) }
+        _ = await frames(readOnly, count: 4)
+        await readOnly.deliver(["id": "c3", "result": ["you": ["user_id": "ada", "name": "Ada", "roles": []]]])
+        await readOnly.deliver(["id": "c4", "result": ["joined": []]])
+        _ = try await signIn.value
+        XCTAssertFalse(session.isReadOnlyGuest, "an account signed in with a token posts")
+    }
+
+    func testGuestsPostUnlessTheServerSaysOtherwise() async throws {
+        let settingsWithoutTheKey = queueTransport(capabilities: ["rooms", "ext:settings"], ext: ["settings": ["read_cursors": true]])
+        session.start()
+        try await signInAsGuest(on: settingsWithoutTheKey)
+        XCTAssertFalse(session.isReadOnlyGuest)
+        let ignored = ServerInfo(params: ["apron": 9, "auth": ["guest"], "ext": ["settings": ["guest_posting": false]]])
+        XCTAssertEqual(ignored?.guestsMayPost, true, "settings count only with capability ext:settings")
+    }
+
     func testEmailProposalThenCodeOnTheSameConnection() async throws {
         session.start()
         let socket = await transport(0)

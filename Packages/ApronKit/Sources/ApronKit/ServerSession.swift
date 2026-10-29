@@ -103,6 +103,13 @@ public final class ServerSession {
     /// The fraction written of each of this user's uploads in flight, by `embed_id` (§4.8.3).
     public internal(set) var uploadProgress: [String: Double] = [:]
 
+    /// Whether this user is a guest on a server whose guests only read (apron-web EXT.md §3.1): a
+    /// guest is an account that signed in with scheme `guest`. Such a user may not post, react,
+    /// reply or start threads until they sign in.
+    public var isReadOnlyGuest: Bool {
+        record.account?.scheme == "guest" && server?.guestsMayPost == false
+    }
+
     /// Called when the account on `record` changes, so the owner can persist it.
     public var onRecordChange: (@MainActor (ServerRecord) -> Void)?
 

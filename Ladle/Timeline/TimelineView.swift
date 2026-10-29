@@ -22,6 +22,7 @@ struct TimelineView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openRoom) private var openRoom
+    @Environment(\.requestSignIn) private var requestSignIn
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
 
@@ -77,8 +78,14 @@ struct TimelineView: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) { banner }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                ComposerView(session: session, roomID: roomID, draft: $draft, onSend: send, onProblem: { problem = $0 })
-                    .background(Palette.timeline)
+                Group {
+                    if session.isReadOnlyGuest {
+                        ReadOnlyGuestPrompt(session: session) { requestSignIn(session.record) }
+                    } else {
+                        ComposerView(session: session, roomID: roomID, draft: $draft, onSend: send, onProblem: { problem = $0 })
+                    }
+                }
+                .background(Palette.timeline)
             }
         }
         .background(Palette.timeline)
@@ -228,16 +235,21 @@ struct TimelineView: View {
 
     @ViewBuilder
     private func actions(for message: MessageSnapshot) -> some View {
-        if session.status == .signedIn, session.server?.has("reactions") == true {
-            ControlGroup {
-                ForEach(ReactionPicker.quick.prefix(4), id: \.self) { emoji in
-                    Button(emoji) { perform { try await session.toggleReaction(emoji, on: message.messageID) } }
+        Section {
+            if session.status == .signedIn, session.server?.has("reactions") == true {
+                ControlGroup {
+                    ForEach(ReactionPicker.quick.prefix(4), id: \.self) { emoji in
+                        Button(emoji) { perform { try await session.toggleReaction(emoji, on: message.messageID) } }
+                    }
+                    Button("More Reactions", systemImage: "face.smiling") { reacting = message }
                 }
-                Button("More Reactions", systemImage: "face.smiling") { reacting = message }
+                .controlGroupStyle(.compactMenu)
             }
-            .controlGroupStyle(.compactMenu)
+            Button("Reply", systemImage: "arrowshape.turn.up.left") { draft = Draft(mode: .reply(message), attachments: draft.attachments) }
+        } header: {
+            if session.isReadOnlyGuest { Text(ReadOnlyGuestPrompt.reason) }
         }
-        Button("Reply", systemImage: "arrowshape.turn.up.left") { draft = Draft(mode: .reply(message), attachments: draft.attachments) }
+        .disabled(session.isReadOnlyGuest)
         Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.plainText }
         ForEach(MessageText.links(message.body).prefix(3), id: \.self) { url in
             Menu(url.host() ?? url.absoluteString, systemImage: "link") {
@@ -555,6 +567,33 @@ struct ConnectionState {
 extension EnvironmentValues {
     /// Opens a room or thread in the current navigation, from a thread card or a link.
     @Entry var openRoom = OpenRoomAction { _ in }
+    /// Opens the sign-in sheet for a saved server.
+    @Entry var requestSignIn = SignInAction { _ in }
+}
+
+/// Opens the sign-in sheet for a server; a struct, as `OpenRoomAction`.
+struct SignInAction {
+    let open: (ServerRecord) -> Void
+    init(_ open: @escaping (ServerRecord) -> Void) { self.open = open }
+    func callAsFunction(_ record: ServerRecord) { open(record) }
+}
+
+/// In place of the composer for a guest on a server whose guests only read (apron-web EXT.md
+/// §3.1): why, and the sign-in sheet for this server, which also creates accounts.
+struct ReadOnlyGuestPrompt: View {
+    static let reason = "Guests can read here but not post, react, reply or start threads."
+
+    let session: ServerSession
+    let signIn: () -> Void
+
+    var body: some View {
+        ActionBanner(symbol: "person.crop.circle.badge.plus", title: "Sign in to join the conversation",
+                     detail: "\(Self.reason) Sign in or create an account on \(session.record.label).") {
+            Button("Sign In", action: signIn).buttonStyle(PrimaryButtonStyle())
+        }
+        .padding(.horizontal, Tokens.Space.s4)
+        .padding(.vertical, Tokens.Space.s2)
+    }
 }
 
 /// Opens a room by id; a struct so the environment can tell it apart from a new closure.

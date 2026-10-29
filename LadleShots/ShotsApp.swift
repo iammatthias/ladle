@@ -19,7 +19,7 @@ struct ShotsApp: App {
 
 enum Screen: String, CaseIterable {
     case firstRun = "first-run", servers, connect, connectScanned = "connect-scanned", rooms, timeline, mention, members, reaction, attachments, media, viewer, ipad
-    case textLimit = "text-limit"
+    case textLimit = "text-limit", guestComposer = "guest-composer"
 }
 
 @MainActor
@@ -112,6 +112,10 @@ enum Renderer {
             AnyView(NavigationStack {
                 TimelineView(session: home, roomID: PreviewFixtures.busyRoomID,
                              draft: Draft(text: String(repeating: "Release notes for 0.2, every change since August. ", count: 82) + "🎉"))
+            })
+        case .guestComposer:
+            AnyView(NavigationStack {
+                if let demo = store.session(for: PreviewFixtures.demoID) { TimelineView(session: demo, roomID: "lobby") }
             })
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),

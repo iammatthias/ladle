@@ -39,6 +39,12 @@ public struct ServerInfo: Hashable, Sendable {
         !(has("ext:settings") && ext?["settings"]?["read_cursors"]?.boolValue == false)
     }
 
+    /// Whether guests may post: `ext.settings.guest_posting` under capability `ext:settings`
+    /// (apron-web EXT.md §3.1), true unless it says `false`.
+    public var guestsMayPost: Bool {
+        !(has("ext:settings") && ext?["settings"]?["guest_posting"]?.boolValue == false)
+    }
+
     private static func strings(_ value: JSONValue?) -> [String]? {
         guard let elements = value?.arrayValue else { return nil }
         return elements.compactMap(\.stringValue)

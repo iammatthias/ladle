@@ -2,6 +2,8 @@ import Foundation
 
 /// A reproducible two-server world for previews and design screenshots: rooms and threads, unread
 /// rooms, replies, reactions, an edit, a deleted message, long and short messages, and presence.
+/// Home is signed in with a token; the demo greets as Cloudflare's demo does (read-only guests,
+/// images and audio only) and is signed in as a guest.
 /// Every session is a real `ServerSession` driven by a `PreviewServer`, so the views read the
 /// same stores they read in the app.
 public enum PreviewFixtures {
@@ -28,12 +30,16 @@ public enum PreviewFixtures {
             jitter: { 1 }
         )
         let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment)
+        try? tokens.setToken("preview", for: homeID)
         for (id, url, label) in [(homeID, "wss://home.example/ws", "Home"), (demoID, "wss://demo.apron.example/ws", "Apron Demo")] {
-            try? tokens.setToken("preview", for: id)
             store.add(ServerRecord(id: id, url: URL(string: url)!, label: label))
         }
         for (id, script) in scripts {
             guard let session = store.session(for: id) else { continue }
+            if id == demoID {
+                await until { session.status == .signedOut }
+                _ = try? await session.signIn(.guest(name: nil))
+            }
             await until { session.status == .signedIn && session.readCursors.count == script.readCursors.count }
             for roomID in script.histories.keys.sorted(by: codePointLess) {
                 try? await session.open(roomID)
@@ -55,6 +61,27 @@ public enum PreviewFixtures {
         "apron": 9, "auth": ["token", "guest"], "agent": "aprond/0.9",
         "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity", "command", "embed:upload"],
     ]
+
+    /// The `server` frame of Cloudflare's demo, server.apron.chat, without its push and welcome.
+    private static let cloudflareGreeting: JSONValue = {
+        let images = ["image/png", "image/jpeg", "image/gif", "image/webp"]
+        let limits = { (types: [String], bytes: Int) -> JSONValue in
+            .object(Dictionary(uniqueKeysWithValues: types.map { ($0, ["max_bytes": .number(String(bytes))]) }))
+        }
+        return [
+            "apron": 9, "auth": ["webauthn", "token", "guest"], "signup": ["webauthn", "token"], "agent": "apron-cloudflare-demo/9",
+            "capabilities": ["history", "edit", "rooms", "reactions", "command", "activity", "embed:upload", "status", "ext",
+                             "ext:settings", "ext:limits", "ext:media", "ext:permissions"],
+            "ext": [
+                "settings": ["guest_posting": false, "read_cursors": true, "add_members": true],
+                "media": [
+                    "origins": ["https://media.apron.example"],
+                    "upload": limits(images + ["audio/webm", "audio/ogg", "audio/mp4"], 5_242_880),
+                    "avatar": limits(images, 262_144),
+                ],
+            ],
+        ]
+    }()
 
     private static let people: [String: JSONValue] = [
         "sam": ["user_id": "sam", "name": "Sam", "status": "online"],
@@ -251,15 +278,15 @@ public enum PreviewFixtures {
     )
 
     private static let demo = PreviewServer.Script(
-        greeting: greeting,
-        you: ["user_id": "sam-7f3", "name": "Sam", "status": "online"],
+        greeting: cloudflareGreeting,
+        you: ["user_id": "guest_7", "name": "Guest 7", "status": "online"],
         roomList: [
             "joined": [
-                room("lobby", "lobby", members: ["sam-7f3", "host", "wren"]),
-                room("help", "help", members: ["sam-7f3", "host"]),
+                room("lobby", "lobby", members: ["guest_7", "host", "wren"]),
+                room("help", "help", members: ["guest_7", "host"]),
             ],
             "users": [
-                ["user_id": "sam-7f3", "name": "Sam", "status": "online"],
+                ["user_id": "guest_7", "name": "Guest 7", "status": "online"],
                 ["user_id": "host", "name": "Demo Host", "status": "online"],
                 ["user_id": "wren", "name": "Wren", "status": "idle"],
             ],
