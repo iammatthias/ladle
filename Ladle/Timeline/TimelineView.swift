@@ -37,7 +37,7 @@ struct TimelineView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    if session.histories[roomID]?.canLoadOlder == true {
+                    if session.canLoadOlder(roomID) {
                         ProgressView()
                             .frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget)
                             .task(id: session.histories[roomID]?.olderBefore) {

@@ -324,12 +324,21 @@ public final class ServerSession {
             break
         }
         guard let records = Records(notification: notification) else { return }
-        store.apply(records)
+        install(records)
         advanceLiveCheckpoints(records)
     }
 
+    /// Installs records, then raises the retention floors their rooms state, which drops the
+    /// snapshots the server has expired.
+    private func install(_ records: Records) {
+        store.apply(records)
+        for (room, delivery) in records.rooms {
+            if let floor = delivery.floor { store.raiseFloor(of: room.roomID, to: floor) }
+        }
+    }
+
     private func applyRoomList(_ result: JSONValue) {
-        store.apply(Records(roomListResult: result))
+        install(Records(roomListResult: result))
         joinedRoomIDs = Set((result["joined"]?.arrayValue ?? []).compactMap { $0["room_id"]?.stringValue })
         mergeUsers(result["users"])
     }
@@ -376,7 +385,7 @@ public final class ServerSession {
 
     /// Loads the page before the oldest one loaded, while there is one (§4.3.2).
     public func loadOlder(_ roomID: String) async throws {
-        guard let state = histories[roomID], state.canLoadOlder, !state.isLoading, let before = state.olderBefore else { return }
+        guard canLoadOlder(roomID), let state = histories[roomID], !state.isLoading, let before = state.olderBefore else { return }
         histories[roomID]?.isLoading = true
         defer { histories[roomID]?.isLoading = false }
         let page = try await history(["room_id": .string(roomID), "before": before.json, "limit": .number(String(environment.pageSize))])
@@ -401,8 +410,17 @@ public final class ServerSession {
     private func history(_ params: JSONValue, on connection: Connection? = nil) async throws -> HistoryPage {
         guard let connection = connection ?? self.connection else { throw Failure.notConnected }
         let result = try await connection.request("history", params: params)
-        store.apply(Records(historyResult: result))
-        return HistoryPage(result)
+        install(Records(historyResult: result))
+        let page = HistoryPage(result)
+        if let roomID = params["room_id"]?.stringValue, let floor = page.floor { store.raiseFloor(of: roomID, to: floor) }
+        return page
+    }
+
+    /// Whether older history may still be loaded: the server said there is more, and it is not
+    /// below the room's retention floor.
+    public func canLoadOlder(_ roomID: String) -> Bool {
+        guard let state = histories[roomID], state.more, let before = state.olderBefore else { return false }
+        return store.floor(of: roomID).map { before >= $0 } ?? true
     }
 
     // MARK: Operations
@@ -609,7 +627,7 @@ public final class ServerSession {
     public func listUnjoinedRooms() async throws -> [String] {
         try require("rooms")
         let result = try await request("room_list", ["filter": "not_joined"])
-        store.apply(Records(roomListResult: result))
+        install(Records(roomListResult: result))
         return (result["not_joined"]?.arrayValue ?? []).compactMap { $0["room_id"]?.stringValue }
     }
 
@@ -666,7 +684,7 @@ public final class ServerSession {
     /// or before `after`, since the first unread one may be among them.
     public func newLine(in roomID: String, after: LogID?) -> LogID? {
         guard let after else { return nil }
-        let olderAvailable = histories[roomID]?.canLoadOlder == true
+        let olderAvailable = canLoadOlder(roomID)
         var reached = false
         for message in store.messages(in: roomID) {
             if message.messageID <= after {
@@ -726,24 +744,16 @@ public struct RoomHistory: Hashable, Sendable {
     /// `before` of the next older page: the oldest loaded page's `first_log_id − 1`.
     public internal(set) var olderBefore: LogID?
     public internal(set) var more = true
-    /// The effective lower bound: `history_log_id`, or `latest_log_id + 1` when that is null.
-    public internal(set) var floor: LogID?
     public internal(set) var isLoading = false
     /// The position through which this room is complete; catch-up pages forward from it.
     var checkpoint: LogID?
     /// Whether live records arrive gaplessly, so they may move the checkpoint.
     var isLive = false
 
-    public var canLoadOlder: Bool {
-        guard more, let olderBefore else { return false }
-        return floor.map { olderBefore >= $0 } ?? true
-    }
-
     mutating func receivedBackward(_ page: HistoryPage) {
         more = page.more
         olderBefore = page.firstLogID?.predecessor
         if olderBefore == nil { more = false }
-        floor = page.floor
     }
 }
 
@@ -759,7 +769,7 @@ struct HistoryPage {
         lastLogID = LogID(result["last_log_id"])
         more = result["more"]?.boolValue ?? false
         latestLogID = LogID(result["latest_log_id"])
-        floor = LogID(result["history_log_id"]) ?? latestLogID?.successor
+        floor = retentionFloor(result)
     }
 }
 

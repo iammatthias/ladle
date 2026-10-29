@@ -141,9 +141,9 @@ final class ServerIntegrationTests: XCTestCase {
         try await reader.open("general")
         let firstPage = reader.timeline("general").count
         XCTAssertLessThanOrEqual(firstPage, 3)
-        XCTAssertEqual(reader.histories["general"]?.canLoadOlder, true)
+        XCTAssertEqual(reader.canLoadOlder("general"), true)
         var pages = 1
-        while reader.histories["general"]?.canLoadOlder == true {
+        while reader.canLoadOlder("general") {
             try await reader.loadOlder("general")
             pages += 1
             XCTAssertLessThan(pages, 20, "paging terminates")

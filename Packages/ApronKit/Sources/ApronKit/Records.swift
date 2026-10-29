@@ -30,6 +30,15 @@ public struct RoomDelivery: Hashable, Sendable {
     public var latestLogID: LogID?
     /// A complete member list (§4.2.1), as of `latestLogID`.
     public var members: [UserObject]?
+    /// The room's retention floor, from `history_log_id` (`retentionFloor`).
+    public var floor: LogID?
+}
+
+/// The lowest `log_id` a room or a history page says it keeps (§4.2, §4.3): `history_log_id`, or
+/// one past `latest_log_id` when it is null, as nothing is kept. Nil when the key is absent.
+func retentionFloor(_ value: JSONValue) -> LogID? {
+    guard let floor = value["history_log_id"] else { return nil }
+    return floor == .null ? LogID(value["latest_log_id"])?.successor : LogID(floor)
 }
 
 /// A message snapshot (§3.5), flat. `replyTo` is always the bare reference; an embedded
@@ -217,6 +226,7 @@ extension RoomRecord {
         var delivery = RoomDelivery()
         delivery.latestLogID = LogID(value["latest_log_id"])
         delivery.members = value["members"]?.arrayValue?.compactMap { UserObject($0) }
+        delivery.floor = retentionFloor(value)
         return (record, delivery)
     }
 }

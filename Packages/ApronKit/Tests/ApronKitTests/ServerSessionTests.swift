@@ -335,6 +335,49 @@ final class ServerSessionTests: XCTestCase {
         ["message_id": .string(id), "log_id": .string(id), "room_id": .string(room), "from": ["user_id": "bob"], "body": ["text": .string(text)]]
     }
 
+    func testTheRetentionFloorDropsExpiredSnapshotsAndStopsPaging() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        let open = Task { try await session.open("general") }
+        _ = await frame(socket, 2)
+        await socket.deliver(["id": "c3", "result": [
+            "messages": [message("104", "d"), message("105", "e"), message("106", "f")],
+            "reactions": [["log_id": "107", "message_id": "104", "room_id": "general", "reactions": [["from": ["user_id": "ada"], "emojis": ["👍"]]]]],
+            "first_log_id": "104", "last_log_id": "107", "more": true, "latest_log_id": "107", "history_log_id": "101",
+        ]])
+        try await open.value
+        XCTAssertTrue(session.canLoadOlder("general"))
+        await socket.deliver(["method": "message", "params": [
+            "message_id": "104", "log_id": "108", "room_id": "general", "from": ["user_id": "bob"], "body": ["text": "d, edited"],
+        ]])
+
+        await socket.deliver(["method": "room_update", "params": ["updated": [
+            ["room_id": "general", "log_id": "100", "title": "General", "latest_log_id": "108", "history_log_id": "106"],
+        ]]])
+        await eventually("expired snapshots dropped") { session.timeline("general").count == 2 }
+        XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["104", "106"], "104 was edited above the floor")
+        XCTAssertNil(session.store.message(LogID("105")!))
+        XCTAssertFalse(session.canLoadOlder("general"), "the page before 104 is below the floor")
+        XCTAssertEqual(session.store.floor(of: "general"), LogID("106"))
+
+        await socket.deliver(["method": "room_update", "params": ["updated": [
+            ["room_id": "general", "log_id": "100", "title": "General", "latest_log_id": "108", "history_log_id": "102"],
+        ]]])
+        await socket.deliver(["method": "message", "params": message("105", "e, again")])
+        await socket.deliver(["method": "room_update", "params": ["updated": [["room_id": "general", "log_id": "100", "title": "General"]]]])
+        await socket.deliver(["method": "message", "params": message("109", "new")])
+        await eventually("live message") { session.timeline("general").count == 3 }
+        XCTAssertEqual(session.store.floor(of: "general"), LogID("106"), "never lowered, and kept without history_log_id")
+        XCTAssertNil(session.store.message(LogID("105")!), "a late record below the floor stays out")
+
+        await socket.deliver(["method": "room_update", "params": ["updated": [
+            ["room_id": "general", "log_id": "100", "title": "General", "latest_log_id": "109", "history_log_id": .null],
+        ]]])
+        await eventually("all history expired") { session.timeline("general").isEmpty }
+        XCTAssertEqual(session.store.floor(of: "general"), LogID("110"), "null means nothing is kept: latest + 1")
+    }
+
     func testPagesNewestFirstThenOlderUntilTheStart() async throws {
         session.start()
         let socket = await transport(0)
@@ -348,7 +391,7 @@ final class ServerSessionTests: XCTestCase {
             "first_log_id": "104", "last_log_id": "106", "more": true, "latest_log_id": "106", "history_log_id": "101",
         ]])
         try await open.value
-        XCTAssertEqual(session.histories["general"]?.canLoadOlder, true)
+        XCTAssertEqual(session.canLoadOlder("general"), true)
 
         let older = Task { try await session.loadOlder("general") }
         let olderFrame = await frame(socket, 3)
@@ -358,7 +401,7 @@ final class ServerSessionTests: XCTestCase {
             "first_log_id": "101", "last_log_id": "103", "more": false, "latest_log_id": "106", "history_log_id": "101",
         ]])
         try await older.value
-        XCTAssertEqual(session.histories["general"]?.canLoadOlder, false)
+        XCTAssertEqual(session.canLoadOlder("general"), false)
         try await session.loadOlder("general")
         let sentCount = await socket.sentLog.count
         XCTAssertEqual(sentCount, 4, "no request past the start")
@@ -486,7 +529,7 @@ final class ServerSessionTests: XCTestCase {
             "latest_log_id": "130", "history_log_id": "100",
         ]])
         try await open.value
-        XCTAssertEqual(session.histories["general"]?.canLoadOlder, true)
+        XCTAssertEqual(session.canLoadOlder("general"), true)
         XCTAssertNil(session.newLine(in: "general", after: nil), "nothing known")
         XCTAssertNil(session.newLine(in: "general", after: LogID("110")!), "the first unread may be in the page before")
         XCTAssertEqual(session.newLine(in: "general", after: LogID("120")!), LogID("130"))
