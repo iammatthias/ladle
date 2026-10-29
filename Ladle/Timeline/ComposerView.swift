@@ -4,8 +4,9 @@ import SwiftUI
 
 /// The web's Composer: one raised box with a strong edge that turns accent on focus, the field,
 /// and Send. A reply or edit shows its line above the box. Typing `@` opens the mention list
-/// above it (the web's MentionPicker). With a hardware keyboard, Return sends and Shift-Return
-/// starts a new line; Escape cancels a reply or edit. Text is held to `TextLimit`: a counter shows
+/// above it (the web's MentionPicker), and typing a command word after `/` lists the commands
+/// the server's `/help` gives this user, with their usage and what they do. With a hardware
+/// keyboard, Return sends and Shift-Return starts a new line; Escape cancels a reply or edit. Text is held to `TextLimit`: a counter shows
 /// in the last 512 bytes, and past the limit Send is off and the composer says why.
 ///
 /// With capability `embed:upload`, the attach menu adds photos and videos (PhotosPicker), a
@@ -30,7 +31,11 @@ struct ComposerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let query = mentionQuery, !candidates(query).isEmpty {
+            if let query = commandQuery, let found = session.commands?.matching(query), !found.isEmpty {
+                CommandSuggestions(commands: found, pick: pickCommand)
+                    .padding(.horizontal, Tokens.Space.s4)
+                    .padding(.bottom, Tokens.Space.s1)
+            } else if let query = mentionQuery, !candidates(query).isEmpty {
                 MentionPicker(session: session, people: candidates(query), pick: pick)
                     .padding(.horizontal, Tokens.Space.s4)
                     .padding(.bottom, Tokens.Space.s1)
@@ -87,6 +92,10 @@ struct ComposerView: View {
         }
         .animation(Motion.fast(reduceMotion), value: mentionQuery)
         .animation(Motion.fast(reduceMotion), value: emojiQuery)
+        .animation(Motion.fast(reduceMotion), value: commandQuery)
+        .task(id: commandQuery != nil && session.status == .signedIn) {
+            if commandQuery != nil { await session.loadCommands(in: roomID) }
+        }
         .task(id: emojiQuery != nil) { if emojiQuery != nil { await session.loadEmojiCatalog() } }
         .onChange(of: draft.mode.isActive, initial: true) { if draft.mode.isActive { focused = true } }
         .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, maxSelectionCount: 10,
@@ -265,6 +274,18 @@ struct ComposerView: View {
         return canWrite && !preparing && !textLimit.isOver && (!draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !ready.isEmpty)
     }
 
+    /// The command word being typed, outside an edit: an edit is never a command.
+    private var commandQuery: String? {
+        guard !isEdit else { return nil }
+        return CommandHelp.query(in: draft.text)
+    }
+
+    /// Puts `/name ` in the field and keeps the keyboard up for the arguments.
+    private func pickCommand(_ command: ServerCommand) {
+        draft.text = "/\(command.name) "
+        focused = true
+    }
+
     /// The word being typed after `@`, when there is one.
     private var mentionQuery: String? {
         guard let word = draft.text.split(separator: " ", omittingEmptySubsequences: false).last,
@@ -347,5 +368,43 @@ private extension Draft.Mode {
     var isActive: Bool {
         if case .new = self { return false }
         return true
+    }
+}
+
+/// The command list above the composer, styled as the mention and `:` lists: each command's usage
+/// and what it does, scrolling past five rows.
+struct CommandSuggestions: View {
+    let commands: [ServerCommand]
+    let pick: (ServerCommand) -> Void
+    @State private var height: CGFloat = 0
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(commands, id: \.name) { command in
+                    Button { pick(command) } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(command.usage).apText(.ui, .semibold, mono: true).foregroundStyle(Palette.ink).lineLimit(1)
+                            Text(command.summary).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(2)
+                        }
+                        .padding(.horizontal, Tokens.Space.s2)
+                        .padding(.vertical, Tokens.Space.s1)
+                        .frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(command.usage)
+                    .accessibilityHint(command.summary)
+                }
+            }
+            .padding(Tokens.Space.s1)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+        }
+        .scrollBounceBehavior(.basedOnSize)
+        .frame(height: min(height, Tokens.Size.touchTarget * 5.5))
+        .frame(maxWidth: 480, alignment: .leading)
+        .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
+        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.line))
+        .shadow(color: .black.opacity(0.35), radius: 12, y: 8)
     }
 }

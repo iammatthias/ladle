@@ -126,6 +126,15 @@ public final class ServerSession {
     public internal(set) var uploadProgress: [String: Double] = [:]
     /// Custom emoji catalogs fetched, by `catalog_url` (`ext:emoji`).
     public internal(set) var emojiCatalogs: [URL: EmojiCatalog] = [:]
+    /// The commands `/help` last listed for this user (`loadCommands(in:)`), kept across
+    /// reconnects until a fresh list replaces it.
+    public private(set) var commands: CommandHelp?
+    /// Who `/help` was last asked as: on which connection, by which user, with which roles.
+    @ObservationIgnored private var commandsAskedAs: CommandsAsker?
+    /// The room whose next `/help` list is the answer to `loadCommands(in:)`, which the timeline never shows.
+    @ObservationIgnored private var commandsNoticeAwaited: String?
+    /// Counts connections, so a list asked for on one is not taken as asked on the next.
+    @ObservationIgnored private var connectionNumber = 0
     /// The catalog URLs asked for, fetched or failed: none is fetched twice.
     @ObservationIgnored var emojiCatalogsAsked: Set<URL> = []
 
@@ -223,6 +232,8 @@ public final class ServerSession {
                 server = try await connection.connect()
                 unavailableMessage = nil
                 self.connection = connection
+                connectionNumber += 1
+                commandsNoticeAwaited = nil
                 let reader = Task { for await notification in connection.notifications { handle(notification) } }
                 let resumes = resumesSavedToken
                 resumesSavedToken = true
@@ -414,6 +425,9 @@ public final class ServerSession {
         users = UserDirectory()
         joinedRoomIDs = []
         notices = []
+        commands = nil
+        commandsAskedAs = nil
+        commandsNoticeAwaited = nil
         histories = [:]
         readCursors = [:]
         readPositions = [:]
@@ -428,7 +442,16 @@ public final class ServerSession {
         case "server":
             if let info = ServerInfo(params: params) { server = info }
         case "message":
-            if case .notice(let notice) = MessageFrame(params: params) { notices.append(notice) }
+            guard case .notice(let notice) = MessageFrame(params: params) else { break }
+            if let help = CommandHelp(notice: notice) {
+                commands = help
+                commandsAskedAs = commandsAsker
+                if commandsNoticeAwaited != nil, commandsNoticeAwaited == notice.roomID {
+                    commandsNoticeAwaited = nil
+                    break
+                }
+            }
+            notices.append(notice)
         case "room_update":
             for room in params?["joined"]?.arrayValue ?? [] {
                 if let roomID = room["room_id"]?.stringValue { joinedRoomIDs.insert(roomID) }
@@ -624,6 +647,35 @@ public final class ServerSession {
         let result = try await request(draft.isCommand ? "command" : "message", .object(params), id: id)
         startWrites(for: attachments, listedIn: result, roomID: roomID)
         return draft.isCommand ? nil : LogID(result["message_id"])
+    }
+
+    /// Asks the server which commands this user may run, by sending `/help` in `roomID`: once a
+    /// connection, and again only when `you` or its roles change. No server lists its commands in
+    /// the `server` frame, so `/help`'s `~private` notice is the source (`CommandHelp`). That
+    /// notice comes before the result (§1), and this one is kept out of `notices`: the first
+    /// `/help` list in `roomID` after the request is its answer. A `/help` the user sends shows,
+    /// and refreshes `commands` too.
+    public func loadCommands(in roomID: String) async {
+        guard connection != nil, status == .signedIn, let asker = commandsAsker, commandsAskedAs != asker else { return }
+        commandsAskedAs = asker
+        commandsNoticeAwaited = roomID
+        let params: JSONValue = ["room_id": .string(roomID), "body": ["text": "/help", "format": "plain"]]
+        do {
+            _ = try await request("command", params)
+        } catch {
+            if connectionNumber == asker.connection, commandsNoticeAwaited == roomID { commandsNoticeAwaited = nil }
+        }
+    }
+
+    private struct CommandsAsker: Equatable {
+        var connection: Int
+        var userID: String
+        var roles: [String]
+    }
+
+    private var commandsAsker: CommandsAsker? {
+        guard let you else { return nil }
+        return CommandsAsker(connection: connectionNumber, userID: you.userID, roles: you.roles.sorted())
     }
 
     /// Composer text as §4.1 reads it.

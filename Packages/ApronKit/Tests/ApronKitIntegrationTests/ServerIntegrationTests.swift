@@ -129,6 +129,31 @@ final class ServerIntegrationTests: XCTestCase {
         XCTAssertFalse(watcher.isYou(old))
     }
 
+    func testHelpListsEachUsersCommandsWithoutShowingItsNotice() async throws {
+        let server = try await startServer()
+        let guest = try await signedInGuest(server)
+        await guest.loadCommands(in: "general")
+        try await waitFor("guest commands") { guest.commands != nil }
+        XCTAssertEqual(guest.commands?.commands, [ServerCommand(name: "help", usage: "/help", summary: "list the commands you can use here")])
+
+        let admin = makeSession(server)
+        admin.start()
+        try await waitFor("connected") { admin.status == .signedOut }
+        try await admin.signIn(.token(server.adminToken))
+        await admin.loadCommands(in: "general")
+        try await waitFor("admin commands") { admin.commands.map { $0.commands.count > 1 } ?? false }
+        let names = admin.commands?.commands.map(\.name) ?? []
+        XCTAssertEqual(names.first, "help")
+        XCTAssertTrue(names.contains("purge") && names.contains("invite-device"), "\(names)")
+
+        XCTAssertEqual(admin.notices.compactMap(CommandHelp.init(notice:)), [], "the fetched list stays out of the timeline")
+        let shown = admin.notices.count
+        _ = try await admin.send("/help", in: "general")
+        try await waitFor("a typed /help shows") { admin.notices.count == shown + 1 }
+        XCTAssertEqual(admin.notices.last.flatMap(CommandHelp.init(notice:)), admin.commands)
+        XCTAssertEqual(guest.notices.compactMap(CommandHelp.init(notice:)), [])
+    }
+
     func testSendReplyEditReactAndDeleteLandInTheReplayStore() async throws {
         let server = try await startServer()
         let session = try await signedInGuest(server)

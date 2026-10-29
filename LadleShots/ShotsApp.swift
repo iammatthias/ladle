@@ -20,7 +20,7 @@ struct ShotsApp: App {
 enum Screen: String, CaseIterable {
     case firstRun = "first-run", servers, connect, connectScanned = "connect-scanned", rooms, timeline, mention, members, reaction, attachments, media, links, viewer, ipad
     case textLimit = "text-limit", guestComposer = "guest-composer"
-    case emoji, emojiPicker = "emoji-picker", emojiShortcode = "emoji-shortcode"
+    case emoji, emojiPicker = "emoji-picker", emojiShortcode = "emoji-shortcode", commands
 }
 
 @MainActor
@@ -126,6 +126,8 @@ enum Renderer {
             AnyView(ReactionPicker(session: home) { _ in })
         case .emojiShortcode:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, draft: Draft(text: "Lunch :pa")) })
+        case .commands:
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, draft: Draft(text: "/inv")) })
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))

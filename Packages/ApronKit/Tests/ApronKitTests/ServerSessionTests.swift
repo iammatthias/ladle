@@ -1167,6 +1167,67 @@ final class ServerSessionTests: XCTestCase {
         _ = try await slash.value
     }
 
+    private func privateNotice(_ text: String, in roomID: String = "general") -> JSONValue {
+        ["method": "message", "params": ["room_id": .string(roomID), "from": ["user_id": "~private", "name": "System message to you"],
+                                         "body": ["text": .string(text), "format": "markdown"]]]
+    }
+
+    func testCommandsComeFromOneHiddenHelpPerConnectionAndRoles() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+
+        let loading = Task { await session.loadCommands(in: "general") }
+        let asked = await frame(socket, 2)
+        XCTAssertEqual(asked, #"{"id":"c3","method":"command","params":{"body":{"format":"plain","text":"/help"},"room_id":"general"}}"#)
+        await session.loadCommands(in: "general")
+        await socket.deliver(privateNotice(CommandHelpTests.guest))
+        await socket.deliver(["id": "c3", "result": [:]])
+        await loading.value
+        await eventually("commands listed") { session.commands != nil }
+        XCTAssertEqual(session.commands?.commands.map(\.usage), ["/help"])
+        XCTAssertEqual(session.notices.count, 0)
+
+        await session.loadCommands(in: "general")
+        let typed = Task { try await session.send("/help", in: "general") }
+        let sentByHand = await frame(socket, 3)
+        XCTAssertEqual(sentByHand, #"{"id":"c4","method":"command","params":{"body":{"format":"plain","text":"/help"},"room_id":"general"}}"#)
+        await socket.deliver(privateNotice(CommandHelpTests.guest))
+        await socket.deliver(["id": "c4", "result": [:]])
+        _ = try await typed.value
+        await socket.deliver(privateNotice("Slow down: you can send 5 messages a minute here."))
+        await eventually("both notices shown") { session.notices.count == 2 }
+        XCTAssertEqual(session.notices.map { $0.body?["text"]?.stringValue }, [CommandHelpTests.guest, "Slow down: you can send 5 messages a minute here."])
+
+        await socket.deliver(["method": "user", "params": ["you": ["user_id": "ada", "name": "Ada", "roles": ["admin"]]]])
+        await eventually("admin role") { session.you?.roles == ["admin"] }
+        let reloading = Task { await session.loadCommands(in: "general") }
+        let askedAgain = await frame(socket, 4)
+        XCTAssertEqual(askedAgain, #"{"id":"c5","method":"command","params":{"body":{"format":"plain","text":"/help"},"room_id":"general"}}"#)
+        await socket.deliver(privateNotice(CommandHelpTests.cloudflareAdmin))
+        await socket.deliver(["id": "c5", "result": [:]])
+        await reloading.value
+        await eventually("admin commands") { session.commands?.commands.count == 16 }
+        XCTAssertEqual(session.notices.count, 2)
+
+        let second = queueTransport(capabilities: ["history", "edit", "rooms", "reactions"])
+        await socket.dropFromServer()
+        await eventually("backoff") { clock.recorded.count == 1 }
+        clock.release()
+        _ = await frames(second, count: 2)
+        await second.deliver(["id": "c6", "result": ["you": ["user_id": "ada", "name": "Ada", "roles": ["admin"]]]])
+        await eventually("signed in again") { session.status == .signedIn }
+        XCTAssertEqual(session.commands?.commands.count, 16)
+        let afterReconnect = Task { await session.loadCommands(in: "general") }
+        let askedOnReconnect = await frame(second, 2)
+        XCTAssertEqual(askedOnReconnect, #"{"id":"c8","method":"command","params":{"body":{"format":"plain","text":"/help"},"room_id":"general"}}"#)
+        await second.deliver(["id": "c8", "error": ["code": -32000, "message": "Slow down"]])
+        await afterReconnect.value
+        await session.loadCommands(in: "general")
+        await second.deliver(privateNotice(CommandHelpTests.guest))
+        await eventually("an unasked list shows") { session.notices.count == 3 }
+    }
+
     func testTheOutboxHoldsAMessageUntilSignInAndResendsItWithTheSameID() async throws {
         session.start()
         let first = await transport(0)
