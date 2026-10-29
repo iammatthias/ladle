@@ -45,9 +45,13 @@ struct ConnectView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Tokens.Space.s3) {
                     VStack(alignment: .leading, spacing: Tokens.Space.s1) {
-                        Text(record?.label ?? "Apron").apText(.display, .semibold).foregroundStyle(Palette.ink)
+                        Text(existing?.serverName ?? record?.label ?? "Apron").apText(.display, .semibold).foregroundStyle(Palette.ink)
                         Text(record == nil ? "Connect to a server" : "Sign in again, or change this server")
                             .apText(.field).foregroundStyle(Palette.inkMuted)
+                        if let description = existing?.server?.description {
+                            Text((try? AttributedString(markdown: description)) ?? AttributedString(description))
+                                .apText(.ui).foregroundStyle(Palette.inkMuted)
+                        }
                     }
                     if let welcome = session?.server?.welcome ?? existing?.server?.welcome {
                         Callout { Text((try? AttributedString(markdown: welcome)) ?? AttributedString(welcome)) }

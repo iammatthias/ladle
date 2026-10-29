@@ -62,9 +62,9 @@ private struct ServerRow: View {
         let unread = session.joinedRoomIDs.reduce(0) { $0 + session.unreadCount(in: $1) }
         let mentions = session.joinedRoomIDs.reduce(0) { $0 + session.mentionCount(in: $1) }
         HStack(spacing: Tokens.Space.s3) {
-            RailTile(label: session.record.label, active: false, offline: session.status != .signedIn)
+            RailTile(label: session.serverName, image: session.serverAvatarURL, active: false, offline: session.status != .signedIn)
             VStack(alignment: .leading, spacing: 1) {
-                Text(session.record.label).apText(.body, unread > 0 ? .semibold : .medium).foregroundStyle(Palette.ink)
+                Text(session.serverName).apText(.body, unread > 0 ? .semibold : .medium).foregroundStyle(Palette.ink)
                 Text(statusText).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
             }
             Spacer(minLength: Tokens.Space.s2)
@@ -87,22 +87,31 @@ private struct ServerRow: View {
     }
 }
 
-/// The web's rail tile: initials on a rounded square that rounds into an accent circle when
-/// it is the open server.
+/// The web's rail tile: the server's avatar, or its initials, on a rounded square that rounds
+/// into an accent circle when it is the open server.
 struct RailTile: View {
     let label: String
+    var image: URL?
     let active: Bool
     var offline = false
 
     var body: some View {
-        Text(Avatar.initials(label))
-            .apText(.ui, .bold)
-            .foregroundStyle(active ? Palette.onAccent : Palette.ink)
-            .frame(width: Tokens.Size.railTile, height: Tokens.Size.railTile)
-            .background(active ? Palette.accent : Palette.raised,
-                        in: RoundedRectangle(cornerRadius: active ? Tokens.Size.railTile / 2 : Tokens.Radius.lg, style: .continuous))
-            .opacity(offline ? Tokens.Opacity.dim : 1)
-            .accessibilityHidden(true)
+        let shape = RoundedRectangle(cornerRadius: active ? Tokens.Size.railTile / 2 : Tokens.Radius.lg, style: .continuous)
+        Group {
+            if let image {
+                RemoteImage(url: image, maxPixel: Tokens.Size.railTile * 3)
+            } else {
+                Text(Avatar.initials(label))
+                    .apText(.ui, .bold)
+                    .foregroundStyle(active ? Palette.onAccent : Palette.ink)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(active ? Palette.accent : Palette.raised)
+            }
+        }
+        .frame(width: Tokens.Size.railTile, height: Tokens.Size.railTile)
+        .clipShape(shape)
+        .opacity(offline ? Tokens.Opacity.dim : 1)
+        .accessibilityHidden(true)
     }
 }
 
@@ -145,7 +154,7 @@ struct ServerRail: View {
         let unread = session.joinedRoomIDs.contains { session.unreadCount(in: $0) > 0 }
         let mentions = session.joinedRoomIDs.reduce(0) { $0 + session.mentionCount(in: $1) }
         return Button { open(record.id) } label: {
-            RailTile(label: record.label, active: active, offline: session.status != .signedIn)
+            RailTile(label: session.serverName, image: session.serverAvatarURL, active: active, offline: session.status != .signedIn)
                 .frame(width: Tokens.Size.railW, height: Tokens.Size.touchTarget)
                 .overlay(alignment: .leading) {
                     UnevenRoundedRectangle(bottomTrailingRadius: 4, topTrailingRadius: 4)
@@ -163,7 +172,7 @@ struct ServerRail: View {
             Button("Sign In or Edit", systemImage: "pencil") { connecting = ConnectRequest(record: record) }
             Button("Remove", systemImage: "trash", role: .destructive) { removing = record }
         }
-        .accessibilityLabel([record.label, active ? "open" : nil, mentions > 0 ? "\(mentions) mentions" : unread ? "new messages" : nil,
+        .accessibilityLabel([session.serverName, record.url.host(), active ? "open" : nil, mentions > 0 ? "\(mentions) mentions" : unread ? "new messages" : nil,
                              session.status == .signedIn ? nil : ConnectionState(session.status)?.title(record)]
             .compactMap { $0 }.joined(separator: ", "))
         .accessibilityAddTraits(active ? .isSelected : [])

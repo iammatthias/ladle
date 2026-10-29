@@ -6,6 +6,12 @@ public struct ServerInfo: Hashable, Sendable {
     public var agent: String?
     public var capabilities: [String]
     public var welcome: String?
+    /// The server's plain display name; without it, clients show its address.
+    public var title: String?
+    /// CommonMark: what the server is about.
+    public var description: String?
+    /// The server's icon, under the rules for user avatars (§4.8.6).
+    public var avatar: String?
     /// Schemes that create accounts; nil means the same as `auth`.
     public var signup: [String]?
     /// Seconds between client pings; nil when the server wants none.
@@ -22,6 +28,9 @@ public struct ServerInfo: Hashable, Sendable {
         agent = params["agent"]?.stringValue
         capabilities = Self.strings(params["capabilities"]) ?? []
         welcome = params["welcome"]?.stringValue
+        title = params["title"]?.stringValue
+        description = params["description"]?.stringValue
+        avatar = params["avatar"]?.stringValue
         signup = Self.strings(params["signup"])
         ping = params["ping"]?.doubleValue
         status = Self.strings(params["status"])
