@@ -58,9 +58,12 @@ clone), which is only a worked example.
       or a refused upgrade stops reconnecting (`Status.stopped`). A resume answered `denied` or
       `invalid_params` clears the token and asks for sign-in.
     - History: `open` loads the newest page once (`limit` = page size, no bounds), `loadOlder`
-      pages with `before = first_log_id − 1` until `more` is false or the floor
-      (`history_log_id`, else `latest_log_id + 1`). Each opened room keeps a checkpoint that live
-      records advance; after a reconnect it pages forward from `checkpoint + 1`.
+      pages with `before = first_log_id − 1` until `more` is false or the floor. The floor is
+      the retention boundary (`history_log_id`, or `latest_log_id + 1` when it is null) from any
+      room record or history result, kept in `ReplayStore` per room and never lowered; raising
+      it drops the snapshots whose `log_id` is below it, with their reactions, and refuses late
+      ones. Each opened room keeps a checkpoint that live records advance; after a reconnect it
+      pages forward from `checkpoint + 1`.
     - `timeline` leaves deleted messages out, so the rows, day pills, grouping, the New line,
       unread and mention counts, room previews and thread cards never see one. The store and
       the projection keep the tombstones for the replay rule; a reply quoting one reads

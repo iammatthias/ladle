@@ -14,6 +14,8 @@ public struct ReplayStore: Sendable, Equatable {
     /// Per message, per `user_id`.
     private var reactions: [LogID: [String: ReactionSet]] = [:]
     private var members: [String: MemberState] = [:]
+    /// Each room's retention floor (§4.3): the lowest `log_id` it still keeps. Never lowered.
+    private var floors: [String: LogID] = [:]
 
     private struct MemberEntry: Hashable, Sendable {
         var user: UserObject
@@ -60,6 +62,7 @@ public struct ReplayStore: Sendable, Equatable {
     /// to another tombstone at the same position.
     @discardableResult
     public mutating func put(message snapshot: MessageSnapshot) -> Bool {
+        if let floor = floors[snapshot.roomID], snapshot.logID < floor { return false }
         if let current = messages[snapshot.messageID] {
             if snapshot.logID < current.logID { return false }
             if snapshot.logID == current.logID, !snapshot.isTombstone || current.isTombstone { return false }
@@ -101,6 +104,21 @@ public struct ReplayStore: Sendable, Equatable {
         }
         members[roomID] = state
     }
+
+    /// Raises a room's retention floor and drops the message snapshots below it with their
+    /// reactions: the server has expired them (§4.3). A lower floor than the kept one is ignored,
+    /// so pages that arrive out of order never bring expired history back.
+    public mutating func raiseFloor(of roomID: String, to floor: LogID) {
+        guard floors[roomID].map({ $0 < floor }) ?? true else { return }
+        floors[roomID] = floor
+        for messageID in homes[roomID] ?? [] where messages[messageID]!.logID < floor {
+            messages[messageID] = nil
+            reactions[messageID] = nil
+            unhome(messageID, from: roomID)
+        }
+    }
+
+    public func floor(of roomID: String) -> LogID? { floors[roomID] }
 
     private mutating func unhome(_ messageID: LogID, from roomID: String) {
         homes[roomID]?.remove(messageID)
