@@ -555,6 +555,76 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["101", "102", "103", "104", "105", "106"])
     }
 
+    /// Opens general with 104–106 as the newest page, `more` true, history from `floor`.
+    private func openGeneral(on socket: FakeTransport, floor: String = "101") async throws {
+        let open = Task { try await session.open("general") }
+        _ = await frame(socket, 2)
+        await socket.deliver(["id": "c3", "result": [
+            "messages": [message("104", "d"), message("105", "e"), message("106", "f")],
+            "first_log_id": "104", "last_log_id": "106", "more": true, "latest_log_id": "106", "history_log_id": .string(floor),
+        ]])
+        _ = await frame(socket, 3)
+        await socket.deliver(["id": "c4", "result": ["not_joined": []]])
+        try await open.value
+    }
+
+    func testRevealWaitsForTheOpeningPageThenPagesBackToTheMessage() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        let open = Task { try await session.open("general") }
+        _ = await frame(socket, 2)
+        let reveal = Task { try await session.reveal(LogID("101")!, in: "general") }
+        await socket.deliver(["id": "c3", "result": [
+            "messages": [message("104", "d"), message("105", "e"), message("106", "f")],
+            "first_log_id": "104", "last_log_id": "106", "more": true, "latest_log_id": "106", "history_log_id": "90",
+        ]])
+        _ = await frame(socket, 3)
+        await socket.deliver(["id": "c4", "result": ["not_joined": []]])
+        try await open.value
+        let older = await frame(socket, 4)
+        XCTAssertEqual(older, #"{"id":"c5","method":"history","params":{"before":"103","limit":200,"room_id":"general"}}"#)
+        await socket.deliver(["id": "c5", "result": [
+            "messages": [message("101", "a"), message("102", "b"), message("103", "c")],
+            "first_log_id": "101", "last_log_id": "103", "more": true, "latest_log_id": "106", "history_log_id": "90",
+        ]])
+        let shown = try await reveal.value
+        XCTAssertTrue(shown)
+        XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["101", "102", "103", "104", "105", "106"])
+        XCTAssertEqual(session.histories["general"]?.olderBefore, LogID("100"), "paging goes on from the revealed page")
+    }
+
+    func testRevealStopsOnceHistoryReachesPastAMissingMessage() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        try await openGeneral(on: socket, floor: "90")
+        let reveal = Task { try await session.reveal(LogID("102")!, in: "general") }
+        _ = await frame(socket, 4)
+        await socket.deliver(["id": "c5", "result": [
+            "messages": [message("101", "a"), message("103", "c")],
+            "first_log_id": "101", "last_log_id": "103", "more": true, "latest_log_id": "106", "history_log_id": "90",
+        ]])
+        let shown = try await reveal.value
+        XCTAssertFalse(shown)
+        let sent = await socket.sentLog.count
+        XCTAssertEqual(sent, 5, "no page older than the message")
+        XCTAssertEqual(session.canLoadOlder("general"), true, "the room still pages back on scroll")
+    }
+
+    func testRevealAsksNothingBelowTheRetentionFloor() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        try await openGeneral(on: socket, floor: "104")
+        let shown = try await session.reveal(LogID("101")!, in: "general")
+        XCTAssertFalse(shown)
+        let sent = await socket.sentLog.count
+        XCTAssertEqual(sent, 4, "expired history is not asked for")
+        let loaded = try await session.reveal(LogID("105")!, in: "general")
+        XCTAssertTrue(loaded, "a loaded message needs no request")
+    }
+
     func testOpeningAThreadListsNoThreadsOfIt() async throws {
         session.start()
         let socket = await transport(0)

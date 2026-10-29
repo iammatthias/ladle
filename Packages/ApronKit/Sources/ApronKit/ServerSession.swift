@@ -107,6 +107,8 @@ public final class ServerSession {
     /// Transient notices (§3.5.3), newest last. Never installed as snapshots.
     public private(set) var notices: [Notice] = []
     public private(set) var histories: [String: RoomHistory] = [:]
+    /// Each room's first page while it loads, so a second `open` waits for it.
+    @ObservationIgnored private var openings: [String: Task<Void, Error>] = [:]
     /// This user's read cursor per room (§4.6): the server's, or the one this device sent.
     public private(set) var readCursors: [String: LogID] = [:]
     /// How far this user has read each room on this device.
@@ -454,20 +456,27 @@ public final class ServerSession {
 
     // MARK: History
 
-    /// Loads the newest page of a room once (§4.3.5 step 3, without a checkpoint).
+    /// Loads the newest page of a room once (§4.3.5 step 3, without a checkpoint). A call while
+    /// that page loads returns once it has.
     public func open(_ roomID: String) async throws {
+        if let opening = openings[roomID] { return try await opening.value }
         guard histories[roomID] == nil, server?.has("history") == true else { return }
         histories[roomID] = RoomHistory()
-        do {
-            let page = try await history(["room_id": .string(roomID), "limit": .number(String(environment.pageSize))])
-            histories[roomID]?.receivedBackward(page)
-            histories[roomID]?.checkpoint = page.latestLogID
-            histories[roomID]?.isLive = true
-        } catch {
-            histories[roomID] = nil
-            throw error
+        let opening = Task {
+            do {
+                let page = try await history(["room_id": .string(roomID), "limit": .number(String(environment.pageSize))])
+                histories[roomID]?.receivedBackward(page)
+                histories[roomID]?.checkpoint = page.latestLogID
+                histories[roomID]?.isLive = true
+            } catch {
+                histories[roomID] = nil
+                throw error
+            }
+            await listThreads(of: roomID)
         }
-        await listThreads(of: roomID)
+        openings[roomID] = opening
+        defer { openings[roomID] = nil }
+        try await opening.value
     }
 
     /// Installs the room's threads this user has not joined (§4.2.1). Their records are in their
@@ -487,7 +496,24 @@ public final class ServerSession {
         guard canLoadOlder(roomID), let state = histories[roomID], !state.isLoading, let before = state.olderBefore else { return }
         histories[roomID]?.isLoading = true
         defer { histories[roomID]?.isLoading = false }
-        let page = try await history(["room_id": .string(roomID), "before": before.json, "limit": .number(String(environment.pageSize))])
+        try await page(roomID, before: before, limit: environment.pageSize)
+    }
+
+    /// Pages a room back until it holds a message, as a link to it opens (link.apron.chat SPEC
+    /// §2): the timeline stays one unbroken run from the newest page. True when the room shows
+    /// the message; false once the loaded history reaches back past it without it (deleted,
+    /// moved, or never in this room), or there is no more. Stops when its task is cancelled.
+    public func reveal(_ messageID: LogID, in roomID: String) async throws -> Bool {
+        try await open(roomID)
+        func shown() -> Bool { timeline(roomID).contains { $0.messageID == messageID } }
+        while !shown(), !Task.isCancelled, canLoadOlder(roomID), let before = histories[roomID]?.olderBefore, before >= messageID {
+            try await page(roomID, before: before, limit: 200)
+        }
+        return shown()
+    }
+
+    private func page(_ roomID: String, before: LogID, limit: Int) async throws {
+        let page = try await history(["room_id": .string(roomID), "before": before.json, "limit": .number(String(limit))])
         histories[roomID]?.receivedBackward(page)
     }
 
@@ -871,9 +897,13 @@ public struct RoomHistory: Hashable, Sendable {
     /// Whether live records arrive gaplessly, so they may move the checkpoint.
     var isLive = false
 
+    /// A page older than the oldest loaded moves paging back; one that arrives after an older
+    /// one (`loadOlder` and `reveal` both page) changes nothing.
     mutating func receivedBackward(_ page: HistoryPage) {
+        let next = page.firstLogID?.predecessor
+        if let olderBefore, let next, next >= olderBefore { return }
         more = page.more
-        olderBefore = page.firstLogID?.predecessor
+        olderBefore = next
         if olderBefore == nil { more = false }
     }
 }
