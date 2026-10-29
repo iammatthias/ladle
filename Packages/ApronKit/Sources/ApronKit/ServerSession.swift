@@ -53,6 +53,8 @@ public final class ServerSession {
         public var stableAfter: Duration
         /// The HTTP `PUT` of an attachment to its `write_url` (§4.8.3).
         public var writeEmbed: EmbedWrite
+        /// The fetch of a custom emoji catalog (`ext:emoji`).
+        public var fetchEmojiCatalog: @Sendable (URL) async throws -> Data
 
         public init(
             makeTransport: @escaping @Sendable (ServerRecord) -> any FrameTransport,
@@ -63,7 +65,8 @@ public final class ServerSession {
             agent: String = "ladle-ios/0.1",
             pageSize: Int = 50,
             stableAfter: Duration = .seconds(30),
-            writeEmbed: @escaping EmbedWrite = EmbedWriter.live
+            writeEmbed: @escaping EmbedWrite = EmbedWriter.live,
+            fetchEmojiCatalog: @escaping @Sendable (URL) async throws -> Data = EmojiCatalogFetch.live
         ) {
             self.makeTransport = makeTransport
             self.sleep = sleep
@@ -74,6 +77,7 @@ public final class ServerSession {
             self.pageSize = pageSize
             self.stableAfter = stableAfter
             self.writeEmbed = writeEmbed
+            self.fetchEmojiCatalog = fetchEmojiCatalog
         }
 
         public static let live = Environment(makeTransport: { record in
@@ -102,6 +106,10 @@ public final class ServerSession {
     public private(set) var readPositions: [String: LogID] = [:]
     /// The fraction written of each of this user's uploads in flight, by `embed_id` (§4.8.3).
     public internal(set) var uploadProgress: [String: Double] = [:]
+    /// Custom emoji catalogs fetched, by `catalog_url` (`ext:emoji`).
+    public internal(set) var emojiCatalogs: [URL: EmojiCatalog] = [:]
+    /// The catalog URLs asked for, fetched or failed: none is fetched twice.
+    @ObservationIgnored var emojiCatalogsAsked: Set<URL> = []
 
     /// What to call this server: the name the user gave it, else the server's `title` (§3.1),
     /// else its host. Shown with the host where the user picks a server, so a server can't pass

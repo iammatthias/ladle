@@ -4,9 +4,15 @@ import Foundation
 /// `markdown` as inline CommonMark with raw HTML left as text, and in either format each bare
 /// `http(s)` URL and §A.4 `apron:?` link linked, except inside code and existing links. A link
 /// whose scheme apron-web would not link (`javascript:`, another app's) is dropped. Bidirectional
-/// overrides are dropped too (§3.5.2).
+/// overrides are dropped too (§3.5.2). With a custom emoji catalog, each key it has outside code
+/// and links carries `CustomEmojiKey`, for the app to show as the emoji's image.
 public enum MessageText {
-    public static func attributed(_ body: JSONValue?) -> AttributedString {
+    /// CommonMark that isn't a message, such as a room's `description` or `server.welcome`.
+    public static func markdown(_ text: String, emoji: EmojiCatalog? = nil) -> AttributedString {
+        attributed(["text": .string(text), "format": "markdown"], emoji: emoji)
+    }
+
+    public static func attributed(_ body: JSONValue?, emoji: EmojiCatalog? = nil) -> AttributedString {
         let text = TextDirection.withoutOverrides(body?["text"]?.stringValue ?? "")
         var out = AttributedString(text)
         if body?["format"]?.stringValue == "markdown" {
@@ -33,7 +39,25 @@ public enum MessageText {
             let lower = out.unicodeScalars.index(out.startIndex, offsetBy: link.offset)
             out[lower ..< out.unicodeScalars.index(lower, offsetBy: link.length)].link = link.url
         }
+        if let emoji { markKeys(in: &out, emoji) }
         return out
+    }
+
+    /// Each key the catalog has, in runs that are neither code nor a link.
+    private static func markKeys(in out: inout AttributedString, _ catalog: EmojiCatalog) {
+        var keys: [(offset: Int, length: Int, key: String)] = []
+        for run in out.runs where run.link == nil && run.inlinePresentationIntent?.contains(.code) != true {
+            let runText = String(out[run.range].characters)
+            let start = out.unicodeScalars.distance(from: out.startIndex, to: run.range.lowerBound)
+            for range in EmojiKeys.ranges(in: runText, known: { catalog[$0] != nil }) {
+                keys.append((start + runText.unicodeScalars.distance(from: runText.startIndex, to: range.lowerBound),
+                             runText.unicodeScalars.distance(from: range.lowerBound, to: range.upperBound), String(runText[range])))
+            }
+        }
+        for key in keys {
+            let lower = out.unicodeScalars.index(out.startIndex, offsetBy: key.offset)
+            out[lower ..< out.unicodeScalars.index(lower, offsetBy: key.length)][CustomEmojiKey.self] = key.key
+        }
     }
 
     /// The distinct links in the text as rendered, in order.
@@ -80,4 +104,10 @@ private extension Substring {
         while end > startIndex, predicate(self[index(before: end)]) { end = index(before: end) }
         return self[startIndex ..< end]
     }
+}
+
+/// Marks a custom emoji's key in rendered text (`MessageText`); the value is the key.
+public enum CustomEmojiKey: AttributedStringKey {
+    public typealias Value = String
+    public static let name = "ApronCustomEmojiKey"
 }
