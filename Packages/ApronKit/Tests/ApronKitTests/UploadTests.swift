@@ -47,6 +47,38 @@ final class MediaPolicyTests: XCTestCase {
         return ServerInfo(params: .object(params))
     }
 
+    func testALinkCardPlaysOGVideoThenAudioOnlyWhereThePolicyAllowsIt() throws {
+        let policy = MediaPolicy(serverURL: URL(string: "wss://chat.example/ws")!, server: server())
+        func og(_ fields: JSONValue) throws -> OpenGraph { try XCTUnwrap(OpenGraph(fields)) }
+        let image: JSONValue = ["url": "https://chat.example/f/p/thumb", "width": 640, "height": 360]
+        let video: JSONValue = ["url": "https://chat.example/f/p/v.mp4", "type": "video/mp4", "width": 640, "height": 360]
+        let audio: JSONValue = ["url": "https://chat.example/f/p/a.m4a", "type": "audio/mp4"]
+
+        guard case .video(let played, let poster)? = try og(["image": image, "video": video, "audio": audio]).player(policy: policy) else {
+            return XCTFail("video wins over audio")
+        }
+        XCTAssertEqual(played.aspectRatio, 640.0 / 360.0)
+        XCTAssertEqual(poster?.url.absoluteString, "https://chat.example/f/p/thumb")
+
+        guard case .audio(let sound, let cover)? = try og(["image": image, "audio": audio]).player(policy: policy) else {
+            return XCTFail("audio without video")
+        }
+        XCTAssertEqual(sound.url.absoluteString, "https://chat.example/f/p/a.m4a")
+        XCTAssertNotNil(cover)
+
+        XCTAssertNil(try og(["image": image]).player(policy: policy), "an image alone stays the image card")
+        let elsewhere: JSONValue = ["url": "https://cdn.example/v.mp4"]
+        XCTAssertNil(try og(["image": image, "video": elsewhere]).player(policy: policy), "other origins do not load")
+        XCTAssertEqual(try og(["image": image, "audio": audio, "video": elsewhere]).player(policy: policy),
+                       .audio(try XCTUnwrap(OpenGraph.Media(audio)), cover: try XCTUnwrap(OpenGraph.Media(image))), "an unplayable video falls back to the audio")
+        guard case .video(_, let none)? = try og(["video": video, "image": ["url": "https://cdn.example/p.jpg"]]).player(policy: policy) else {
+            return XCTFail("video without an allowed poster")
+        }
+        XCTAssertNil(none)
+        let inline = "data:image/png;base64,AAAA"
+        XCTAssertNil(try og(["video": ["url": .string(inline)]]).player(policy: policy), "an inline image is no player")
+    }
+
     func testMediaLoadsFromTheServersOwnOriginAndTheOnesItNames() {
         let policy = MediaPolicy(serverURL: URL(string: "wss://chat.example/ws")!, server: server())
         XCTAssertEqual(policy.origin, "https://chat.example")

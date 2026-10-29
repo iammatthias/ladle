@@ -12,6 +12,17 @@ final class LinkPreviewsTests: XCTestCase {
         return try XCTUnwrap(Records(messageParams: params).messages.first)
     }
 
+    func testAFetchedVideoPlaysOnlyWhereTheImageMayBeFetched() throws {
+        func preview(_ video: String?) -> LinkPreview { LinkPreview(title: "t", site: "example.com", video: video.flatMap(URL.init(string:))) }
+        XCTAssertEqual(preview("https://example.com/v.mp4").playableVideo?.absoluteString, "https://example.com/v.mp4")
+        for refused in ["http://localhost/v.mp4", "https://link.apron.chat/v.mp4", "file:///v.mp4", "https://10.0.0.1/v.mp4"] {
+            XCTAssertNil(preview(refused).playableVideo, refused)
+        }
+        XCTAssertNil(preview(nil).playableVideo)
+        let old = try JSONDecoder().decode(LinkPreview.self, from: Data(#"{"title":"t","site":"s"}"#.utf8))
+        XCTAssertNil(old.video, "a cache file from before video still loads")
+    }
+
     func testTheFirstLinkTheDeviceMayFetchIsUnfurled() throws {
         XCTAssertEqual(try message("see https://a.example/1 and https://b.example/2").unfurlURL?.absoluteString, "https://a.example/1")
         XCTAssertEqual(try message("apron:?room=ops then https://link.apron.chat/#server=x then https://b.example/2").unfurlURL?.absoluteString,

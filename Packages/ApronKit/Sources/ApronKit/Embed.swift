@@ -91,6 +91,31 @@ public struct OpenGraph: Hashable, Sendable {
     }
 }
 
+/// What a link card plays inline from its `og` (§4.8.1: `og.video` and `og.audio` are what a
+/// player loads, `og.image` is the preview to show).
+public enum LinkPlayer: Hashable, Sendable {
+    /// A video, with `og.image` as its poster when the policy allows it.
+    case video(OpenGraph.Media, poster: OpenGraph.Media?)
+    /// A sound, with `og.image` above its player when the policy allows it.
+    case audio(OpenGraph.Media, cover: OpenGraph.Media?)
+}
+
+extension OpenGraph {
+    /// The player for a link card: the video, else the audio, when `policy` lets the client load
+    /// it. Only `http(s)` media plays, so an inline `data:` image never stands in for a sound.
+    /// Nil keeps the image card.
+    public func player(policy: MediaPolicy) -> LinkPlayer? {
+        func playable(_ media: Media?) -> Media? {
+            guard let media, ["http", "https"].contains(media.url.scheme?.lowercased()), policy.allowsMedia(media.url) else { return nil }
+            return media
+        }
+        let picture = image.flatMap { policy.allowsMedia($0.url) ? $0 : nil }
+        if let video = playable(video) { return .video(video, poster: picture) }
+        if let audio = playable(audio) { return .audio(audio, cover: picture) }
+        return nil
+    }
+}
+
 extension MessageSnapshot {
     /// The body's embeds in display order; entries without a string `kind` are skipped.
     public var embedList: [Embed] { body?["embeds"]?.arrayValue?.compactMap(Embed.init) ?? [] }

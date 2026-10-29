@@ -186,26 +186,55 @@ struct FileCard: View {
 }
 
 /// A video in the system player, inline as the web's `<video>` (§4.8.4: `og.video`). The
-/// player is made on first appearance and pauses when it scrolls away.
+/// player is made on first appearance and pauses when it scrolls away. With a `poster` (a link
+/// card's `og.image`) nothing loads until the play button is tapped.
 struct VideoTile: View {
+    /// The picture shown before play: a hosted image, or one this device fetched.
+    enum Poster {
+        case remote(URL)
+        case fetched(UIImage)
+    }
+
     let url: URL
     let name: String
     let aspect: Double?
+    var poster: Poster?
+    /// Inside a link card, which clips and sizes it.
+    var inCard = false
     @State private var player: AVPlayer?
 
     var body: some View {
         ZStack {
             Color.black
             if let player { VideoPlayer(player: player) }
+            if player == nil, let poster {
+                switch poster {
+                case .remote(let url): RemoteImage(url: url).accessibilityHidden(true)
+                case .fetched(let image): Image(uiImage: image).resizable().scaledToFill().accessibilityHidden(true)
+                }
+                Button("Play", systemImage: "play.fill", action: play)
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(Palette.onAccent)
+                    .frame(width: 44, height: 44)
+                    .background(Palette.accent, in: Circle())
+                    .accessibilityLabel("Play video, \(name)")
+            }
         }
         .aspectRatio(aspect ?? 16 / 9, contentMode: .fit)
-        .frame(maxWidth: UploadEmbedView.maxWidth, maxHeight: Tokens.Size.embedMaxH, alignment: .leading)
-        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.lg))
+        .frame(maxWidth: inCard ? .infinity : UploadEmbedView.maxWidth, maxHeight: inCard ? nil : Tokens.Size.embedMaxH, alignment: .leading)
+        .clipShape(RoundedRectangle(cornerRadius: inCard ? 0 : Tokens.Radius.lg))
         .accessibilityLabel("Video, \(name)")
         .onAppear {
-            if player == nil { player = AVPlayer(url: url) }
+            if player == nil, poster == nil { player = AVPlayer(url: url) }
         }
         .onDisappear { player?.pause() }
+    }
+
+    private func play() {
+        let made = AVPlayer(url: url)
+        player = made
+        try? AVAudioSession.sharedInstance().setCategory(.playback)
+        made.play()
     }
 }
 
@@ -213,6 +242,8 @@ struct VideoTile: View {
 struct AudioCard: View {
     let url: URL
     let name: String
+    /// Fills the width it is given, inside a link card, instead of the upload width.
+    var inCard = false
     @State private var player: AVPlayer?
     @State private var playing = false
     @State private var ended: (any NSObjectProtocol)?
@@ -244,7 +275,8 @@ struct AudioCard: View {
         }
         .padding(.vertical, Tokens.Space.s1)
         .padding(.horizontal, Tokens.Space.s3)
-        .frame(width: UploadEmbedView.maxWidth, alignment: .leading)
+        .frame(width: inCard ? nil : UploadEmbedView.maxWidth, alignment: .leading)
+        .frame(maxWidth: inCard ? .infinity : nil, alignment: .leading)
         .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
         .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.line))
         .onDisappear {
@@ -288,32 +320,40 @@ struct EmbedCard: View {
     let policy: MediaPolicy
 
     var body: some View {
-        if let url = embed.url {
-            LinkButton(url: url) { card }
-        } else {
-            card
-        }
-    }
-
-    @ViewBuilder
-    private var card: some View {
         if let og = embed.og {
             openGraph(og)
+        } else if let url = embed.url {
+            LinkButton(url: url) { fallback }
         } else {
             fallback
         }
     }
 
     private func openGraph(_ og: OpenGraph) -> some View {
-        LinkCard(site: og.siteName, title: og.title ?? embed.title ?? embed.url?.absoluteString ?? embed.kind,
-                 description: og.description) {
-            if let image = og.image, policy.allowsMedia(image.url) {
-                RemoteImage(url: image.url)
-                    .aspectRatio(1.91, contentMode: .fit)
-                    .accessibilityLabel(image.alt ?? "")
-                    .accessibilityHidden(image.alt == nil)
+        let player = og.player(policy: policy)
+        return LinkCard(site: og.siteName, title: og.title ?? embed.title ?? embed.url?.absoluteString ?? embed.kind,
+                        description: og.description, link: embed.url, playsPicture: player != nil) {
+            switch player {
+            case .video(let video, let poster):
+                VideoTile(url: video.url, name: og.title ?? "link", aspect: video.aspectRatio ?? poster?.aspectRatio, poster: poster.map { .remote($0.url) }, inCard: true)
+            case .audio(let audio, let cover):
+                VStack(alignment: .leading, spacing: 0) {
+                    if let cover { picture(cover) }
+                    AudioCard(url: audio.url, name: og.title ?? "link", inCard: true)
+                        .padding(.top, cover == nil ? Tokens.Space.s3 : Tokens.Space.s2)
+                        .padding(.horizontal, Tokens.Space.s3)
+                }
+            case nil:
+                if let image = og.image, policy.allowsMedia(image.url) { picture(image) }
             }
         }
+    }
+
+    private func picture(_ image: OpenGraph.Media) -> some View {
+        RemoteImage(url: image.url)
+            .aspectRatio(1.91, contentMode: .fit)
+            .accessibilityLabel(image.alt ?? "")
+            .accessibilityHidden(image.alt == nil)
     }
 
     private var fallback: some View {
@@ -349,33 +389,53 @@ struct EmbedCard: View {
 }
 
 /// The web's EmbedCard: the picture its caller gives, the site, the title, and two lines of
-/// description, 420 pt wide at most.
+/// description, 420 pt wide at most. `link` is where a tap goes. When the picture is a player
+/// (`playsPicture`), only the text opens it, so the player's controls never do.
 struct LinkCard<Picture: View>: View {
     let site: String?
     let title: String
     var description: String?
+    var link: URL?
+    var playsPicture = false
     @ViewBuilder var picture: Picture
 
     var body: some View {
+        if let link, !playsPicture {
+            LinkButton(url: link) { card }
+        } else {
+            card
+        }
+    }
+
+    private var card: some View {
         VStack(alignment: .leading, spacing: 0) {
             picture
-            VStack(alignment: .leading, spacing: Tokens.Space.s0_5) {
-                if let site {
-                    Text(site).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
-                }
-                Text(title).apText(.body, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
-                if let description {
-                    Text(description).apText(.ui).foregroundStyle(Palette.inkMuted).lineLimit(2)
-                }
+            if let link, playsPicture {
+                LinkButton(url: link) { text }
+            } else {
+                text
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, Tokens.Space.s3)
-            .padding(.horizontal, Tokens.Space.s4)
         }
         .frame(maxWidth: Tokens.Size.embedCardW)
         .background(Palette.raised)
         .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.lg))
         .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.lg).strokeBorder(Palette.line))
+    }
+
+    private var text: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.s0_5) {
+            if let site {
+                Text(site).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
+            }
+            Text(title).apText(.body, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
+            if let description {
+                Text(description).apText(.ui).foregroundStyle(Palette.inkMuted).lineLimit(2)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, Tokens.Space.s3)
+        .padding(.horizontal, Tokens.Space.s4)
+        .contentShape(Rectangle())
     }
 }
 

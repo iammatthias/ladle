@@ -49,7 +49,7 @@ clone), which is only a worked example.
       `guest_posting: false` (EXT.md §3.1). The timeline then shows a sign-in prompt in place of
       the composer, and react, reply and New Thread are off with the reason.
     - `permissions` is `you.ext.permissions` under capability `ext:permissions` (EXT.md §7).
-      `move` saves a message with a new `room_id` and its other client fields as stored;
+      `edit` and `move` share one save that sends the message's `body`, `reply_to` and `ext` as stored (§4.4 replaces client fields); `move` adds the new `room_id`;
       `mayMove` allows your own messages, and anyone's with `move_any`. The message menu offers
       Move To the room's threads, or out of a thread to its room and that room's other threads.
     - Reconnect: pending requests fail with `Connection.Failure.closed` (no same-id resend),
@@ -143,11 +143,11 @@ clone), which is only a worked example.
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
   mention list, reaction picker, member list, `TimelineItems`: day pills, messages, the New
   line, thread cards at the thread's creation position, and queued messages; `EmbedViews`:
-  `og` embeds as the web's EmbedCard (a hosted image, site, title, two lines), others as a
+  `og` embeds as the web's EmbedCard (a hosted image, site, title, two lines; with `og.video` or `og.audio` that `OpenGraph.player(policy:)` allows, the card plays it inline and only its text opens the `url`), others as a
   labeled fallback card; `FetchedLinkCard`: a fetched preview as the same card, fetched with
   LinkPresentation's `LPMetadataProvider` when the row appears, while Show Link Previews (Ladle's
   page in the Settings app, `Settings.bundle`, on by default) is on; it replaces a bare `link` embed's
-  fallback card; upload embeds as a picture, an inline video, an audio player, a file card that opens in
+  fallback card, and plays the page's `remoteVideoURL` (`LinkPreview.playableVideo`) inline; upload embeds as a picture, an inline video, an audio player, a file card that opens in
   Quick Look, or a pending card with progress; `Attachments`: the draft's tiles, staging in
   the temporary directory (cleared at launch), the camera; `VoiceRecorder`: voice notes as
   `audio/mp4`), `Media/` (`MediaLoader`: images decoded at their shown size and files for Quick
