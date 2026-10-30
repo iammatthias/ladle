@@ -99,7 +99,7 @@ enum Renderer {
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID) })
         case .mention:
             AnyView(NavigationStack {
-                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, draft: Draft(text: "Thanks @"))
+                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, draft: Draft(field: DraftField(text: "Thanks @")))
             })
         case .members:
             AnyView(NavigationStack { MemberList(session: home, roomID: PreviewFixtures.busyRoomID) })
@@ -107,7 +107,7 @@ enum Renderer {
             AnyView(ReactionPicker { _ in })
         case .attachments:
             AnyView(NavigationStack {
-                TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, draft: Draft(text: "Both sides of mine", attachments: staged))
+                TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, draft: Draft(field: DraftField(text: "Both sides of mine"), attachments: staged))
             })
         case .media:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID) })
@@ -119,7 +119,7 @@ enum Renderer {
         case .textLimit:
             AnyView(NavigationStack {
                 TimelineView(session: home, roomID: PreviewFixtures.busyRoomID,
-                             draft: Draft(text: String(repeating: "Release notes for 0.2, every change since August. ", count: 82) + "🎉"))
+                             draft: Draft(field: DraftField(text: String(repeating: "Release notes for 0.2, every change since August. ", count: 82) + "🎉")))
             })
         case .guestComposer:
             AnyView(NavigationStack {
@@ -130,13 +130,13 @@ enum Renderer {
         case .emojiPicker:
             AnyView(ReactionPicker(session: home) { _ in })
         case .emojiShortcode:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, draft: Draft(text: "Lunch :pa")) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, draft: Draft(field: DraftField(text: "Lunch :pa"))) })
         case .commands:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, draft: Draft(text: "/inv")) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, draft: Draft(field: DraftField(text: "/inv"))) })
         case .linkCards:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID) })
         case .roomMention:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, draft: Draft(text: "Moving this to #s")) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, draft: Draft(field: DraftField(text: "Moving this to #s"))) })
         case .selectText:
             AnyView(SelectTextSheet(text: home.timeline(PreviewFixtures.busyRoomID).first { $0.plainText.hasPrefix("Notes from the sync") }
                 .map { SelectableBody($0.body).text } ?? "") {})

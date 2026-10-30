@@ -19,7 +19,7 @@ struct ComposerView: View {
     let session: ServerSession
     let roomID: String
     @Binding var draft: Draft
-    let onSend: (String, [String], [Attachment]) -> Void
+    let onSend: (DraftField, [Attachment]) -> Void
     var onProblem: (String) -> Void = { _ in }
     @FocusState private var focused: Bool
     @State private var pickingPhotos = false
@@ -31,27 +31,29 @@ struct ComposerView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if let query = commandQuery, let found = session.commands?.matching(query), !found.isEmpty {
-                CommandSuggestions(commands: found, pick: pickCommand)
-                    .padding(.horizontal, Tokens.Space.s4)
-                    .padding(.bottom, Tokens.Space.s1)
-            } else if let query = mentionQuery, !candidates(query).isEmpty {
-                MentionPicker(session: session, people: candidates(query), pick: pick)
-                    .padding(.horizontal, Tokens.Space.s4)
-                    .padding(.bottom, Tokens.Space.s1)
-            } else if let query = emojiQuery, let found = session.emojiCatalog?.search(query, limit: 6), !found.isEmpty {
-                EmojiSuggestions(emoji: found, pick: insert)
-                    .padding(.horizontal, Tokens.Space.s4)
-                    .padding(.bottom, Tokens.Space.s1)
-            } else if let query = roomQuery, case let found = RoomMentions.search(session.roomSuggestions, query), !found.isEmpty {
-                RoomSuggestions(rooms: found) { draft.text = RoomMentions.insert($0.id, into: draft.text) }
-                    .padding(.horizontal, Tokens.Space.s4)
-                    .padding(.bottom, Tokens.Space.s1)
+            Group {
+                switch session.suggestions(for: draft.field, in: roomID) {
+                case .commands(let found):
+                    CommandSuggestions(commands: found) { command in
+                        draft.field.insert(command)
+                        focused = true
+                    }
+                case .people(let found):
+                    MentionPicker(session: session, people: found) { draft.field.insert(mention: $0.userID, named: session.displayName(for: $0)) }
+                case .emoji(let found):
+                    EmojiSuggestions(emoji: found) { draft.field.insert($0) }
+                case .rooms(let found):
+                    RoomSuggestions(rooms: found) { draft.field.insert(room: $0.id) }
+                case nil:
+                    EmptyView()
+                }
             }
-            if let target {
+            .padding(.horizontal, Tokens.Space.s4)
+            .padding(.bottom, Tokens.Space.s1)
+            if let target = draft.field.target {
                 HStack(spacing: Tokens.Space.s2) {
                     let who = Text(TextDirection.isolated(session.displayName(for: target.from))).fontWeight(.semibold).foregroundStyle(Palette.ink)
-                    (isEdit ? Text("Editing your message") : Text("Replying to \(who)"))
+                    (draft.field.isEdit ? Text("Editing your message") : Text("Replying to \(who)"))
                         .apText(.ui)
                         .foregroundStyle(Palette.inkMuted)
                         .lineLimit(1)
@@ -72,7 +74,7 @@ struct ComposerView: View {
                     .foregroundStyle(Palette.danger)
                     .padding(.horizontal, Tokens.Space.s4)
             }
-            if !draft.attachments.isEmpty, !isEdit {
+            if !draft.attachments.isEmpty, !draft.field.isEdit {
                 AttachmentTray(attachments: draft.attachments) { id in draft.attachments.removeAll { $0.id == id } }
             }
             HStack(alignment: .bottom, spacing: Tokens.Space.s2) {
@@ -94,15 +96,12 @@ struct ComposerView: View {
             .padding(.top, Tokens.Space.s2)
             .padding(.bottom, Tokens.Space.s2)
         }
-        .animation(Motion.fast(reduceMotion), value: mentionQuery)
-        .animation(Motion.fast(reduceMotion), value: emojiQuery)
-        .animation(Motion.fast(reduceMotion), value: commandQuery)
-        .animation(Motion.fast(reduceMotion), value: roomQuery)
-        .task(id: commandQuery != nil && session.status == .signedIn) {
-            if commandQuery != nil { await session.loadCommands(in: roomID) }
+        .animation(Motion.fast(reduceMotion), value: draft.field.query)
+        .task(id: typingCommand && session.status == .signedIn) {
+            if typingCommand { await session.loadCommands(in: roomID) }
         }
-        .task(id: emojiQuery != nil) { if emojiQuery != nil { await session.loadEmojiCatalog() } }
-        .onChange(of: draft.mode.isActive, initial: true) { if draft.mode.isActive { focused = true } }
+        .task(id: typingEmoji) { if typingEmoji { await session.loadEmojiCatalog() } }
+        .onChange(of: draft.field.target != nil, initial: true) { if draft.field.target != nil { focused = true } }
         .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, maxSelectionCount: 10,
                       matching: .any(of: (offer.images ? [.images] : []) + (offer.videos ? [.videos] : [])), preferredItemEncoding: .compatible)
         .onChange(of: photoItems) {
@@ -131,7 +130,7 @@ struct ComposerView: View {
     @ViewBuilder
     private var field: some View {
         if canAttach { attachMenu }
-        TextField(placeholder, text: $draft.text, axis: .vertical)
+        TextField(placeholder, text: $draft.field.text, axis: .vertical)
             .apText(.field)
             .foregroundStyle(Palette.ink)
             .lineLimit(1 ... 8)
@@ -194,11 +193,11 @@ struct ComposerView: View {
         .disabled(!canWrite)
     }
 
-    private var canAttach: Bool { session.canAttach && !isEdit }
+    private var canAttach: Bool { session.canAttach && !draft.field.isEdit }
 
     private var offer: UploadOffer { UploadOffer(session.mediaLimits?.upload) }
 
-    private var textLimit: TextLimit { TextLimit(draft.text) }
+    private var textLimit: TextLimit { TextLimit(draft.field.text) }
 
     /// Voice notes go as `audio/mp4`; a server that states its media must take it.
     private var takesVoiceNotes: Bool {
@@ -261,79 +260,24 @@ struct ComposerView: View {
         }
     }
 
-    private var target: MessageSnapshot? {
-        switch draft.mode {
-        case .new: nil
-        case .reply(let message), .edit(let message): message
-        }
+    private var canSend: Bool {
+        canWrite && draft.field.canSend(readyFiles: draft.attachments.compactMap(\.attachment).count,
+                                        preparing: draft.attachments.contains { $0.attachment == nil })
     }
 
-    private var isEdit: Bool {
-        if case .edit = draft.mode { return true }
+    private var typingCommand: Bool {
+        if case .command = draft.field.query { return true }
         return false
     }
 
-    private var canSend: Bool {
-        let preparing = draft.attachments.contains { $0.attachment == nil }
-        let ready = isEdit ? [] : draft.attachments.compactMap(\.attachment)
-        return canWrite && !preparing && !textLimit.isOver && (!draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !ready.isEmpty)
-    }
-
-    /// The command word being typed, outside an edit: an edit is never a command.
-    private var commandQuery: String? {
-        guard !isEdit else { return nil }
-        return CommandHelp.query(in: draft.text)
-    }
-
-    /// Puts `/name ` in the field and keeps the keyboard up for the arguments.
-    private func pickCommand(_ command: ServerCommand) {
-        draft.text = "/\(command.name) "
-        focused = true
-    }
-
-    /// The word being typed after `@`, when there is one.
-    private var mentionQuery: String? {
-        guard let word = draft.text.split(separator: " ", omittingEmptySubsequences: false).last,
-              word.hasPrefix("@"), !word.contains("\n") else { return nil }
-        return String(word.dropFirst())
-    }
-
-    /// The name being typed after `:`, for the custom emoji list (`ext:emoji`).
-    private var emojiQuery: String? {
-        guard let word = draft.text.split(separator: " ", omittingEmptySubsequences: false).last,
-              word.hasPrefix(":"), word.count > 1, CustomEmoji.isKey(word + ":") else { return nil }
-        return String(word.dropFirst())
-    }
-
-    /// The room id being typed after `#`, for the room list.
-    private var roomQuery: String? { RoomMentions.query(in: draft.text) }
-
-    /// Puts the key in place of the `:name` being typed, then a space.
-    private func insert(_ emoji: CustomEmoji) {
-        guard let colon = draft.text.range(of: ":", options: .backwards) else { return }
-        draft.text.replaceSubrange(colon.lowerBound..., with: emoji.key + " ")
-    }
-
-    private func candidates(_ query: String) -> [UserObject] {
-        let people = session.memberSections(roomID).flatMap(\.people).filter { $0.userID != session.you?.userID }
-        guard !query.isEmpty else { return Array(people.prefix(6)) }
-        return Array(people.filter {
-            session.displayName(for: $0).localizedCaseInsensitiveContains(query) || $0.userID.localizedCaseInsensitiveContains(query)
-        }.prefix(6))
-    }
-
-    private func pick(_ person: UserObject) {
-        let name = session.displayName(for: person)
-        guard let at = draft.text.range(of: "@", options: .backwards) else { return }
-        draft.text.replaceSubrange(at.lowerBound..., with: "@\(name) ")
-        draft.mentions[person.userID] = name
+    private var typingEmoji: Bool {
+        if case .emoji = draft.field.query { return true }
+        return false
     }
 
     private func send() {
-        let text = draft.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard canSend else { return }
-        let mentions = draft.mentions.filter { text.contains("@" + $0.value) }.map(\.key).sorted()
-        onSend(text, mentions, isEdit ? [] : draft.attachments.compactMap(\.attachment))
+        onSend(draft.field, draft.field.isEdit ? [] : draft.attachments.compactMap(\.attachment))
     }
 }
 
@@ -405,13 +349,6 @@ struct MentionPicker: View {
         .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
         .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.line))
         .shadow(color: .black.opacity(0.35), radius: 12, y: 8)
-    }
-}
-
-private extension Draft.Mode {
-    var isActive: Bool {
-        if case .new = self { return false }
-        return true
     }
 }
 

@@ -83,7 +83,7 @@ clone), which is only a worked example.
     - `permissions` is `Permissions`, `you.ext.permissions` under capability `ext:permissions`
       (EXTENSIONS.md): `write`, `add_members` and `move_any`, each defaulting when absent or not
       a boolean, and all of them when `permissions` is not an object.
-      `edit` and `move` share one save that sends the message's `body`, `reply_to` and `ext` as stored (§4.4 replaces client fields); `move` adds the new `room_id`;
+      `edit` and `move` share one save that sends the message's `body`, `reply_to` and `ext` as stored (§4.4 replaces client fields); `edit` replaces the text and `body.mentions`, `move` adds the new `room_id`;
       `mayMove` allows your own messages, and anyone's with `move_any`. The message menu offers
       Move To the room's threads, or out of a thread to its room and that room's other threads.
     - Reconnect: pending requests fail with `Connection.Failure.closed` (no same-id resend),
@@ -186,6 +186,16 @@ clone), which is only a worked example.
     a record of (`ServerSession.referencedTitle`) shows as `#title` linked to `apron:?room=<id>`
     and marked `RoomReferenceKey`; the app draws it as a denim chip, and a tap opens the room
     through the link routing. `#doesnotexist` stays text.
+  - `DraftField` (`DraftField.swift`): what the composer writes, a new message, a reply or an
+    edit (the composer's edit mode, Ladle's message editor), as apron-web's `DraftField`
+    (#159). `query` is what the end of the text types: a `/` command word (outside an edit),
+    an `@` word, a `:` name that could be a custom emoji's key, or a `#` room id.
+    `ServerSession.suggestions(for:in:)` is the one list it shows; the `insert` methods put a
+    pick in place of what was typed. A mention is `@Name` in the text and an entry in
+    `mentions`; `sentMentions` are those the text still shows. An edit opens with the
+    message's mentions whose `@name` or `@user_id` its text shows, and saves `body.mentions`
+    from the field (§3.5.5, §4.4: a save replaces it). `ServerSession.submit` sends a
+    command, posts, or saves the edit.
   - `RoomMentions`: the composer's `#` list, as apron-web's `room-autocomplete.ts`: `query(in:)`
     is the `#` word being typed (`[A-Za-z0-9_.-]`, at least one), `search` ranks exact, prefix,
     then contains on id and title, 8 at most, over `ServerSession.roomSuggestions` (every room
