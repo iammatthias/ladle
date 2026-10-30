@@ -15,6 +15,8 @@ struct MessageRow: View {
     var onJump: (LogID) -> Void = { _ in }
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.fixedTypeSize) private var fixedTypeSize
+    @Environment(\.liveSessions) private var liveSessions
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         let name = session.displayName(for: message.from)
@@ -97,13 +99,24 @@ struct MessageRow: View {
                 .apText(.sm).italic().foregroundStyle(Palette.inkMuted)
                 .padding(.top, Tokens.Space.s1)
         }
+        let cards = session.placeCards(in: message, sessions: liveSessions.find)
+        if !cards.isEmpty {
+            VStack(alignment: .leading, spacing: Tokens.Space.s2) {
+                ForEach(cards) { card in
+                    PlaceCardView(card: card) { card.link.webURL.map { openURL($0) } }
+                }
+            }
+            .padding(.top, Tokens.Space.s2)
+        }
         let unfurl = message.unfurlURL
-        let embeds = message.embedList
+        // A sender's preview of a place a card shows is left out (`PlaceCard.previews`); the rest
+        // keep their index, which names their media.
+        let embeds = message.embedList.enumerated().filter { !PlaceCard.previews($0.element, in: cards, from: session.record.url) }
         // A fetched preview takes the place of the `link` embed for the same URL, if any.
-        let unfurledEmbed = unfurl.flatMap { url in embeds.firstIndex { $0.kind == "link" && $0.url == url } }
+        let unfurledEmbed = unfurl.flatMap { url in embeds.first { $0.element.kind == "link" && $0.element.url == url }?.offset }
         if !embeds.isEmpty {
             VStack(alignment: .leading, spacing: Tokens.Space.s2) {
-                ForEach(Array(embeds.enumerated()), id: \.offset) { index, embed in
+                ForEach(embeds, id: \.offset) { index, embed in
                     let view = EmbedView(session: session, embed: embed, mediaID: MediaItem.id(message, index))
                     if let unfurl, index == unfurledEmbed {
                         FetchedLinkCard(url: unfurl) { view }
@@ -139,7 +152,11 @@ struct MessageRow: View {
         }
         parts.append(spoken(message.plainText, session.emojiCatalog))
         if let room = message.prevRoomID { parts.append("moved from \(session.title(of: room))") }
-        for embed in message.embedList { parts.append(EmbedCard.summary(embed)) }
+        let cards = session.placeCards(in: message, sessions: liveSessions.find)
+        for card in cards { parts.append(PlaceCardView.spoken(card)) }
+        for embed in message.embedList where !PlaceCard.previews(embed, in: cards, from: session.record.url) {
+            parts.append(EmbedCard.summary(embed))
+        }
         if message.isEdited { parts.append("edited") }
         parts.append(message.date.formatted(date: .omitted, time: .shortened))
         if let reactions = session.store.reactions(on: message.messageID) {
