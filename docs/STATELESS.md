@@ -154,7 +154,6 @@ Each step above landed as one commit, with its tests in `Packages/ApronKit/Tests
 
 The design shots render as they did at `eae9d0d`: 51 of the 52 PNGs are byte-identical, and
 the last differs only in the reaction picker field's text cursor, which blinks. Across the
-intermediate runs, the servers shot's unread count for the
-demo server varies between runs of the same build (its `help` room is sometimes counted
-unread while the fixtures load); a second render of `eae9d0d` and a debug run of the new
-code each showed both values, so it does not come from these changes.
+intermediate runs, the servers shot's unread count for the demo server varies between runs of the same build (its `help` room is sometimes counted
+unread while the fixtures load): two runs of one build printed the demo's counts as 3 and 4.
+The renders of `eae9d0d` both showed 3, and so did the final run.
