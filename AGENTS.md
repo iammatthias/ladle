@@ -181,7 +181,15 @@ clone), which is only a worked example.
     sanitizer refuses are dropped. Web links open in the default browser (`OpenURLAction`'s
     system action); Apron links open in the app (`ApronLink`). Neither reference server describes links:
     both drop a sender's `og`, so a `link` embed arrives as its kind and URL and shows the
-    fallback card, as on the web.
+    fallback card, as on the web. With `rooms`, a `#room_id` (Appendix A.3: not after a letter
+    or digit, apron-web's `TEXT_ID`) outside code and links that names a room the session holds
+    a record of (`ServerSession.referencedTitle`) shows as `#title` linked to `apron:?room=<id>`
+    and marked `RoomReferenceKey`; the app draws it as a denim chip, and a tap opens the room
+    through the link routing. `#doesnotexist` stays text.
+  - `RoomMentions`: the composer's `#` list, as apron-web's `room-autocomplete.ts`: `query(in:)`
+    is the `#` word being typed (`[A-Za-z0-9_.-]`, at least one), `search` ranks exact, prefix,
+    then contains on id and title, 8 at most, over `ServerSession.roomSuggestions` (every room
+    and thread with a record), and `insert` puts `#room_id ` in the draft, which is what is sent.
   - `MessageText.plain` and `snippet` (`MessageText+Plain.swift`): a body as plain text for where it
     is not rendered, as apron-web's `plainTextOf` and `messageSnippet`: a `markdown` body without
     its syntax (code keeps its text, a link shows its text, each block a line, typed line breaks
@@ -235,7 +243,7 @@ clone), which is only a worked example.
   a server added through the Connect sheet opens once its sign-in succeeds),
   `Servers/` (the server list and iPad rail, `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
-  mention list, the custom emoji `:` list and the command list (`CommandSuggestions`: usage and
+  mention list, the custom emoji `:` list, the `#` room list and the command list (`CommandSuggestions`: usage and
   summary, scrolling past five rows; picking fills `/name ` and keeps the keyboard up), reaction picker (custom emoji by category first),
   member list, `CustomEmojiViews`: `EmojiText` draws each marked key as its image at the line's
   height inside one `Text`, read by VoiceOver as its `alt`, `ReactionGlyph` an emoji, a custom
@@ -336,8 +344,8 @@ mention list, the member list and the reaction picker, the composer with attachm
 of uploads (image, video, file, audio, pending), the media viewer, the composer over the text
 limit, a read-only guest's sign-in prompt on the demo server, custom emoji in text, a
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
-with the custom emoji, the composer's `:` list, and its command list (`/inv`, answered by
-`PreviewServer`'s `/help`); the busy room at AX3; and the iPad
+with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
+`PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), and the `#` room list; the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with
