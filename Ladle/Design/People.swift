@@ -2,17 +2,10 @@ import ApronKit
 import SwiftUI
 import UIKit
 
-/// A user's shown status (§4.5.1). Each has its own shape, as the web's StatusDot: online is a
-/// disc, idle a crescent, do-not-disturb a disc with a bar, offline a ring. So no state rests on
-/// color alone, and every list that shows one also says it in words to VoiceOver.
-enum Presence: String {
-    case online, idle, dnd, offline
-
-    init?(_ user: JSONValue?) {
-        guard let value = user?["status"]?.stringValue else { return nil }
-        self = Presence(rawValue: value) ?? (value == "invisible" ? .offline : .online)
-    }
-
+/// Each status has its own shape, as the web's StatusDot: online is a disc, idle a crescent,
+/// do-not-disturb a disc with a bar, offline a ring. So no state rests on color alone, and every
+/// list that shows one also says it in words to VoiceOver.
+extension Presence {
     var color: Color {
         switch self {
         case .online: Tokens.Color.presenceOnline.color()
@@ -21,19 +14,6 @@ enum Presence: String {
         case .offline: Tokens.Color.presenceOffline.color()
         }
     }
-
-    var label: String {
-        switch self {
-        case .online: "Online"
-        case .idle: "Idle"
-        case .dnd: "Do not disturb"
-        case .offline: "Offline"
-        }
-    }
-}
-
-extension ServerSession {
-    func presence(of userID: String) -> Presence? { Presence(users.user(userID)) }
 }
 
 /// The web's StatusDot: 8 pt by default (7 small, 12 large).

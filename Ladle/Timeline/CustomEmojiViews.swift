@@ -164,18 +164,3 @@ func descriptionText(_ text: String, _ catalog: EmojiCatalog?) -> AttributedStri
     out.link = nil
     return out
 }
-
-extension ServerSession {
-    /// Whether showing this message needs the custom emoji catalog: its text could hold a key, or
-    /// a reaction is one.
-    func needsEmojiCatalog(_ message: MessageSnapshot) -> Bool {
-        guard server?.emojiCatalogURL != nil, emojiCatalog == nil else { return false }
-        return EmojiKeys.mayHaveKeys(message.plainText)
-            || (store.reactions(on: message.messageID) ?? []).contains { !ReactionEntry.isEmojiSequence($0.emoji) }
-    }
-
-    /// Fetches the catalog when the text could hold a key.
-    func loadEmojiCatalog(for text: String?) async {
-        if let text, EmojiKeys.mayHaveKeys(text) { await loadEmojiCatalog() }
-    }
-}
