@@ -648,6 +648,14 @@ extension EnvironmentValues {
     @Entry var openRoom = OpenRoomAction { _ in }
     /// Opens the sign-in sheet for a saved server.
     @Entry var requestSignIn = SignInAction { _ in }
+    /// The signed-in session of another saved server, for a link card naming a place on it.
+    @Entry var liveSessions = SessionLookup { _ in nil }
+}
+
+/// Finds a saved server's signed-in session by its URL; a struct, as `OpenRoomAction`.
+struct SessionLookup {
+    let find: (URL) -> ServerSession?
+    init(_ find: @escaping (URL) -> ServerSession?) { self.find = find }
 }
 
 /// Opens the sign-in sheet for a server; a struct, as `OpenRoomAction`.

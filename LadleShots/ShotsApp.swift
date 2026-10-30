@@ -21,6 +21,7 @@ enum Screen: String, CaseIterable {
     case firstRun = "first-run", servers, connect, connectScanned = "connect-scanned", rooms, timeline, mention, members, reaction, attachments, media, links, viewer, ipad
     case textLimit = "text-limit", guestComposer = "guest-composer"
     case emoji, emojiPicker = "emoji-picker", emojiShortcode = "emoji-shortcode", commands
+    case linkCards = "link-cards"
 }
 
 @MainActor
@@ -64,6 +65,7 @@ enum Renderer {
             show(AnyView(view(shot.screen, store: store, home: home, staged: staged)
                 .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
                 .environment(\.scenePhase, .inactive)
+                .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
                 .dynamicTypeSize(shot.large ? .accessibility3 : .large)
                 .apronStyle()
                 .id(UUID())))
@@ -128,6 +130,8 @@ enum Renderer {
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, draft: Draft(text: "Lunch :pa")) })
         case .commands:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, draft: Draft(text: "/inv")) })
+        case .linkCards:
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID) })
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))

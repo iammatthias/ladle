@@ -220,6 +220,11 @@ public enum PreviewFixtures {
     private static let releaseThread = String(start + 8 * 60_000 + 45_000)
     private static let iconThread = String(start + 3 * 60_000 + 45_000)
 
+    /// The thread whose messages link to a message, a thread and a private room's unloaded
+    /// message, for the link cards; one link also comes with a sender's preview the card hides.
+    public static let linkCardRoomID = iconThread
+    private static let notesLink = "https://link.apron.chat/#server=wss://home.example/ws&room=general&message=\(message(5))"
+
     private static let general = [
         line(0, "ada", "morning! coffee's on ☕️"),
         line(1, "bram", "Did anyone look at the reconnect bug from yesterday? The socket still drops when the phone wakes from a long sleep, and it takes a full minute to come back.",
@@ -288,6 +293,9 @@ public enum PreviewFixtures {
             iconThread: history(iconThread, [
                 line(-20, "eunji", "Bowl-only, 2 pt stroke, rounded caps."),
                 line(-18, "sam", "Love it.", reactions: ["❤️": ["eunji"]]),
+                line(-17, "eunji", "Linking the notes from #general so we don't lose them: \(notesLink)",
+                     embeds: [["kind": "link", "url": .string(notesLink), "og": ["title": "general on Home", "site_name": "link.apron.chat"]]]),
+                line(-16, "sam", "Checklist is in apron:?room=\(releaseThread), and the cert note in apron:?room=ops&message=\(message(-280))"),
             ]),
             "random": history("random", [
                 line(-90, "chiara", "Found a 1970s Dansk enamel pot at the flea market."),

@@ -187,10 +187,16 @@ clone), which is only a worked example.
     its syntax (code keeps its text, a link shows its text, each block a line, typed line breaks
     kept, mentions as written), cut to a line count and length. The reply quote and every
     one-line preview (`previewText`) use it.
-  - Apron links in a message show as links in its text only: Ladle draws no card or chip for a
-    place, so apron-web's rule (#155: a sender's preview embed for a place hides under the
-    card the client draws for it) has nothing to hide, and a `link` embed's `og` for an Apron
-    link shows as any other.
+  - `PlaceCard` (`PlaceCards.swift`): the card for an Apron link to a message, room or thread in
+    a message's text, as apron-web's LinkCard, drawn only from what the device holds:
+    `ServerSession.placeCards(in:sessions:)` reads each link (relative ones against the sender's
+    server, §5), takes another saved server's place from its session while it is signed in
+    (`SessionStore.liveSession(for:)`), and gives at most 3, one per place, none for the message
+    itself, a user, or a place the user can't see (no room record, or private and not joined).
+    A loaded message still in the linked room shows its sender, room and three lines; anything
+    else shows as its room: title, lock, member count. Nothing is fetched for a card: no request
+    names one message, and `reveal` pages history. `PlaceCard.previews` is apron-web's
+    `previewedByCard` (#155): an embed whose `url` reads as the same place as a card is hidden.
   - `LinkPreviews`: previews this device fetches for links the server did not describe (the
     user's choice over §4.8.1's "clients don't fetch third-party pages"). `unfurlURL` picks one
     link per message, the first `mayFetch` allows among its first three (text links, then `link`

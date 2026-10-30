@@ -63,6 +63,11 @@ final class PreviewFixturesTests: XCTestCase {
             case .audio(_, let cover): cover == nil ? "audio" : "audio with cover"
             }
         }, ["video with poster", "audio with cover"])
+        let linking = home.timeline(PreviewFixtures.linkCardRoomID).suffix(2)
+        XCTAssertEqual(linking.map { home.placeCards(in: $0).map(\.roomTitle) }, [["general"], ["Release 0.2", "ops"]], "a message, a thread, a private room")
+        XCTAssertEqual(linking.map { message in
+            message.embedList.filter { PlaceCard.previews($0, in: home.placeCards(in: message), from: home.record.url) }.count
+        }, [1, 0], "a sender's preview the card hides")
         XCTAssertEqual(demo.unreadCount(in: "lobby"), 3)
         XCTAssertFalse(demo.mayWrite, "a guest the demo lets only read")
         XCTAssertEqual(demo.serverName, "Apron Demo", "named by its title")

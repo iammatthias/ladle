@@ -37,6 +37,7 @@ struct RootView: View {
             }
         }
         .environment(\.requestSignIn, SignInAction { connecting = ConnectRequest(record: $0) })
+        .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
         .onOpenURL { url in ApronLink(url).map(open) }
         .environment(\.openURL, OpenURLAction { url in
             guard let link = ApronLink(url) else { return .systemAction }
