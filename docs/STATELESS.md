@@ -134,3 +134,27 @@ Ladle has no settings view: Show Link Previews is `Settings.bundle`, read with `
 | `SelectTextSheet`, `SelectableText` (`Timeline/SelectTextSheet.swift`) | stateless | Show text in a read-only `UITextView`. |
 | `VoiceRecorder`, `RecordingBar` (`Timeline/VoiceRecorder.swift`) | keep | AVFoundation recording state. |
 | `MediaCompression` (`Timeline/MediaCompression.swift`) | keep | AVFoundation export. |
+
+## Outcome
+
+Each step above landed as one commit, with its tests in `Packages/ApronKit/Tests/ApronKitTests/`:
+
+1. `Timeline.swift` (`TimelineTests`). `Presence` moved too, its color staying in the app.
+2. `DraftField` and `ServerSession.suggestions(for:in:)` and `submit` (`DraftFieldTests`, and
+   `testAnEditSavesWhoItsTextStillMentions` in `ServerSessionTests`).
+3. `MessageReminders` (`MessageRemindersTests`). `TimelineView` takes the store's
+   `Reminders` as an argument; the `reminders` environment value is gone.
+4. `MessageMenu`, and `NoticeMenu` for a notice's menu and title (`MessageMenuTests`).
+5. `MessageRowModel` and `MentionKey` (`MessageRowModelTests`), with the spoken helpers:
+   `EmojiKeys.spoken`, `ReactionEntry.label`, `PlaceCard.spoken`, `Embed.kindLabel` and
+   `summary`.
+6. `ConnectForm`, and `SessionStore.save` for the record (`ConnectFormTests`).
+7. `LinkRoute` (`LinkRouteTests`).
+8. `ConnectionState` (`ConnectionStateTests`).
+
+The design shots render as they did at `eae9d0d`: 51 of the 52 PNGs are byte-identical, and
+the last differs only in the reaction picker field's text cursor, which blinks. Across the
+intermediate runs, the servers shot's unread count for the
+demo server varies between runs of the same build (its `help` room is sometimes counted
+unread while the fixtures load); a second render of `eae9d0d` and a debug run of the new
+code each showed both values, so it does not come from these changes.
