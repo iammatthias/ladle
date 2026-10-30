@@ -3,7 +3,9 @@ import SwiftUI
 
 @main
 struct LadleApp: App {
-    @State private var store = SessionStore(serverStore: try? ServerStore.applicationSupport(), tokens: KeychainStore())
+    @UIApplicationDelegateAdaptor private var delegate: AppDelegate
+    @State private var store = SessionStore(serverStore: try? ServerStore.applicationSupport(), tokens: KeychainStore(),
+                                            notifier: LocalReminderNotifier())
     @State private var loadError: String?
 
     init() {

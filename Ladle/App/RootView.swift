@@ -38,6 +38,7 @@ struct RootView: View {
         }
         .environment(\.requestSignIn, SignInAction { connecting = ConnectRequest(record: $0) })
         .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
+        .environment(\.reminders, store.reminders)
         .onOpenURL { url in ApronLink(url).map(open) }
         .environment(\.openURL, OpenURLAction { url in
             guard let link = ApronLink(url) else { return .systemAction }
@@ -55,7 +56,11 @@ struct RootView: View {
             }
         }
         .task { await watchNetwork() }
-        .onChange(of: store.records.count, initial: true) { restore() }
+        .onChange(of: store.records.count, initial: true) {
+            restore()
+            openReminder()
+        }
+        .onChange(of: ReminderRoutes.shared.opened) { openReminder() }
     }
 
     // MARK: iPhone
@@ -115,6 +120,14 @@ struct RootView: View {
         } else {
             connecting = ConnectRequest(prefill: TokenPayload(token: link.token ?? "", server: server), place: link)
         }
+    }
+
+    /// A tapped reminder's message, once its server has loaded: revealed and highlighted, as a link to it.
+    private func openReminder() {
+        guard let key = ReminderRoutes.shared.opened, let record = store.records.first(where: { $0.id == key.server }) else { return }
+        ReminderRoutes.shared.opened = nil
+        restored = true
+        show(record.id, ApronLink(server: record.url, room: key.roomID, message: key.messageID))
     }
 
     private func show(_ id: UUID, _ link: ApronLink?) {

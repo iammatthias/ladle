@@ -4,12 +4,14 @@ import SwiftUI
 /// The web's Message: an avatar in a 32 pt gutter, the sender and time, the reply it answers
 /// above, the text, embeds, and reactions. A message that mentions you sits on accent-soft with
 /// an accent bar, as the web marks it. One a link opened to is highlighted on `hover`, as the
-/// web's `ap-msg-highlighted`.
+/// web's `ap-msg-highlighted`. One with a reminder has an accent edge and says when it is due.
 struct MessageRow: View {
     let session: ServerSession
     let message: MessageSnapshot
     let continues: Bool
     var highlighted = false
+    var reminderDue: Date?
+    var onClearReminder: () -> Void = {}
     var onReact: (String) -> Void = { _ in }
     var onAddReaction: () -> Void = {}
     var onJump: (LogID) -> Void = { _ in }
@@ -25,6 +27,10 @@ struct MessageRow: View {
         let compact = (fixedTypeSize ?? typeSize).isAccessibilitySize
         let mentionsYou = session.you.map { message.mentions($0.userID) && message.from.userID != $0.userID } ?? false
         VStack(alignment: .leading, spacing: 0) {
+            if let reminderDue {
+                ReminderBadge(due: reminderDue, clear: onClearReminder)
+                    .padding(.leading, compact ? 0 : Tokens.AvatarSize.md + Tokens.Space.s3)
+            }
             if let target = message.replyTo {
                 ReplyQuote(session: session, target: target, onJump: onJump)
                     .padding(.leading, compact ? 0 : Tokens.AvatarSize.md + Tokens.Space.s3 - Tokens.Space.s1)
@@ -52,6 +58,11 @@ struct MessageRow: View {
         .padding(.vertical, Tokens.Space.s1)
         .padding(.horizontal, Tokens.Space.s2)
         .background(highlighted ? Palette.hover : mentionsYou ? Palette.accentSoft : .clear, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
+        .overlay {
+            if reminderDue != nil {
+                RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.accent, lineWidth: 1.5).accessibilityHidden(true)
+            }
+        }
         .overlay(alignment: .leading) {
             if mentionsYou {
                 Capsule().fill(Palette.accent).frame(width: 3).padding(.vertical, Tokens.Space.s1)
@@ -145,7 +156,7 @@ struct MessageRow: View {
     }
 
     private func accessibilityText(name: String, mentionsYou: Bool) -> String {
-        var parts = [name] + session.roles(of: message.from)
+        var parts = (reminderDue.map { [Reminder.label(due: $0, now: .now)] } ?? []) + [name] + session.roles(of: message.from)
         if mentionsYou { parts.append("mentions you") }
         if message.replyTo != nil {
             let target = message.replyTo.flatMap(session.store.message)

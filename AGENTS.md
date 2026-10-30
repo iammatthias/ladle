@@ -227,6 +227,17 @@ clone), which is only a worked example.
   - `ServerRecord`, `ServerStore`, `TokenStore`, `ReadPositionStore`: the saved servers (JSON, no
     secrets), the seam for the bearer token, and the read positions. The in-memory stores are
     for tests.
+  - `Reminders` (`Reminders.swift`): Remind Me, on this device only. One `Reminder` per
+    `ReminderKey` (server id, room, message), kept in `reminders.json` beside `servers.json`
+    (`FileReminderStore`) and owned by `SessionStore`, which drops a server's reminders with it.
+    `ReminderChoice` is the menu's times (Tomorrow is 09:00 the next day, local), and
+    `Reminder.label` the row's "Due in 1 hr" or "Due now". `ReminderNotifier` delivers them:
+    the app's `LocalReminderNotifier` schedules a UserNotifications calendar trigger under
+    `ReminderKey.identifier`, so removing one cancels it, and asks to notify only on the first
+    reminder; a refusal keeps the reminder on its row and the timeline says notifications are
+    off, with Settings. A tapped notification's `userInfo` reads back as its key, and
+    `RootView` opens it as a link to the message (reveal and highlight). Local notifications
+    need no Info.plist key.
 - `Ladle/`: the app, views only; logic belongs in ApronKit where `swift test` reaches it. The
   design follows apron-web, the official web client (see "Design").
   `App/` (`RootView`: one pane at a time in compact width, a split view with the server rail,
@@ -263,7 +274,8 @@ clone), which is only a worked example.
   fallback card, and plays the page's `remoteVideoURL` (`LinkPreview.playableVideo`) inline; upload embeds as a picture, an inline video, an audio player, a file card that opens in
   Quick Look, or a pending card with progress; `Attachments`: the draft's tiles, staging in
   the temporary directory (cleared at launch), the camera; `VoiceRecorder`: voice notes as
-  `audio/mp4`), `Media/` (`MediaLoader`: images decoded at their shown size and files for Quick
+  `audio/mp4`; `ReminderViews`: `ReminderBadge`, the due line and Clear on a reminded row,
+  which takes an accent edge, and `ReminderDateSheet`, Custom…), `Media/` (`MediaLoader`: images decoded at their shown size and files for Quick
   Look, no cookies; `MediaViewer`: the room's images full screen, as the web's viewer), `Design/`
   (`Tokens.swift`, generated; `Apron`: colors by job, text roles, motion; `People`: avatars,
   StatusDot and RoleBadges; `Components`: the web's UnreadCount, Callout, ActionBanner, EmptyState, buttons).
@@ -350,7 +362,7 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, and the Select Text sheet; the busy room at AX3; and the iPad
+list, the Select Text sheet, a reminded message, and Remind Me's Custom… sheet; the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with
@@ -406,7 +418,8 @@ pinned commit. Run it before `swift test` (the gate line above does), and `./bui
 - Apple frameworks only: Foundation, URLSession WebSockets, AuthenticationServices,
   Security, SwiftUI, Observation, Network (`NWPathMonitor` reconnects when the network
   returns), VisionKit (the sign-in QR scanner, not on Mac Catalyst), and for attachments PhotosUI, AVFoundation, AVKit, QuickLook, ImageIO,
-  UniformTypeIdentifiers and CryptoKit (cache file names). PhotosPicker and the document
+  UniformTypeIdentifiers and CryptoKit (cache file names), and UserNotifications (Remind Me's
+  local notifications; no usage string, no required-reason API). PhotosPicker and the document
   picker run out of process and need no usage string; the camera and the microphone (voice
   notes) have theirs in `project.yml`; the camera's names scanning too. Nothing in them is a required-reason API: files go only to the server the user sends them to.
   LinkPresentation fetches link previews; it is not a required-reason API either, and a
