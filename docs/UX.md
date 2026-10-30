@@ -275,7 +275,7 @@ Each section has one action button at its bottom, within reach.
 - A `SecureField` labeled "Token or sign-in link". The token is a credential ([text-fields]: "Always use a secure text field when your app asks for sensitive data"). After a paste, the footer confirms what was read: "Token received" or "Link for chat.example".
 - `PasteButton`, and **Scan QR Code** when `DataScannerViewController.isSupported && isAvailable`. A scanned or pasted token shows "Token received" under the field.
 - **Sign In**.
-- Footer: "Signed in elsewhere? In that app, send /invite-device and a name, such as /invite-device phone, then paste the token here. A server's admin can also give you one." This defines the term ([inclusion]: "Avoid using specialized or technical terms without defining them.").
+- Footer: "Signed in elsewhere? In that app, send /invite-device add, or name the device, such as /invite-device add phone, then paste the token here. A server's admin can also give you one." This defines the term ([inclusion]: "Avoid using specialized or technical terms without defining them.").
 - A link for a different server shows "This link is for other.example." and fills in nothing. **Judgment call:** no **Add other.example** button, since that would open a sheet from inside this one.
 
 **Email section.**

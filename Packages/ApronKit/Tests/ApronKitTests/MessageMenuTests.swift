@@ -36,12 +36,12 @@ final class MessageMenuTests: XCTestCase {
         XCTAssertEqual(NoticeMenu(Notice(roomID: "general", from: UserObject(["user_id": "~private"])!, body: ["text": "hi"]), in: home).title,
                        "Only you can see this")
         let token = Notice(roomID: "general", from: UserObject(["user_id": "~server"])!,
-                           body: ["text": "Your token: `apron_invite_x`. Run `/invite-device phone` or see https://home.example/docs", "format": "markdown"])
+                           body: ["text": "Your token: `apron_invite_x`. Run `/invite-device add phone` or see https://home.example/docs", "format": "markdown"])
         let server = NoticeMenu(token, in: home)
         XCTAssertEqual(server.title, "Home")
-        XCTAssertEqual(server.code, ["apron_invite_x", "/invite-device phone"])
+        XCTAssertEqual(server.code, ["apron_invite_x", "/invite-device add phone"])
         XCTAssertEqual(server.links.map(\.shared.absoluteString), ["https://home.example/docs"])
-        XCTAssertEqual(server.text, "Your token: apron_invite_x. Run /invite-device phone or see https://home.example/docs")
+        XCTAssertEqual(server.text, "Your token: apron_invite_x. Run /invite-device add phone or see https://home.example/docs")
         XCTAssertNil(NoticeMenu(Notice(roomID: "general", from: UserObject(["user_id": "~room"])!, body: ["text": "hi"]), in: home).title)
         XCTAssertEqual(NoticeMenu(Notice(roomID: "general", from: UserObject(["user_id": "ada"])!, body: ["text": "hi"]), in: home).title, "Ada Okafor")
     }

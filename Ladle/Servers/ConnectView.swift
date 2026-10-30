@@ -156,7 +156,7 @@ struct ConnectView: View {
                 if form.isSignUpInvite {
                     Text("This invitation creates an account. Choose the name others see, or leave it empty and the server picks one.")
                 } else {
-                    Text("Signed in elsewhere? In that app, send /invite-device and a name, such as /invite-device phone, then paste the token here or scan its QR code. A server's admin can also give you one.")
+                    Text("Signed in elsewhere? In that app, send /invite-device add, or name the device, such as /invite-device add phone, then paste the token here or scan its QR code. A server's admin can also give you one.")
                 }
                 HStack(spacing: Tokens.Space.s2) {
                     PasteButton(payloadType: String.self) { strings in if let first = strings.first { form.accept(first) } }

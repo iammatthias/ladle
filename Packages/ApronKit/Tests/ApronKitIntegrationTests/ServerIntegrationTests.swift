@@ -143,7 +143,8 @@ final class ServerIntegrationTests: XCTestCase {
         await admin.loadCommands(in: "general")
         try await waitFor("admin commands") { admin.commands.map { $0.commands.count > 1 } ?? false }
         let names = admin.commands?.commands.map(\.name) ?? []
-        XCTAssertEqual(names.first, "help")
+        XCTAssertEqual(names, names.sorted(), "alphabetical, as the server lists them")
+        XCTAssertEqual(names.first, "admin")
         XCTAssertTrue(names.contains("purge") && names.contains("invite-device"), "\(names)")
 
         XCTAssertEqual(admin.notices.compactMap(CommandHelp.init(notice:)), [], "the fetched list stays out of the timeline")

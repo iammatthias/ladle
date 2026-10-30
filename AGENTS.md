@@ -467,7 +467,7 @@ The primary v1 sign-in is a bearer token (`scheme: "token"`, §3.2.1), pasted in
 scanned from a QR code, obtained from another client. This works today with no server changes:
 the web client has a "sign in with a token the server gave you" mode, the public demo issues
 tokens through `/invite-bot` (a bot identity), and the protocol allows a command that issues
-more tokens. The Rust server's `/invite-device <name>` (after apron-server-cloudflare's) mints a
+more tokens. The Rust server's `/invite-device add [<id>]` (after apron-server-cloudflare's) mints a
 device token for the signed-in account that signs in from any origin, or with none; its `auth`
 result carries no `token`, so the device keeps the one it presented. Its notice includes a §A.4
 sign-in link (`https://link.apron.chat/#server=…&token=…`), which apron-web can show as a QR code.

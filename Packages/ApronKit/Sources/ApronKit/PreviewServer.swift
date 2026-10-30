@@ -65,10 +65,10 @@ public actor PreviewServer: FrameTransport {
 
     /// What apron-server-rust's `/help` lists for an account with no roles.
     static let help = """
-    - `/help`: list the commands you can use here
     - `/avatar`: with one image attached: set your avatar
-    - `/invite-device <name>`: get a token that signs in as you on another device, named <name>; at most 3 names, and a name again replaces its token
+    - `/help`: list the commands you can use here
     - `/invite-bot`: get a token that signs in as your bot, named after you; again, it replaces the token and renames the bot
+    - `/invite-device add|remove [<id>]`: get a token that signs in as you on another device, or revoke one
     - `/passkeys [remove <n>]`: list your account's passkeys, or remove one of them
     """
 
