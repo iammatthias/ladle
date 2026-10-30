@@ -38,7 +38,6 @@ struct RootView: View {
         }
         .environment(\.requestSignIn, SignInAction { connecting = ConnectRequest(record: $0) })
         .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
-        .environment(\.reminders, store.reminders)
         .onOpenURL { url in ApronLink(url).map(open) }
         .environment(\.openURL, OpenURLAction { url in
             guard let link = ApronLink(url) else { return .systemAction }
@@ -79,7 +78,7 @@ struct RootView: View {
                         }
                     case .room(let id, let room):
                         if let session = store.session(for: id) {
-                            TimelineView(session: session, roomID: room, place: $place)
+                            TimelineView(session: session, roomID: room, reminders: store.reminders, place: $place)
                                 .resolvingLinks(from: session)
                                 .environment(\.openRoom, OpenRoomAction { path.append(.room(id, $0)) })
                                 .onAppear { serverID = id.uuidString; roomID = room }
@@ -207,7 +206,7 @@ struct SplitLayout: View {
         } detail: {
             NavigationStack {
                 if let session, let roomID {
-                    TimelineView(session: session, roomID: roomID, place: $place, showingMembers: true)
+                    TimelineView(session: session, roomID: roomID, reminders: store.reminders, place: $place, showingMembers: true)
                         .resolvingLinks(from: session)
                         .id(roomID)
                         .environment(\.openRoom, OpenRoomAction { self.roomID = $0 })

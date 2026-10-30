@@ -250,7 +250,8 @@ clone), which is only a worked example.
     the app's `LocalReminderNotifier` schedules a UserNotifications calendar trigger under
     `ReminderKey.identifier`, so removing one cancels it, and asks to notify only on the first
     reminder; a refusal keeps the reminder on its row and the timeline says notifications are
-    off, with Settings. A tapped notification's `userInfo` reads back as its key, and
+    off, with Settings. `MessageReminders` is Remind Me in one timeline: the reminder on each
+    message, setting and removing one, Custom…'s first time, and that notice. A tapped notification's `userInfo` reads back as its key, and
     `RootView` opens it as a link to the message (reveal and highlight). Local notifications
     need no Info.plist key.
 - `Ladle/`: the app, views only; logic belongs in ApronKit where `swift test` reaches it. The
