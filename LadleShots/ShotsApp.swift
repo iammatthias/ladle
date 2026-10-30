@@ -138,7 +138,7 @@ enum Renderer {
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, reminders: store.reminders, draft: Draft(field: DraftField(text: "Moving this to #s"))) })
         case .selectText:
             AnyView(SelectTextSheet(text: home.timeline(PreviewFixtures.busyRoomID).first { $0.plainText.hasPrefix("Notes from the sync") }
-                .map { SelectableBody($0.body).text } ?? "") {})
+                .map { MessageText.plain($0.body) } ?? "") {})
         case .reminder:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders) })
         case .reminderCustom:

@@ -58,10 +58,11 @@ struct TimelineView: View {
                         row(item).id(item.id)
                     }
                     ForEach(Array(session.notices.enumerated()).filter { $0.element.roomID == roomID }, id: \.offset) { _, notice in
-                        Callout(title: noticeTitle(notice)) { Text(rendered(notice.body, rooms: session.referencedTitle)).tint(Palette.denim) }
+                        let menu = NoticeMenu(notice, in: session)
+                        Callout(title: menu.title) { Text(rendered(notice.body, rooms: session.referencedTitle)).tint(Palette.denim) }
                             .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Tokens.Radius.md))
-                            .contextMenu { noticeActions(notice) }
-                            .accessibilityActions { noticeActions(notice) }
+                            .contextMenu { noticeActions(menu) }
+                            .accessibilityActions { noticeActions(menu) }
                             .padding(.horizontal, Tokens.Space.s4)
                             .padding(.top, Tokens.Space.s3)
                     }
@@ -307,8 +308,9 @@ struct TimelineView: View {
 
     @ViewBuilder
     private func actions(for message: MessageSnapshot) -> some View {
+        let menu = MessageMenu(message, in: session)
         Section {
-            if session.status == .signedIn, session.server?.has("reactions") == true {
+            if menu.reacts {
                 ControlGroup {
                     ForEach(ReactionPicker.quick.prefix(4), id: \.self) { emoji in
                         Button(emoji) { perform { try await session.toggleReaction(emoji, on: message.messageID) } }
@@ -319,26 +321,26 @@ struct TimelineView: View {
             }
             Button("Reply", systemImage: "arrowshape.turn.up.left") { draft = Draft(field: DraftField(mode: .reply(message)), attachments: draft.attachments) }
         } header: {
-            if !session.mayWrite { Text(ReadOnlyPrompt.reason(session)) }
+            if !menu.mayWrite { Text(ReadOnlyPrompt.reason(session)) }
         }
-        .disabled(!session.mayWrite)
-        Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.plainText }
-        if !message.plainText.isEmpty {
-            Button("Select Text", systemImage: "selection.pin.in.out") { selecting = SelectableBody(message.body) }
+        .disabled(!menu.mayWrite)
+        Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = menu.text }
+        if let text = menu.selectableText {
+            Button("Select Text", systemImage: "selection.pin.in.out") { selecting = SelectableBody(text: text) }
         }
-        if let link = ApronLink(server: session.record.url, room: message.roomID, message: message.messageID).webURL {
+        if let link = menu.link {
             Button("Copy Link", systemImage: "link") { UIPasteboard.general.url = link }
         }
-        if session.mayMove(message), !session.moveDestinations(for: message).isEmpty {
+        if !menu.moveDestinations.isEmpty {
             Menu("Move To", systemImage: "arrow.right.square") {
-                ForEach(session.moveDestinations(for: message), id: \.self) { roomID in
+                ForEach(menu.moveDestinations, id: \.self) { roomID in
                     Button(session.title(of: roomID)) { perform { try await session.move(message, to: roomID) } }
                 }
             }
         }
         remindMenu(message)
-        linkActions(message.body)
-        if session.status == .signedIn, session.mayWrite, session.isYou(message.from.userID), session.server?.has("edit") == true {
+        linkActions(menu.links)
+        if menu.editable {
             Button("Edit", systemImage: "pencil") { draft = Draft(field: DraftField(editing: message, in: session)) }
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
         }
@@ -362,30 +364,27 @@ struct TimelineView: View {
 
     /// Open, Copy Link and Share for each of a body's first three links.
     @ViewBuilder
-    private func linkActions(_ body: JSONValue?) -> some View {
-        ForEach(MessageText.links(body).prefix(3), id: \.self) { url in
-            let shared = ApronLink.outbound(url, from: session.record.url)
-            Menu(url.host() ?? url.absoluteString, systemImage: "link") {
-                Button("Open Link", systemImage: "arrow.up.right.square") { openURL(url) }
-                Button("Copy Link", systemImage: "doc.on.doc") { UIPasteboard.general.url = shared }
-                ShareLink(item: shared)
+    private func linkActions(_ links: [MenuLink]) -> some View {
+        ForEach(links, id: \.self) { link in
+            Menu(link.title, systemImage: "link") {
+                Button("Open Link", systemImage: "arrow.up.right.square") { openURL(link.url) }
+                Button("Copy Link", systemImage: "doc.on.doc") { UIPasteboard.general.url = link.shared }
+                ShareLink(item: link.shared)
             }
         }
     }
 
-    /// A notice's menu, as a message's without what a notice can't take (reactions, replies,
-    /// edits): its text, its code (a token, a command) on its own, as apron-web's copy buttons
-    /// on a notice's code, and its links.
+    /// A notice's menu (`NoticeMenu`): its text, each code span on its own, and its links.
     @ViewBuilder
-    private func noticeActions(_ notice: Notice) -> some View {
-        Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = MessageText.plain(notice.body) }
-        Button("Select Text", systemImage: "selection.pin.in.out") { selecting = SelectableBody(notice.body) }
-        ForEach(MessageText.code(notice.body).prefix(3), id: \.self) { code in
+    private func noticeActions(_ menu: NoticeMenu) -> some View {
+        Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = menu.text }
+        Button("Select Text", systemImage: "selection.pin.in.out") { selecting = SelectableBody(text: menu.text) }
+        ForEach(menu.code, id: \.self) { code in
             Button { UIPasteboard.general.string = code } label: {
                 Label { Text("Copy \(Text(code).monospaced())").lineLimit(1) } icon: { Image(systemName: "chevron.left.forwardslash.chevron.right") }
             }
         }
-        linkActions(notice.body)
+        linkActions(menu.links)
     }
 
     /// Files dropped on the conversation join the draft, as the web's DropZone does.
@@ -410,15 +409,6 @@ struct TimelineView: View {
         draft = Draft()
         sentCount += 1
         perform { try await session.submit(field, in: roomID, attachments: attachments) }
-    }
-
-    private func noticeTitle(_ notice: Notice) -> String? {
-        switch notice.from.userID {
-        case "~private": "Only you can see this"
-        case "~room": nil
-        case "~server": session.serverName
-        default: session.displayName(for: notice.from)
-        }
     }
 
     private func dayLabel(_ date: Date) -> String {
@@ -468,12 +458,10 @@ struct ReadMark: Equatable {
     var through: LogID?
 }
 
-/// A body's text as Select Text shows it: as read, without markdown's syntax.
+/// The text Select Text shows (`MessageMenu.selectableText`, `NoticeMenu.text`).
 struct SelectableBody: Identifiable {
     let id = UUID()
     let text: String
-
-    init(_ body: JSONValue?) { text = MessageText.plain(body) }
 }
 
 /// Remind Me's Custom…: the message, and the time being picked.
