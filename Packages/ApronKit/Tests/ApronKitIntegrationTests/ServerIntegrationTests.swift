@@ -171,7 +171,7 @@ final class ServerIntegrationTests: XCTestCase {
         try await waitFor("reply installed") { session.store.message(reply) != nil }
         XCTAssertEqual(session.store.message(reply)?.replyTo, first)
 
-        try await session.edit(try XCTUnwrap(session.store.message(first)), text: "hello world")
+        try await session.edit(try XCTUnwrap(session.store.message(first)), text: "hello world", mentions: [])
         try await waitFor("edit installed") { session.store.message(first)?.body?["text"] == "hello world" }
         let edited = try XCTUnwrap(session.store.message(first))
         XCTAssertGreaterThan(edited.logID, first)

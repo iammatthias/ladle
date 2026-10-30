@@ -776,11 +776,13 @@ public final class ServerSession {
         if let index = outbox.firstIndex(where: { $0.id == id }) { outbox[index].state = state }
     }
 
-    /// Saves new text, sending every other client field again (§4.4).
-    public func edit(_ message: MessageSnapshot, text: String) async throws {
+    /// Saves new text and who it mentions, sending every other client field again (§4.4). A save
+    /// replaces `body.mentions`, and the server notifies only the users it adds (§3.5.5).
+    public func edit(_ message: MessageSnapshot, text: String, mentions: [String]) async throws {
         try require("edit")
         var body = message.body?.objectValue ?? [:]
         body["text"] = .string(text)
+        body["mentions"] = mentions.isEmpty ? nil : .array(mentions.map(JSONValue.string))
         var snapshot = message
         snapshot.body = .object(body)
         _ = try await request("message", .object(save(snapshot, in: message.roomID)))

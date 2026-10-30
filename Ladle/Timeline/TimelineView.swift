@@ -106,7 +106,7 @@ struct TimelineView: View {
             MediaViewer(items: session.mediaItems(in: roomID), selection: request.id)
         }
         .dropDestination(for: ImportedFile.self) { files, _ in
-            guard session.canAttach, !isEditing else { return false }
+            guard session.canAttach, !draft.field.isEdit else { return false }
             dropped(files)
             return true
         }
@@ -317,7 +317,7 @@ struct TimelineView: View {
                 }
                 .controlGroupStyle(.compactMenu)
             }
-            Button("Reply", systemImage: "arrowshape.turn.up.left") { draft = Draft(mode: .reply(message), attachments: draft.attachments) }
+            Button("Reply", systemImage: "arrowshape.turn.up.left") { draft = Draft(field: DraftField(mode: .reply(message)), attachments: draft.attachments) }
         } header: {
             if !session.mayWrite { Text(ReadOnlyPrompt.reason(session)) }
         }
@@ -339,7 +339,7 @@ struct TimelineView: View {
         if reminders != nil { remindMenu(message) }
         linkActions(message.body)
         if session.status == .signedIn, session.mayWrite, session.isYou(message.from.userID), session.server?.has("edit") == true {
-            Button("Edit", systemImage: "pencil") { draft = Draft(mode: .edit(message), text: message.plainText) }
+            Button("Edit", systemImage: "pencil") { draft = Draft(field: DraftField(editing: message, in: session)) }
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
         }
     }
@@ -403,11 +403,6 @@ struct TimelineView: View {
         linkActions(notice.body)
     }
 
-    private var isEditing: Bool {
-        if case .edit = draft.mode { return true }
-        return false
-    }
-
     /// Files dropped on the conversation join the draft, as the web's DropZone does.
     private func dropped(_ files: [ImportedFile]) {
         let limits = session.mediaLimits?.upload
@@ -426,22 +421,10 @@ struct TimelineView: View {
         }
     }
 
-    private func send(_ text: String, mentions: [String], attachments: [Attachment]) {
-        let mode = draft.mode
+    private func send(_ field: DraftField, attachments: [Attachment]) {
         draft = Draft()
         sentCount += 1
-        switch mode {
-        case .new, .reply:
-            var replyTo: LogID?
-            if case .reply(let target) = mode { replyTo = target.messageID }
-            if ServerSession.Draft(text: text).isCommand {
-                perform { try await session.send(text, in: roomID, replyTo: replyTo, mentions: mentions, attachments: attachments) }
-            } else {
-                session.post(text, in: roomID, replyTo: replyTo, mentions: mentions, attachments: attachments)
-            }
-        case .edit(let target):
-            perform { try await session.edit(target, text: text) }
-        }
+        perform { try await session.submit(field, in: roomID, attachments: attachments) }
     }
 
     private func noticeTitle(_ notice: Notice) -> String? {
@@ -467,19 +450,9 @@ struct TimelineView: View {
     }
 }
 
-/// What the composer is writing: a new message, a reply, or an edit, and who it mentions.
+/// What the composer is writing (`DraftField`), and the files staged to go with it (§4.8.4).
 struct Draft {
-    enum Mode {
-        case new
-        case reply(MessageSnapshot)
-        case edit(MessageSnapshot)
-    }
-
-    var mode = Mode.new
-    var text = ""
-    /// Users picked from the mention list, by `user_id`, with the name inserted for each.
-    var mentions: [String: String] = [:]
-    /// Files to send with a new message or reply (§4.8.4).
+    var field = DraftField()
     var attachments: [DraftAttachment] = []
 }
 

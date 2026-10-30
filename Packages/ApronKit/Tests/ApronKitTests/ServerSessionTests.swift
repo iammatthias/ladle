@@ -1033,7 +1033,7 @@ final class ServerSessionTests: XCTestCase {
         try await expect(#"{"id":"c3","method":"message","params":{"body":{"format":"plain","text":"hi"},"reply_to":{"message_id":"200"},"room_id":"general"}}"#,
                          reply: ["message_id": "201"]) { try await self.session.send("hi", in: "general", replyTo: LogID("200")) }
         try await expect(#"{"id":"c4","method":"message","params":{"body":{"format":"markdown","mentions":["bob"],"text":"hello"},"message_id":"200","reply_to":{"message_id":"150"},"room_id":"general"}}"#) {
-            try await self.session.edit(original, text: "hello")
+            try await self.session.edit(original, text: "hello", mentions: ["bob"])
         }
         try await expect(#"{"id":"c5","method":"message","params":{"deleted":true,"message_id":"200","room_id":"general"}}"#) {
             try await self.session.delete(original)
@@ -1114,9 +1114,28 @@ final class ServerSessionTests: XCTestCase {
         ]])
         await eventually("message installed") { session.store.message(LogID("200")!) != nil }
         let original = try XCTUnwrap(session.store.message(LogID("200")!))
-        let edit = Task { try await session.edit(original, text: "hello") }
+        let edit = Task { try await session.edit(original, text: "hello", mentions: []) }
         let sent = await frame(socket, 2)
         XCTAssertEqual(sent, #"{"id":"c3","method":"message","params":{"body":{"text":"hello"},"ext":{"k":1},"message_id":"200","reply_to":{"message_id":"150"},"room_id":"general"}}"#)
+        await socket.deliver(["id": "c3", "result": [:]])
+        try await edit.value
+    }
+
+    func testAnEditSavesWhoItsTextStillMentions() async throws {
+        let socket = try await signInWithRooms(["user_id": "mia"], capabilities: ["history", "edit", "rooms"])
+        await socket.deliver(["method": "message", "params": [
+            "message_id": "200", "log_id": "200", "room_id": "general", "from": ["user_id": "mia"],
+            "body": ["text": "@guest_1234 and @bob, look", "format": "markdown", "mentions": ["guest_1234", "bob"]],
+        ]])
+        await eventually("message installed") { session.store.message(LogID("200")!) != nil }
+        var field = DraftField(editing: try XCTUnwrap(session.store.message(LogID("200")!)), in: session)
+        XCTAssertEqual(field.mentions, ["guest_1234": "guest_1234", "bob": "bob"], "an @user_id in the text keeps its mention")
+        field.text = "@guest_1234 look, and @ad"
+        field.insert(mention: "ada", named: "Ada")
+        let edit = Task { try await session.submit(field, in: "general", attachments: []) }
+        let sent = await frame(socket, 2)
+        XCTAssertEqual(sent, #"{"id":"c3","method":"message","params":{"body":{"format":"markdown","mentions":["ada","guest_1234"],"text":"@guest_1234 look, and @Ada"},"message_id":"200","room_id":"general"}}"#,
+                       "Bob's @ is gone and Ada is picked")
         await socket.deliver(["id": "c3", "result": [:]])
         try await edit.value
     }
