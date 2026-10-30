@@ -239,7 +239,11 @@ clone), which is only a worked example.
   message menu's Copy Link, and Copy Link and Share on a link in a message or notice, write the web form
   (`ApronLink.outbound`), except a sign-in link, which stays as written so it keeps its token, and
   opens the saved server's sign-in sheet with the token filled in; a notice's long-press menu
-  offers Copy Text, each code span on its own (`MessageText.code`) and its links;
+  offers Copy Text, Select Text, each code span on its own (`MessageText.code`) and its links;
+  Select Text, on a message's menu too, opens `SelectTextSheet`: the text as read
+  (`MessageText.plain`) in a read-only `UITextView`, where any part selects with the system's
+  Copy, Look Up, Translate and Share, since an iOS `Text` selects only all of itself and its
+  long press would compete with the row's menu;
   a server added through the Connect sheet opens once its sign-in succeeds),
   `Servers/` (the server list and iPad rail, `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
@@ -345,7 +349,8 @@ of uploads (image, video, file, audio, pending), the media viewer, the composer 
 limit, a read-only guest's sign-in prompt on the demo server, custom emoji in text, a
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
-`PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), and the `#` room list; the busy room at AX3; and the iPad
+`PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
+list, and the Select Text sheet; the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with

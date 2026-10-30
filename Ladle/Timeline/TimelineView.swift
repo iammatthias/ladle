@@ -23,6 +23,7 @@ struct TimelineView: View {
     @State private var jumpTarget: String?
     @State private var sentCount = 0
     @State private var viewing: MediaRequest?
+    @State private var selecting: SelectableBody?
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openRoom) private var openRoom
@@ -110,6 +111,9 @@ struct TimelineView: View {
         .navigationTitle(session.title(of: roomID))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
+        .sheet(item: $selecting) { selected in
+            SelectTextSheet(text: selected.text) { selecting = nil }
+        }
         .sheet(item: $reacting) { message in
             ReactionPicker(session: session) { emoji in
                 reacting = nil
@@ -293,6 +297,9 @@ struct TimelineView: View {
         }
         .disabled(!session.mayWrite)
         Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = message.plainText }
+        if !message.plainText.isEmpty {
+            Button("Select Text", systemImage: "selection.pin.in.out") { selecting = SelectableBody(message.body) }
+        }
         if let link = ApronLink(server: session.record.url, room: message.roomID, message: message.messageID).webURL {
             Button("Copy Link", systemImage: "link") { UIPasteboard.general.url = link }
         }
@@ -329,6 +336,7 @@ struct TimelineView: View {
     @ViewBuilder
     private func noticeActions(_ notice: Notice) -> some View {
         Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = MessageText.plain(notice.body) }
+        Button("Select Text", systemImage: "selection.pin.in.out") { selecting = SelectableBody(notice.body) }
         ForEach(MessageText.code(notice.body).prefix(3), id: \.self) { code in
             Button { UIPasteboard.general.string = code } label: {
                 Label { Text("Copy \(Text(code).monospaced())").lineLimit(1) } icon: { Image(systemName: "chevron.left.forwardslash.chevron.right") }
@@ -442,6 +450,14 @@ struct Focus: Equatable {
 struct ReadMark: Equatable {
     var reading: Bool
     var through: LogID?
+}
+
+/// A body's text as Select Text shows it: as read, without markdown's syntax.
+struct SelectableBody: Identifiable {
+    let id = UUID()
+    let text: String
+
+    init(_ body: JSONValue?) { text = MessageText.plain(body) }
 }
 
 /// Which media the viewer opens at.
