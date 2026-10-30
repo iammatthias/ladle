@@ -16,29 +16,12 @@ struct ConnectView: View {
     /// Called with the server's id once a sign-in succeeds, just before the sheet closes.
     var onSignedIn: (UUID) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
-    @State private var address = ""
-    @State private var label = ""
-    @State private var origin = ""
-    @State private var method = Method.token
-    @State private var token = ""
-    @State private var email = ""
-    @State private var code = ""
-    /// The name of the account a sign-up invite creates.
-    @State private var accountName = ""
+    @State private var form = ConnectForm(record: nil, mayWrite: false, prefill: nil)
     @State private var scanning = false
-    /// The token a scan, paste or link filled in, while the field still holds it.
-    @State private var receivedToken: String?
-    @State private var otherServer: URL?
     @State private var working = false
     @State private var error: String?
     @State private var session: ServerSession?
     @State private var showsOrigin = false
-
-    enum Method: String, CaseIterable, Identifiable {
-        case token = "Token", email = "Email", guest = "Guest"
-        var id: String { rawValue }
-        var scheme: String { rawValue.lowercased() }
-    }
 
     var body: some View {
         NavigationStack {
@@ -74,24 +57,19 @@ struct ConnectView: View {
                         }
                     }
                     field(record == nil ? "Or your own server" : "Server") {
-                        TextField("", text: $address, prompt: Text("wss://chat.example/ws").foregroundStyle(Palette.inkMuted))
+                        TextField("", text: $form.address, prompt: Text("wss://chat.example/ws").foregroundStyle(Palette.inkMuted))
                             .apText(.ui, mono: true)
                             .keyboardType(.URL)
                             .textContentType(.URL)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
-                            .onChange(of: address) { old, new in
-                                let previous = Self.url(from: old).map(ServerRecord.defaultOrigin(for:)) ?? ""
-                                guard origin.isEmpty || origin == previous else { return }
-                                origin = Self.url(from: new).map(ServerRecord.defaultOrigin(for:)) ?? ""
-                            }
                     } hint: {
-                        if !address.isEmpty, url == nil { Text("Enter a ws:// or wss:// address.").foregroundStyle(Palette.danger) }
+                        if !form.address.isEmpty, form.url == nil { Text("Enter a ws:// or wss:// address.").foregroundStyle(Palette.danger) }
                         if record == nil { HostYourOwnLink().padding(.leading, -Tokens.Space.s3) }
                     }
                     VStack(alignment: .leading, spacing: Tokens.Space.s1) {
                         Text("Sign in with").apText(.sm, .semibold).foregroundStyle(Palette.inkMuted)
-                        Picker("Sign in with", selection: $method) {
+                        Picker("Sign in with", selection: $form.method) {
                             ForEach(methods) { Text($0.rawValue).tag($0) }
                         }
                         .pickerStyle(.segmented)
@@ -101,11 +79,11 @@ struct ConnectView: View {
                     DisclosureGroup("Name and origin", isExpanded: $showsOrigin) {
                         VStack(alignment: .leading, spacing: Tokens.Space.s3) {
                             field("Name") {
-                                TextField("", text: $label, prompt: Text(url.map(ServerRecord.defaultLabel(for:)) ?? "Name").foregroundStyle(Palette.inkMuted))
+                                TextField("", text: $form.label, prompt: Text(form.url.map(ServerRecord.defaultLabel(for:)) ?? "Name").foregroundStyle(Palette.inkMuted))
                                     .apText(.field)
                             } hint: { EmptyView() }
                             field("Origin") {
-                                TextField("", text: $origin, prompt: Text("https://chat.example").foregroundStyle(Palette.inkMuted))
+                                TextField("", text: $form.origin, prompt: Text("https://chat.example").foregroundStyle(Palette.inkMuted))
                                     .apText(.ui, mono: true)
                                     .keyboardType(.URL)
                                     .textInputAutocapitalization(.never)
@@ -137,20 +115,22 @@ struct ConnectView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    if working { ProgressView() } else { Button(submitLabel) { submit() }.disabled(!canSubmit).fontWeight(.semibold) }
+                    if working { ProgressView() } else {
+                        Button(form.submitLabel(pendingEmail: pendingEmail)) { submit() }.disabled(!form.canSubmit(pendingEmail: pendingEmail)).fontWeight(.semibold)
+                    }
                 }
             }
             .fullScreenCover(isPresented: $scanning) {
                 QRScanner { text in
                     guard let fill = SignInFill(text, signingInTo: record?.url) else { return false }
-                    apply(fill)
+                    form.apply(fill)
                     scanning = false
                     return true
                 }
             }
-            .sensoryFeedback(.success, trigger: receivedToken) { _, new in new != nil }
-            .onAppear(perform: load)
-            .onChange(of: methods) { _, offered in if !offered.contains(method), let first = offered.first { method = first } }
+            .sensoryFeedback(.success, trigger: form.receivedToken) { _, new in new != nil }
+            .onAppear { form = ConnectForm(record: record, mayWrite: existing?.mayWrite == true, prefill: prefill) }
+            .onChange(of: methods) { _, offered in form.offer(offered) }
         }
         .presentationBackground(Palette.chrome)
     }
@@ -159,30 +139,27 @@ struct ConnectView: View {
 
     @ViewBuilder
     private var methodFields: some View {
-        switch method {
+        switch form.method {
         case .token:
             field("Token") {
-                SecureField("", text: $token, prompt: Text("From the server, or a sign-in link").foregroundStyle(Palette.inkMuted))
+                SecureField("", text: $form.token, prompt: Text("From the server, or a sign-in link").foregroundStyle(Palette.inkMuted))
                     .apText(.ui, mono: true)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .onChange(of: token) { _, new in
-                        if new.contains("token=") { accept(new) } else if !new.isEmpty { otherServer = nil }
-                    }
             } hint: {
-                if let otherServer {
+                if let otherServer = form.otherServer {
                     Label("This link is for \(otherServer.host() ?? otherServer.absoluteString).", systemImage: "exclamationmark.triangle")
                         .foregroundStyle(Palette.danger)
-                } else if record != nil, tokenReceived {
+                } else if record != nil, form.tokenReceived {
                     Label("Token received", systemImage: "checkmark.circle.fill").foregroundStyle(Palette.ok)
                 }
-                if isSignUpInvite {
+                if form.isSignUpInvite {
                     Text("This invitation creates an account. Choose the name others see, or leave it empty and the server picks one.")
                 } else {
                     Text("Signed in elsewhere? In that app, send /invite-device and a name, such as /invite-device phone, then paste the token here or scan its QR code. A server's admin can also give you one.")
                 }
                 HStack(spacing: Tokens.Space.s2) {
-                    PasteButton(payloadType: String.self) { strings in if let first = strings.first { accept(first) } }
+                    PasteButton(payloadType: String.self) { strings in if let first = strings.first { form.accept(first) } }
                         .labelStyle(.titleAndIcon)
                         .buttonBorderShape(.capsule)
                     if record != nil, canScan {
@@ -191,17 +168,17 @@ struct ConnectView: View {
                     }
                 }
             }
-            if isSignUpInvite {
+            if form.isSignUpInvite {
                 field("Your name") {
-                    TextField("", text: $accountName, prompt: Text("How others see you").foregroundStyle(Palette.inkMuted))
+                    TextField("", text: $form.accountName, prompt: Text("How others see you").foregroundStyle(Palette.inkMuted))
                         .apText(.field)
                         .textContentType(.name)
                 } hint: { EmptyView() }
             }
         case .email:
-            if let pending = (session ?? existing)?.pendingEmail {
+            if let pending = pendingEmail {
                 field("Code") {
-                    TextField("", text: $code, prompt: Text("From the email").foregroundStyle(Palette.inkMuted))
+                    TextField("", text: $form.code, prompt: Text("From the email").foregroundStyle(Palette.inkMuted))
                         .apText(.field, mono: true)
                         .textContentType(.oneTimeCode)
                         .keyboardType(.asciiCapable)
@@ -212,7 +189,7 @@ struct ConnectView: View {
                 }
             } else {
                 field("Email") {
-                    TextField("", text: $email, prompt: Text("you@example.com").foregroundStyle(Palette.inkMuted))
+                    TextField("", text: $form.email, prompt: Text("you@example.com").foregroundStyle(Palette.inkMuted))
                         .apText(.field)
                         .keyboardType(.emailAddress)
                         .textContentType(.emailAddress)
@@ -230,9 +207,9 @@ struct ConnectView: View {
     /// token, or enter them in the fields below. Once a token is in, it says so instead.
     @ViewBuilder
     private var scanOrEnter: some View {
-        if tokenReceived {
+        if form.tokenReceived {
             ActionBanner(symbol: "checkmark", title: "Token received",
-                         detail: url.flatMap { $0.host() }.map { "For \($0). Check the server, then tap Connect." } ?? "Enter the server's address, then tap Connect.",
+                         detail: form.url.flatMap { $0.host() }.map { "For \($0). Check the server, then tap Connect." } ?? "Enter the server's address, then tap Connect.",
                          tone: Palette.ok) {
                 if canScan {
                     Button("Scan Again") { scanning = true }.buttonStyle(GhostButtonStyle(tone: Palette.accent))
@@ -260,10 +237,10 @@ struct ConnectView: View {
     /// The Apron project's demo server as one tap, styled as the web's recent-backend row: it
     /// fills in the address (the origin follows) and picks Guest, which needs nothing else.
     private var officialServer: some View {
-        let chosen = url == OfficialServer.url
+        let chosen = form.url == OfficialServer.url
         return Button {
-            address = OfficialServer.url.absoluteString
-            method = .guest
+            form.address = OfficialServer.url.absoluteString
+            form.method = .guest
         } label: {
             HStack(spacing: Tokens.Space.s3) {
                 RailTile(label: OfficialServer.label, active: chosen)
@@ -304,99 +281,20 @@ struct ConnectView: View {
 
     private var existing: ServerSession? { record.flatMap { store.session(for: $0.id) } }
 
-    /// The methods the server offers, once it has said; all three until then.
-    private var methods: [Method] {
-        guard let server = (session ?? existing)?.server else { return Method.allCases }
-        let offered = Set(server.auth + (server.signup ?? []))
-        let known = Method.allCases.filter { offered.contains($0.scheme) }
-        return known.isEmpty ? Method.allCases : known
-    }
+    private var methods: [ConnectForm.Method] { ConnectForm.methods(offered: (session ?? existing)?.server) }
 
-    private var url: URL? { Self.url(from: address) }
-
-    private var tokenReceived: Bool { method == .token && receivedToken == token }
-
-    /// An `apron_join_` token: it creates an account, named as the user asks.
-    private var isSignUpInvite: Bool { TokenPayload(parsing: token).map { SignIn.isSignUpInvite($0.token) } ?? false }
-
-    private var submitLabel: String {
-        switch method {
-        case .email where (session ?? existing)?.pendingEmail == nil: "Send Code"
-        case .token where isSignUpInvite: "Create Account"
-        default: record == nil ? "Connect" : "Sign In"
-        }
-    }
-
-    private var canSubmit: Bool {
-        guard url != nil else { return false }
-        switch method {
-        case .token: return TokenPayload(parsing: token) != nil
-        case .email: return (session ?? existing)?.pendingEmail == nil ? email.contains("@") : !code.isEmpty
-        case .guest: return true
-        }
-    }
-
-    static func url(from address: String) -> URL? {
-        guard let url = URL(string: address.trimmingCharacters(in: .whitespaces)),
-              ["ws", "wss"].contains(url.scheme?.lowercased() ?? ""), url.host() != nil
-        else { return nil }
-        return url
-    }
-
-    private func load() {
-        if let record {
-            address = record.url.absoluteString
-            label = record.label
-            origin = record.origin
-            if let scheme = record.account?.scheme, let saved = Method(rawValue: scheme.capitalized),
-               saved != .guest || existing?.mayWrite == true {
-                method = saved
-            }
-        }
-        if let prefill { accept(prefill) }
-    }
-
-    /// Pasted or typed text: a sign-in fills in, anything else lands in the field as typed.
-    private func accept(_ text: String) {
-        guard let fill = SignInFill(text, signingInTo: record?.url) else {
-            token = text
-            return
-        }
-        apply(fill)
-    }
-
-    /// A link that opened Ladle, which may name a server with no token.
-    private func accept(_ payload: TokenPayload) {
-        if let server = payload.server, record == nil { address = server.absoluteString }
-        if !payload.token.isEmpty { apply(.token(payload.token)) }
-    }
-
-    private func apply(_ fill: SignInFill) {
-        otherServer = nil
-        switch fill {
-        case .serverAndToken(let server, let token):
-            address = server.absoluteString
-            apply(.token(token))
-        case .token(let token):
-            self.token = token
-            receivedToken = token
-            method = .token
-        case .otherServer(let server):
-            token = ""
-            otherServer = server
-            method = .token
-        }
-    }
+    /// The address a code was sent to, while the sheet waits for it.
+    private var pendingEmail: String? { (session ?? existing)?.pendingEmail }
 
     // MARK: Submit
 
     private func submit() {
-        guard let url else { return }
+        guard let url = form.url else { return }
         working = true
         error = nil
         Task {
             defer { working = false }
-            let session = save(url)
+            let session = store.save(form.saved(at: url))
             self.session = session
             for _ in 0 ..< 200 where session.server == nil || session.status == .connecting {
                 if case .stopped = session.status { break }
@@ -406,25 +304,9 @@ struct ConnectView: View {
                 error = ConnectionState(session.status)?.title(session.record) ?? "Could not reach \(url.host() ?? "the server")."
                 return
             }
+            guard let signIn = form.signIn(pendingEmail: session.pendingEmail) else { return }
             do {
-                let outcome: SignInOutcome
-                switch method {
-                case .token:
-                    guard let payload = TokenPayload(parsing: token) else { return }
-                    outcome = try await session.signIn(SignIn.isSignUpInvite(payload.token)
-                        ? .signUp(invite: payload.token, name: accountName) : .token(payload.token))
-                case .email:
-                    if session.pendingEmail == nil {
-                        outcome = try await session.signIn(.emailProposal(address: email.trimmingCharacters(in: .whitespaces)))
-                    } else if let payload = TokenPayload(parsing: code), code.contains("token=") {
-                        outcome = try await session.signIn(.token(payload.token))
-                    } else {
-                        outcome = try await session.signIn(.emailCode(code.trimmingCharacters(in: .whitespaces)))
-                    }
-                case .guest:
-                    outcome = try await session.signIn(.guest(name: nil))
-                }
-                if case .signedIn = outcome {
+                if case .signedIn = try await session.signIn(signIn) {
                     onSignedIn(session.record.id)
                     dismiss()
                 }
@@ -432,23 +314,6 @@ struct ConnectView: View {
                 self.error = errorText(error)
             }
         }
-    }
-
-    /// Adds the server, or saves changes to it, and returns its session.
-    private func save(_ url: URL) -> ServerSession {
-        var saved = record ?? ServerRecord(url: url)
-        saved.url = url
-        let name = label.trimmingCharacters(in: .whitespaces)
-        let trimmedOrigin = origin.trimmingCharacters(in: .whitespaces)
-        saved.label = name.isEmpty ? ServerRecord.defaultLabel(for: url) : name
-        saved.origin = trimmedOrigin.isEmpty ? ServerRecord.defaultOrigin(for: url) : trimmedOrigin
-        if let existing = store.session(for: saved.id) {
-            if existing.record.url != saved.url || existing.record.origin != saved.origin || existing.record.label != saved.label {
-                Task { await store.update(saved) }
-            }
-            return existing
-        }
-        return store.add(saved)
     }
 }
 
