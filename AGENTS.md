@@ -246,6 +246,10 @@ clone), which is only a worked example.
     scanned or pasted sign-in fills in: server and token when adding a server, the token alone
     otherwise, or the other server a saved server's link names), `UserDirectory` (one kept
     user object per `user_id`, merge rules, `Name (@user_id)` on clashes).
+  - `ConnectForm` (`ConnectForm.swift`): the Connect sheet's form: the address (the origin
+    follows it until edited), name and origin, the methods the server offers, a scanned,
+    pasted or tapped sign-in filling it in, the submit button's word, the `SignIn` to send,
+    and the record to save (`SessionStore.save` adds it or saves changes).
   - `ServerRecord`, `ServerStore`, `TokenStore`, `ReadPositionStore`: the saved servers (JSON, no
     secrets), the seam for the bearer token, and the read positions. The in-memory stores are
     for tests.
