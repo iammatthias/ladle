@@ -205,6 +205,13 @@ clone), which is only a worked example.
     messages), mention counts, member sections (online, then offline, each by name),
     `Presence` (§4.5.1), `MediaItem`s for the media viewer, and the `MessageSnapshot` reads
     the views use (`date`, `isEdited`, `plainText`, `mentionIDs`).
+  - `MessageRowModel` (`MessageRowModel.swift`): what a message's row shows, worked out once:
+    the text, mentions marked `MentionKey` (`MessageText.attributed(…mentions:you:)`: each
+    mentioned user's `@name` or `@user_id` outside links) for the app to draw as chips,
+    whether it mentions you, the place cards, the embeds a card does not already show, the
+    link to fetch a preview for and the `link` embed it replaces, and what VoiceOver reads.
+  - `MessageMenu` and `NoticeMenu` (`MessageMenu.swift`): what a message's and a notice's
+    menus offer as the session allows it, and the line over a notice.
   - `MessageText.plain` and `snippet` (`MessageText+Plain.swift`): a body as plain text for where it
     is not rendered, as apron-web's `plainTextOf` and `messageSnippet`: a `markdown` body without
     its syntax (code keeps its text, a link shows its text, each block a line, typed line breaks

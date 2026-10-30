@@ -40,7 +40,7 @@ struct PlaceCardView: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(Self.spoken(card))
+        .accessibilityLabel(card.spoken)
         .accessibilityHint(card.content == .room ? "Opens the \(card.isThread ? "thread" : "room")" : "Shows the message")
     }
 
@@ -52,17 +52,5 @@ struct PlaceCardView: View {
         case .message(let sender, _): Text("\(Text(TextDirection.isolated(sender)).fontWeight(.semibold)) in \(place)")
         case .room: Text(place).fontWeight(.semibold)
         }
-    }
-
-    /// The card as VoiceOver reads it, alone or inside its message's row.
-    static func spoken(_ card: PlaceCard) -> String {
-        var parts: [String]
-        switch card.content {
-        case .message(let sender, let preview): parts = ["Message from \(sender) in \(card.roomTitle)", preview]
-        case .room: parts = ["\(card.isThread ? "Thread" : "Room") \(card.roomTitle)"]
-        }
-        if card.isPrivate { parts.append("private") }
-        if case .room = card.content, let count = card.memberCount { parts.append(count == 1 ? "1 member" : "\(count) members") }
-        return parts.joined(separator: ", ")
     }
 }

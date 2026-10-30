@@ -21,11 +21,11 @@ struct MessageRow: View {
     @Environment(\.openURL) private var openURL
 
     var body: some View {
-        let name = session.displayName(for: message.from)
+        let row = MessageRowModel(message, in: session, sessions: liveSessions.find)
+        let name = row.name
         // At accessibility sizes the avatar gutter gives its width back to the text: a small face
         // rides in the name line instead.
         let compact = (fixedTypeSize ?? typeSize).isAccessibilitySize
-        let mentionsYou = session.you.map { message.mentions($0.userID) && message.from.userID != $0.userID } ?? false
         VStack(alignment: .leading, spacing: 0) {
             if let reminderDue {
                 ReminderBadge(due: reminderDue, clear: onClearReminder)
@@ -47,42 +47,41 @@ struct MessageRow: View {
                     if !continues {
                         HStack(alignment: .center, spacing: Tokens.Space.s2) {
                             if compact { Avatar(name: name, userID: message.from.userID, size: .sm, image: session.avatarURL(of: message.from.userID)) }
-                            head(name)
+                            head(row)
                         }
                     }
-                    content
+                    content(row)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .padding(.vertical, Tokens.Space.s1)
         .padding(.horizontal, Tokens.Space.s2)
-        .background(highlighted ? Palette.hover : mentionsYou ? Palette.accentSoft : .clear, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
+        .background(highlighted ? Palette.hover : row.mentionsYou ? Palette.accentSoft : .clear, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
         .overlay {
             if reminderDue != nil {
                 RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.accent, lineWidth: 1.5).accessibilityHidden(true)
             }
         }
         .overlay(alignment: .leading) {
-            if mentionsYou {
+            if row.mentionsYou {
                 Capsule().fill(Palette.accent).frame(width: 3).padding(.vertical, Tokens.Space.s1)
                     .accessibilityHidden(true)
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(accessibilityText(name: name, mentionsYou: mentionsYou))
+        .accessibilityLabel(row.spoken(reminderDue: reminderDue, now: .now))
         .task(id: session.server?.emojiCatalogURL) {
             if session.needsEmojiCatalog(message) { await session.loadEmojiCatalog() }
         }
     }
 
-    private func head(_ name: String) -> some View {
-        let roles = session.roles(of: message.from)
-        return HStack(alignment: .firstTextBaseline, spacing: Tokens.Space.s2) {
-            Text(name).apText(.body, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
+    private func head(_ row: MessageRowModel) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: Tokens.Space.s2) {
+            Text(row.name).apText(.body, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
                 .layoutPriority(1)
-            if !roles.isEmpty {
-                RoleBadges(roles: roles).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
+            if !row.roles.isEmpty {
+                RoleBadges(roles: row.roles).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
             }
             HStack(spacing: Tokens.Space.s2) {
                 Text(message.date, format: .dateTime.hour().minute())
@@ -95,11 +94,9 @@ struct MessageRow: View {
     }
 
     @ViewBuilder
-    private var content: some View {
+    private func content(_ row: MessageRowModel) -> some View {
         if !message.plainText.isEmpty {
-            EmojiText(text: rendered(message.body, mentions: mentionNames, you: session.you?.userID, emoji: session.emojiCatalog,
-                                     rooms: session.referencedTitle),
-                      catalog: session.emojiCatalog)
+            EmojiText(text: styled(row.text), catalog: session.emojiCatalog)
                 .apText(.body)
                 .foregroundStyle(Palette.ink)
                 .tint(Palette.denim)
@@ -111,26 +108,19 @@ struct MessageRow: View {
                 .apText(.sm).italic().foregroundStyle(Palette.inkMuted)
                 .padding(.top, Tokens.Space.s1)
         }
-        let cards = session.placeCards(in: message, sessions: liveSessions.find)
-        if !cards.isEmpty {
+        if !row.cards.isEmpty {
             VStack(alignment: .leading, spacing: Tokens.Space.s2) {
-                ForEach(cards) { card in
+                ForEach(row.cards) { card in
                     PlaceCardView(card: card) { card.link.webURL.map { openURL($0) } }
                 }
             }
             .padding(.top, Tokens.Space.s2)
         }
-        let unfurl = message.unfurlURL
-        // A sender's preview of a place a card shows is left out (`PlaceCard.previews`); the rest
-        // keep their index, which names their media.
-        let embeds = message.embedList.enumerated().filter { !PlaceCard.previews($0.element, in: cards, from: session.record.url) }
-        // A fetched preview takes the place of the `link` embed for the same URL, if any.
-        let unfurledEmbed = unfurl.flatMap { url in embeds.first { $0.element.kind == "link" && $0.element.url == url }?.offset }
-        if !embeds.isEmpty {
+        if !row.embeds.isEmpty {
             VStack(alignment: .leading, spacing: Tokens.Space.s2) {
-                ForEach(embeds, id: \.offset) { index, embed in
+                ForEach(row.embeds, id: \.index) { index, embed in
                     let view = EmbedView(session: session, embed: embed, mediaID: MediaItem.id(message, index))
-                    if let unfurl, index == unfurledEmbed {
+                    if let unfurl = row.unfurl, index == row.unfurledEmbed {
                         FetchedLinkCard(url: unfurl) { view }
                     } else {
                         view
@@ -139,7 +129,7 @@ struct MessageRow: View {
             }
             .padding(.top, Tokens.Space.s2)
         }
-        if let unfurl, unfurledEmbed == nil {
+        if let unfurl = row.unfurl, row.unfurledEmbed == nil {
             FetchedLinkCard(url: unfurl, inset: Tokens.Space.s2) { EmptyView() }
         }
         if let reactions = session.store.reactions(on: message.messageID) {
@@ -147,69 +137,23 @@ struct MessageRow: View {
                 .padding(.top, Tokens.Space.s1)
         }
     }
-
-    /// Each mentioned user's names, as `@name` may appear in the text.
-    private var mentionNames: [String: String] {
-        Dictionary(message.mentionIDs.map { id in
-            (id, session.users.user(id).flatMap(UserObject.init).map(session.displayName(for:)) ?? id)
-        }, uniquingKeysWith: { first, _ in first })
-    }
-
-    private func accessibilityText(name: String, mentionsYou: Bool) -> String {
-        var parts = (reminderDue.map { [Reminder.label(due: $0, now: .now)] } ?? []) + [name] + session.roles(of: message.from)
-        if mentionsYou { parts.append("mentions you") }
-        if message.replyTo != nil {
-            let target = message.replyTo.flatMap(session.store.message)
-            parts.append("replying to " + (target.map { $0.isTombstone ? "a deleted message" : session.displayName(for: $0.from) } ?? "an unavailable message"))
-        }
-        parts.append(spoken(message.plainText, session.emojiCatalog))
-        if let room = message.prevRoomID { parts.append("moved from \(session.title(of: room))") }
-        let cards = session.placeCards(in: message, sessions: liveSessions.find)
-        for card in cards { parts.append(PlaceCardView.spoken(card)) }
-        for embed in message.embedList where !PlaceCard.previews(embed, in: cards, from: session.record.url) {
-            parts.append(EmbedCard.summary(embed))
-        }
-        if message.isEdited { parts.append("edited") }
-        parts.append(message.date.formatted(date: .omitted, time: .shortened))
-        if let reactions = session.store.reactions(on: message.messageID) {
-            parts.append(reactions.map { "\(ReactionGlyph.label($0.emoji, session.emojiCatalog)) \($0.userIDs.count)" }.joined(separator: ", "))
-        }
-        return parts.joined(separator: ", ")
-    }
 }
 
-/// Plain text as VoiceOver reads it: each custom emoji key the catalog has as its `alt`.
-func spoken(_ text: String, _ catalog: EmojiCatalog?) -> String {
-    guard let catalog else { return text }
+/// Rendered text (`MessageText.attributed`) with its chips drawn as the web's: a room
+/// (`RoomReferenceKey`) and a mention (`MentionKey`) in denim on denim-soft, a mention of you in
+/// on-accent on accent.
+func styled(_ text: AttributedString) -> AttributedString {
     var out = text
-    for range in EmojiKeys.ranges(in: text, known: { catalog[$0] != nil }).reversed() {
-        out.replaceSubrange(range, with: catalog[String(text[range])]?.label ?? "")
-    }
-    return out
-}
-
-/// The body as `MessageText` renders it, links, custom emoji keys and `#room` chips included.
-/// Mentions outside links show as the web's chips: denim on denim-soft, and accent with
-/// on-accent for you. A room chip (`RoomReferenceKey`) is denim on denim-soft too.
-func rendered(_ body: JSONValue?, mentions: [String: String] = [:], you: String? = nil, emoji: EmojiCatalog? = nil,
-              rooms: ((String) -> String?)? = nil) -> AttributedString {
-    var out = MessageText.attributed(body, emoji: emoji, rooms: rooms)
     for run in out.runs where run[RoomReferenceKey.self] != nil {
         out[run.range].backgroundColor = Palette.denimSoft
         out[run.range].foregroundColor = Palette.denim
         out[run.range].inlinePresentationIntent = .stronglyEmphasized
     }
-    for (id, name) in mentions {
-        for token in Set(["@" + name, "@" + id]) {
-            var search = out.startIndex ..< out.endIndex
-            while let range = out[search].range(of: token) {
-                search = range.upperBound ..< out.endIndex
-                if out[range].runs.contains(where: { $0.link != nil }) { continue }
-                out[range].backgroundColor = id == you ? Palette.accent : Palette.denimSoft
-                out[range].foregroundColor = id == you ? Palette.onAccent : Palette.denim
-                out[range].inlinePresentationIntent = .stronglyEmphasized
-            }
-        }
+    for run in out.runs {
+        guard let chip = run[MentionKey.self] else { continue }
+        out[run.range].backgroundColor = chip.isYou ? Palette.accent : Palette.denimSoft
+        out[run.range].foregroundColor = chip.isYou ? Palette.onAccent : Palette.denim
+        out[run.range].inlinePresentationIntent = .stronglyEmphasized
     }
     return out
 }
@@ -291,7 +235,7 @@ struct ReactionBar: View {
             ForEach(reactions, id: \.key) { reaction in
                 let mine = session.you.map { reaction.userIDs.contains($0.userID) } ?? false
                 let names = reaction.userIDs.map { session.users.user($0).flatMap(UserObject.init).map(session.displayName(for:)) ?? $0 }
-                let label = ReactionGlyph.label(reaction.emoji, session.emojiCatalog)
+                let label = ReactionEntry.label(reaction.emoji, catalog: session.emojiCatalog)
                 Button { onReact(reaction.emoji) } label: {
                     chip(mine: mine) {
                         ReactionGlyph(entry: reaction.emoji, catalog: session.emojiCatalog)

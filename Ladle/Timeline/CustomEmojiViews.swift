@@ -98,11 +98,6 @@ struct ReactionGlyph: View {
                 .frame(width: height * 0.8, height: height * 0.8)
         }
     }
-
-    /// What VoiceOver reads: the emoji, the custom emoji's `alt` or key, or the key.
-    static func label(_ entry: String, _ catalog: EmojiCatalog?) -> String {
-        catalog?[entry]?.label ?? entry
-    }
 }
 
 /// The composer's `:shortcode` list: custom emoji whose name, `alt` or tags match, each with its

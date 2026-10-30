@@ -358,7 +358,7 @@ struct EmbedCard: View {
 
     private var fallback: some View {
         VStack(alignment: .leading, spacing: Tokens.Space.s0_5) {
-            Label(Self.kindLabel(embed), systemImage: "square.dashed")
+            Label(embed.kindLabel, systemImage: "square.dashed")
                 .apText(.sm, .semibold).foregroundStyle(Palette.inkMuted)
             if let title = embed.title {
                 Text(title).apText(.ui, .semibold).foregroundStyle(Palette.ink)
@@ -371,20 +371,6 @@ struct EmbedCard: View {
         .padding(Tokens.Space.s3)
         .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
         .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.line))
-    }
-
-    static func kindLabel(_ embed: Embed) -> String {
-        switch embed.upload {
-        case .image: "Image"
-        case .video: "Video"
-        case .audio: "Audio"
-        case .file, .pending: "File"
-        case nil: embed.kind.prefix(1).uppercased() + embed.kind.dropFirst()
-        }
-    }
-
-    static func summary(_ embed: Embed) -> String {
-        [kindLabel(embed), embed.og?.image?.alt ?? embed.name].compactMap { $0 }.joined(separator: ", ")
     }
 }
 
