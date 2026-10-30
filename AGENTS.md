@@ -190,6 +190,11 @@ clone), which is only a worked example.
     is the `#` word being typed (`[A-Za-z0-9_.-]`, at least one), `search` ranks exact, prefix,
     then contains on id and title, 8 at most, over `ServerSession.roomSuggestions` (every room
     and thread with a record), and `insert` puts `#room_id ` in the draft, which is what is sent.
+  - `Timeline` (`Timeline.swift`): what a room's timeline shows, in order (`TimelineItem`: day
+    pills, messages, the New line, thread cards at the thread's creation position, and queued
+    messages), mention counts, member sections (online, then offline, each by name),
+    `Presence` (§4.5.1), `MediaItem`s for the media viewer, and the `MessageSnapshot` reads
+    the views use (`date`, `isEdited`, `plainText`, `mentionIDs`).
   - `MessageText.plain` and `snippet` (`MessageText+Plain.swift`): a body as plain text for where it
     is not rendered, as apron-web's `plainTextOf` and `messageSnippet`: a `markdown` body without
     its syntax (code keeps its text, a link shows its text, each block a line, typed line breaks
@@ -265,8 +270,7 @@ clone), which is only a worked example.
   emoji's image or a dashed placeholder for a key the catalog lacks, `EmojiImages` the images,
   `static_url` under Reduce Motion (Ladle draws the first frame of an animated image either
   way); message text, room and thread descriptions, the welcome and the server description
-  draw custom emoji, and each fetches the catalog when its text could hold a key, `TimelineItems`: day pills, messages, the New
-  line, thread cards at the thread's creation position, and queued messages; `EmbedViews`:
+  draw custom emoji, and each fetches the catalog when its text could hold a key; `EmbedViews`:
   `og` embeds as the web's EmbedCard (a hosted image, site, title, two lines; with `og.video` or `og.audio` that `OpenGraph.player(policy:)` allows, the card plays it inline and only its text opens the `url`), others as a
   labeled fallback card; `FetchedLinkCard`: a fetched preview as the same card, fetched with
   LinkPresentation's `LPMetadataProvider` when the row appears, while Show Link Previews (Ladle's

@@ -2,37 +2,6 @@ import ApronKit
 import SwiftUI
 import UIKit
 
-/// An image upload in a room, as the media viewer pages through them.
-struct MediaItem: Identifiable, Hashable {
-    let id: String
-    /// What the viewer shows: `og.image`.
-    let media: URL
-    /// The file itself, the embed's `url`, for Open Original.
-    let original: URL?
-    let name: String
-    let alt: String?
-    let sender: String
-    let date: Date
-
-    /// A message's embed by position, stable across snapshots of the message.
-    static func id(_ message: MessageSnapshot, _ index: Int) -> String { "\(message.messageID.text)#\(index)" }
-}
-
-extension ServerSession {
-    /// Every loadable image upload in a room, oldest first, as the web's viewer pages them.
-    func mediaItems(in roomID: String) -> [MediaItem] {
-        let policy = mediaPolicy
-        return timeline(roomID).flatMap { message in
-            message.embedList.enumerated().compactMap { index, embed -> MediaItem? in
-                guard case .image(let image) = embed.upload, policy.allowsMedia(image.url) else { return nil }
-                return MediaItem(id: MediaItem.id(message, index), media: image.url,
-                                 original: embed.url.flatMap { policy.allowsMedia($0) ? $0 : nil },
-                                 name: embed.name ?? "Image", alt: image.alt, sender: displayName(for: message.from), date: message.date)
-            }
-        }
-    }
-}
-
 /// The web's MediaViewer, as a full-screen photo viewer: dark whatever the theme, the image's
 /// name, who sent it and when, a count, Open Original and Close. Swipe pages through the room's
 /// images, oldest first, as the web's arrows do; pinch or double-tap zooms, as a browser does.
