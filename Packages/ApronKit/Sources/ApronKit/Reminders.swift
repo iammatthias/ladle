@@ -212,13 +212,57 @@ public final class Reminders {
 }
 
 extension ServerSession {
+    /// The reminder key for one of this server's messages.
+    public func reminderKey(for message: MessageSnapshot) -> ReminderKey {
+        ReminderKey(server: record.id, roomID: message.roomID, messageID: message.messageID)
+    }
+
     /// A reminder about `message` at `due`: the notification's title names the sender and the
     /// room, and its body is the message's first line.
     public func reminder(for message: MessageSnapshot, due: Date) -> Reminder {
         let room = (store.room(message.roomID)?.parentRoomID == nil ? "#" : "") + title(of: message.roomID)
         let preview = MessageText.snippet(message.body)
-        return Reminder(key: ReminderKey(server: record.id, roomID: message.roomID, messageID: message.messageID), due: due,
+        return Reminder(key: reminderKey(for: message), due: due,
                         title: "\(displayName(for: message.from)) in \(room)",
                         body: preview.isEmpty ? "Attachment" : preview)
+    }
+}
+
+/// Remind Me in one timeline: the reminder on each of the session's messages, setting and
+/// removing one, and whether to say that notifications are off. That notice shows from the
+/// first refusal until it is dismissed, in this timeline only.
+@MainActor
+@Observable
+public final class MessageReminders {
+    @ObservationIgnored public let session: ServerSession
+    @ObservationIgnored public let reminders: Reminders
+    /// The user did not let the app notify when a reminder was last set here.
+    public var notificationsOff = false
+
+    public init(session: ServerSession, reminders: Reminders) {
+        self.session = session
+        self.reminders = reminders
+    }
+
+    /// Custom…'s first time: an hour from `now`.
+    public static func customStart(after now: Date) -> Date { now.addingTimeInterval(3600) }
+
+    public func reminder(on message: MessageSnapshot) -> Reminder? {
+        reminders[session.reminderKey(for: message)]
+    }
+
+    /// Sets the message's reminder, replacing an earlier one, and notes a refusal to notify.
+    @discardableResult
+    public func remind(_ message: MessageSnapshot, at due: Date) -> Task<Void, Never> {
+        let reminder = session.reminder(for: message, due: due)
+        return Task {
+            if !(await reminders.set(reminder)) { notificationsOff = true }
+        }
+    }
+
+    @discardableResult
+    public func forget(_ message: MessageSnapshot) -> Task<Void, Never> {
+        let key = session.reminderKey(for: message)
+        return Task { await reminders.remove(key) }
     }
 }

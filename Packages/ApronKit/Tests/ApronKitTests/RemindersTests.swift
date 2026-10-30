@@ -117,3 +117,39 @@ final class RemindersTests: XCTestCase {
         XCTAssertTrue(store.reminders.byKey.isEmpty)
     }
 }
+
+@MainActor
+final class MessageRemindersTests: XCTestCase {
+    func testRemindingSetsTheMessagesReminderAndForgettingRemovesIt() async throws {
+        let store = await PreviewFixtures.makeStore()
+        let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
+        let notes = try XCTUnwrap(home.timeline("general").first { $0.plainText.hasPrefix("Notes from the sync") })
+        let notifier = RecordingNotifier()
+        let reminders = MessageReminders(session: home, reminders: Reminders(store: InMemoryReminderStore(), notifier: notifier))
+        XCTAssertNil(reminders.reminder(on: notes))
+
+        await reminders.remind(notes, at: Date(timeIntervalSince1970: 1_793_100_000)).value
+        let set = try XCTUnwrap(reminders.reminder(on: notes))
+        XCTAssertEqual([set.title, set.body, "\(Int(set.due.timeIntervalSince1970))"], ["Ada Okafor in #general", "Notes from the sync: ship 0.2 on Friday, then freeze. The release checklist lives in the thread. Please add anything I…", "1793100000"])
+        XCTAssertEqual(notifier.entries, ["schedule reminder:6C61646C-0000-4000-8000-000000000001:\(notes.messageID.text):general at 1793100000"])
+        XCTAssertFalse(reminders.notificationsOff)
+
+        await reminders.forget(notes).value
+        XCTAssertNil(reminders.reminder(on: notes))
+        XCTAssertEqual(notifier.entries.last, "cancel reminder:6C61646C-0000-4000-8000-000000000001:\(notes.messageID.text):general")
+    }
+
+    func testARefusalToNotifyKeepsTheReminderAndSaysNotificationsAreOff() async throws {
+        let store = await PreviewFixtures.makeStore()
+        let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
+        let message = home.timeline("general")[0]
+        let reminders = MessageReminders(session: home, reminders: Reminders(store: InMemoryReminderStore(), notifier: RecordingNotifier(allowed: false)))
+        await reminders.remind(message, at: Date(timeIntervalSince1970: 1_793_100_000)).value
+        XCTAssertTrue(reminders.notificationsOff)
+        XCTAssertEqual(reminders.reminder(on: message)?.due, Date(timeIntervalSince1970: 1_793_100_000))
+    }
+
+    func testCustomStartsAnHourFromNow() {
+        XCTAssertEqual(MessageReminders.customStart(after: Date(timeIntervalSince1970: 1_793_100_000)), Date(timeIntervalSince1970: 1_793_103_600))
+    }
+}

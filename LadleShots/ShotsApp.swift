@@ -68,7 +68,6 @@ enum Renderer {
                 .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
                 .environment(\.scenePhase, .inactive)
                 .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
-                .environment(\.reminders, store.reminders)
                 .dynamicTypeSize(shot.large ? .accessibility3 : .large)
                 .apronStyle()
                 .id(UUID())))
@@ -96,10 +95,10 @@ enum Renderer {
         case .rooms:
             AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
         case .timeline:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders) })
         case .mention:
             AnyView(NavigationStack {
-                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, draft: Draft(field: DraftField(text: "Thanks @")))
+                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, draft: Draft(field: DraftField(text: "Thanks @")))
             })
         case .members:
             AnyView(NavigationStack { MemberList(session: home, roomID: PreviewFixtures.busyRoomID) })
@@ -107,41 +106,41 @@ enum Renderer {
             AnyView(ReactionPicker { _ in })
         case .attachments:
             AnyView(NavigationStack {
-                TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, draft: Draft(field: DraftField(text: "Both sides of mine"), attachments: staged))
+                TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, reminders: store.reminders, draft: Draft(field: DraftField(text: "Both sides of mine"), attachments: staged))
             })
         case .media:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, reminders: store.reminders) })
         case .links:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkRoomID) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkRoomID, reminders: store.reminders) })
         case .viewer:
             AnyView(MediaViewer(items: home.mediaItems(in: PreviewFixtures.mediaRoomID),
                                 selection: home.mediaItems(in: PreviewFixtures.mediaRoomID).first?.id ?? ""))
         case .textLimit:
             AnyView(NavigationStack {
-                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID,
+                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders,
                              draft: Draft(field: DraftField(text: String(repeating: "Release notes for 0.2, every change since August. ", count: 82) + "🎉")))
             })
         case .guestComposer:
             AnyView(NavigationStack {
-                if let demo = store.session(for: PreviewFixtures.demoID) { TimelineView(session: demo, roomID: "lobby") }
+                if let demo = store.session(for: PreviewFixtures.demoID) { TimelineView(session: demo, roomID: "lobby", reminders: store.reminders) }
             })
         case .emoji:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, reminders: store.reminders) })
         case .emojiPicker:
             AnyView(ReactionPicker(session: home) { _ in })
         case .emojiShortcode:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, draft: Draft(field: DraftField(text: "Lunch :pa"))) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, reminders: store.reminders, draft: Draft(field: DraftField(text: "Lunch :pa"))) })
         case .commands:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, draft: Draft(field: DraftField(text: "/inv"))) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, draft: Draft(field: DraftField(text: "/inv"))) })
         case .linkCards:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, reminders: store.reminders) })
         case .roomMention:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, draft: Draft(field: DraftField(text: "Moving this to #s"))) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, reminders: store.reminders, draft: Draft(field: DraftField(text: "Moving this to #s"))) })
         case .selectText:
             AnyView(SelectTextSheet(text: home.timeline(PreviewFixtures.busyRoomID).first { $0.plainText.hasPrefix("Notes from the sync") }
                 .map { SelectableBody($0.body).text } ?? "") {})
         case .reminder:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders) })
         case .reminderCustom:
             AnyView(ReminderDateSheet(date: .constant(Date(timeIntervalSince1970: 1_793_440_800)), set: {}, cancel: {}))
         case .ipad:
