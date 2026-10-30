@@ -3,25 +3,26 @@ import XCTest
 
 final class CommandHelpTests: XCTestCase {
     /// apron-server-cloudflare's `/help` for an admin with uploads on and emoji configured: its
-    /// COMMANDS table (src/index.ts at ab07e29, alphabetical) as `handleCommand` writes it, with
-    /// MAX_JOIN_USES 50.
+    /// COMMANDS table (src/index.ts at fdf410d, alphabetical) as `handleCommand` writes it, the
+    /// admins' marked "(admin-only)", with MAX_JOIN_USES 50.
     static let cloudflareAdmin = """
-    - `/admin [remove] <user_id>`: make a registered user an admin, or no longer one
+    - `/admin [remove] <user_id>`: make a registered user an admin, or no longer one (admin-only)
     - `/avatar`: set your avatar: send this command with one image attached
     - `/emoji add|remove :name:`: add a custom emoji, or replace its image: send /emoji add :name: with one image attached; /emoji remove :name: removes it
     - `/help`: list the commands you can use here
     - `/invite-bot`: get a sign-in token for your bot; a new one replaces the last
-    - `/invite-code <uses>`: get a token that signs up to <uses> new users (at most 50) for a week, replacing the last one; /invite-code 0 revokes it
-    - `/invite-device add|remove [<id>]`: get a token that signs in as you on another device, or revoke one
-    - `/invite-token <user_id>`: create a user who signs in with a token instead of a passkey, and get the token
-    - `/kick <user_id>`: remove a user from this room
+    - `/invite-code <uses>`: get a token that signs up to <uses> new users (at most 50) for a week, replacing the last one; /invite-code 0 revokes it (admin-only)
+    - `/invite-device list|add|remove [<id>]`: list, get or revoke tokens that sign in as you on another device
+    - `/invite-purge <user_id>`: sign a user out everywhere, remove their passkeys and tokens, and get a new token for them (admin-only)
+    - `/invite-token <user_id>`: create a user who signs in with a token instead of a passkey, and get the token (admin-only)
+    - `/kick <user_id>`: remove a user from this room (admin-only)
     - `/passkeys [remove <n>]`: list your account's passkeys, or remove one of them
-    - `/purge <user_id>`: disconnect a user and delete their account, bot, and everything they posted or uploaded
-    - `/rename <old_user_id> <new_user_id>`: change a registered user's user_id
-    - `/role <user_id> [<role>]`: show a user's roles, or give or take away one (admin, mod, threader and bot act as such; friend, like any role, raises their posting limits, and admin, mod and friend may use /emoji)
-    - `/server [title|description [<text>] | avatar]`: show this server's title, description and avatar; set one, the avatar with one image attached; or clear one, back to the deployment's
-    - `/status`: show today's Cloudflare usage and the demo's budgets
-    - `/toggle <activity|uploads|presence|addmember>`: turn typing activity, uploads, user status (presence), or users adding others to rooms (addmember) off or on for everyone
+    - `/purge <user_id>`: disconnect a user and delete their account, bot, and everything they posted or uploaded (admin-only)
+    - `/rename <old_user_id> <new_user_id>`: change a registered user's user_id (admin-only)
+    - `/role <user_id> [<role>]`: show a user's roles, or give or take away one (admin, mod, threader and bot act as such; friend, like any role, raises their posting limits, and admin, mod and friend may use /emoji) (admin-only)
+    - `/server [title|description [<text>] | avatar]`: show this server's title, description and avatar; set one, the avatar with one image attached; or clear one, back to the deployment's (admin-only)
+    - `/status`: show today's Cloudflare usage and the demo's budgets (admin-only)
+    - `/toggle <activity|uploads|presence|addmember>`: turn typing activity, uploads, user status (presence), or users adding others to rooms (addmember) off or on for everyone (admin-only)
     """
 
     /// apron-server-rust's `/help` for an account with no roles while uploads are on
@@ -30,7 +31,7 @@ final class CommandHelpTests: XCTestCase {
     - `/avatar`: with one image attached: set your avatar
     - `/help`: list the commands you can use here
     - `/invite-bot`: get a token that signs in as your bot, named after you; again, it replaces the token and renames the bot
-    - `/invite-device add|remove [<id>]`: get a token that signs in as you on another device, or revoke one
+    - `/invite-device list|add|remove [<id>]`: list, get or revoke tokens that sign in as you on another device
     - `/passkeys [remove <n>]`: list your account's passkeys, or remove one of them
     """
 
@@ -40,7 +41,7 @@ final class CommandHelpTests: XCTestCase {
     func testCloudflaresAdminListParsesEveryLine() throws {
         let help = try XCTUnwrap(CommandHelp(text: Self.cloudflareAdmin))
         XCTAssertEqual(help.commands.map(\.name), [
-            "admin", "avatar", "emoji", "help", "invite-bot", "invite-code", "invite-device", "invite-token",
+            "admin", "avatar", "emoji", "help", "invite-bot", "invite-code", "invite-device", "invite-purge", "invite-token",
             "kick", "passkeys", "purge", "rename", "role", "server", "status", "toggle",
         ])
         XCTAssertEqual(help.commands[2], ServerCommand(
@@ -51,7 +52,7 @@ final class CommandHelpTests: XCTestCase {
 
     func testRustsAccountListParsesEveryLine() throws {
         let help = try XCTUnwrap(CommandHelp(text: Self.rustAccount))
-        XCTAssertEqual(help.commands.map(\.usage), ["/avatar", "/help", "/invite-bot", "/invite-device add|remove [<id>]", "/passkeys [remove <n>]"])
+        XCTAssertEqual(help.commands.map(\.usage), ["/avatar", "/help", "/invite-bot", "/invite-device list|add|remove [<id>]", "/passkeys [remove <n>]"])
         XCTAssertEqual(help.commands[0].summary, "with one image attached: set your avatar")
     }
 
@@ -78,9 +79,9 @@ final class CommandHelpTests: XCTestCase {
 
     func testMatchingIsByNamePrefixInTheServersOrder() throws {
         let help = try XCTUnwrap(CommandHelp(text: Self.cloudflareAdmin))
-        XCTAssertEqual(help.matching("inv").map(\.name), ["invite-bot", "invite-code", "invite-device", "invite-token"])
+        XCTAssertEqual(help.matching("inv").map(\.name), ["invite-bot", "invite-code", "invite-device", "invite-purge", "invite-token"])
         XCTAssertEqual(help.matching("PU").map(\.name), ["purge"])
-        XCTAssertEqual(help.matching("").count, 16)
+        XCTAssertEqual(help.matching("").count, 17)
         XCTAssertEqual(help.matching("x"), [])
     }
 

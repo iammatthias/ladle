@@ -1226,7 +1226,7 @@ final class ServerSessionTests: XCTestCase {
         await socket.deliver(privateNotice(CommandHelpTests.cloudflareAdmin))
         await socket.deliver(["id": "c5", "result": [:]])
         await reloading.value
-        await eventually("admin commands") { session.commands?.commands.count == 16 }
+        await eventually("admin commands") { session.commands?.commands.count == 17 }
         XCTAssertEqual(session.notices.count, 2)
 
         let second = queueTransport(capabilities: ["history", "edit", "rooms", "reactions"])
@@ -1236,7 +1236,7 @@ final class ServerSessionTests: XCTestCase {
         _ = await frames(second, count: 2)
         await second.deliver(["id": "c6", "result": ["you": ["user_id": "ada", "name": "Ada", "roles": ["admin"]]]])
         await eventually("signed in again") { session.status == .signedIn }
-        XCTAssertEqual(session.commands?.commands.count, 16)
+        XCTAssertEqual(session.commands?.commands.count, 17)
         let afterReconnect = Task { await session.loadCommands(in: "general") }
         let askedOnReconnect = await frame(second, 2)
         XCTAssertEqual(askedOnReconnect, #"{"id":"c8","method":"command","params":{"body":{"format":"plain","text":"/help"},"room_id":"general"}}"#)

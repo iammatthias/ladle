@@ -54,7 +54,7 @@ final class DraftFieldTests: XCTestCase {
         room.insert(room: "design")
         XCTAssertEqual(room.text, "Moving this to #design ")
         var command = DraftField(text: "/inv")
-        command.insert(ServerCommand(name: "invite-device", usage: "/invite-device add|remove [<id>]", summary: "A token"))
+        command.insert(ServerCommand(name: "invite-device", usage: "/invite-device list|add|remove [<id>]", summary: "A token"))
         XCTAssertEqual(command.text, "/invite-device ")
     }
 
