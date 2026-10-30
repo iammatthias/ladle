@@ -242,6 +242,9 @@ clone), which is only a worked example.
     (`token`, `state`) comes only from a web fragment; one in the query refuses the link, one
     in an `apron:` URI is dropped. `webURL` writes the web form, never with a credential, and
     `resolved(against:)` makes a relative link absolute.
+  - `LinkRoute` (`LinkRoute.swift`): where an Apron link that reaches the app, or a tapped
+    reminder, goes: a saved server's sign-in sheet with the link's token, a place on a saved
+    server, or the Connect sheet for the link's server; nowhere for a relative link.
   - `SignIn`, `TokenPayload` (a bare token or a sign-in link read by `ApronLink`), `SignInFill` (what a
     scanned or pasted sign-in fills in: server and token when adding a server, the token alone
     otherwise, or the other server a saved server's link names), `UserDirectory` (one kept

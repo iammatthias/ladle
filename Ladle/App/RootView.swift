@@ -103,30 +103,26 @@ struct RootView: View {
 
     // MARK: Links (link.apron.chat SPEC)
 
-    /// Opens a link's place on a saved server, or that server's sign-in sheet for a sign-in link,
-    /// or offers to add the server, which waits for you. A relative link here has no server that sent it (`resolvingLinks` resolves those in
-    /// a server's own content), so it opens nothing.
+    /// Opens a link (`LinkRoute`); a relative one here has no server that sent it
+    /// (`resolvingLinks` resolves those in a server's own content), so it opens nothing.
     private func open(_ link: ApronLink) {
-        guard let server = link.server else { return }
-        if let record = store.records.first(where: { $0.url == server }) {
-            // A sign-in link opens the server's sign-in sheet with its token filled in; it never
-            // signs in by itself (link.apron.chat SPEC §6).
-            if let token = link.token {
-                connecting = ConnectRequest(record: record, prefill: TokenPayload(token: token, server: server))
-            } else {
-                show(record.id, link)
-            }
-        } else {
-            connecting = ConnectRequest(prefill: TokenPayload(token: link.token ?? "", server: server), place: link)
-        }
+        LinkRoute(link, records: store.records).map(go)
     }
 
     /// A tapped reminder's message, once its server has loaded: revealed and highlighted, as a link to it.
     private func openReminder() {
-        guard let key = ReminderRoutes.shared.opened, let record = store.records.first(where: { $0.id == key.server }) else { return }
+        guard let key = ReminderRoutes.shared.opened, let route = LinkRoute(key, records: store.records) else { return }
         ReminderRoutes.shared.opened = nil
         restored = true
-        show(record.id, ApronLink(server: record.url, room: key.roomID, message: key.messageID))
+        go(route)
+    }
+
+    private func go(_ route: LinkRoute) {
+        switch route {
+        case .signIn(let record, let prefill): connecting = ConnectRequest(record: record, prefill: prefill)
+        case .place(let id, let link): show(id, link)
+        case .addServer(let prefill, let place): connecting = ConnectRequest(prefill: prefill, place: place)
+        }
     }
 
     private func show(_ id: UUID, _ link: ApronLink?) {
