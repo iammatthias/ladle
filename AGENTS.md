@@ -90,6 +90,8 @@ clone), which is only a worked example.
       then `backoff(attempt:jitter:)` = min(60 s, 1 s × 2^min(6, attempt − 1)) × [0.5, 1.5) (Cloudflare's docs/limits.md checklist),
       never below a `retry_after`. Attempts restart after 30 s signed in. An id-less `denied`
       or a refused upgrade other than 429 or 5xx stops reconnecting (`Status.stopped`).
+    - `ConnectionState` (`ConnectionState.swift`): a status as UX spec 4.1 shows it, its
+      symbol, words, detail, and whether it is a problem with Try Now; nil when signed in.
     - Connection status (`ConnectionStatus.swift`): after an upgrade fails, before the server's
       greeting, `Connection.probe` sends one `GET <url as https>?apron_connection_status=1` with
       the record's Origin through `Environment.fetchConnectionStatus`. A reply with
