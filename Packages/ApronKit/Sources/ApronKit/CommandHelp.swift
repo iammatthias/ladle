@@ -4,7 +4,7 @@ import Foundation
 public struct ServerCommand: Hashable, Sendable {
     /// The command word without its slash, such as `invite-device`.
     public var name: String
-    /// How to write it, such as `/invite-device <name>`.
+    /// How to write it, such as `/invite-device add|remove [<id>]`.
     public var usage: String
     /// What it does.
     public var summary: String

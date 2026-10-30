@@ -38,7 +38,7 @@ final class DraftFieldTests: XCTestCase {
         await home.loadCommands(in: "general")
         for _ in 0 ..< 100 where home.commands == nil { try await Task.sleep(for: .milliseconds(10)) }
         guard case .commands(let commands) = home.suggestions(for: DraftField(text: "/inv"), in: "general") else { return XCTFail("commands") }
-        XCTAssertEqual(commands.map(\.name), ["invite-device", "invite-bot"], "in the server's order")
+        XCTAssertEqual(commands.map(\.name), ["invite-bot", "invite-device"], "in the server's order")
     }
 
     func testPickingPutsTheChoiceInPlaceOfWhatIsTyped() async throws {
@@ -54,7 +54,7 @@ final class DraftFieldTests: XCTestCase {
         room.insert(room: "design")
         XCTAssertEqual(room.text, "Moving this to #design ")
         var command = DraftField(text: "/inv")
-        command.insert(ServerCommand(name: "invite-device", usage: "/invite-device <name>", summary: "A token"))
+        command.insert(ServerCommand(name: "invite-device", usage: "/invite-device add|remove [<id>]", summary: "A token"))
         XCTAssertEqual(command.text, "/invite-device ")
     }
 
