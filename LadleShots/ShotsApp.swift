@@ -22,6 +22,7 @@ enum Screen: String, CaseIterable {
     case textLimit = "text-limit", guestComposer = "guest-composer"
     case emoji, emojiPicker = "emoji-picker", emojiShortcode = "emoji-shortcode", commands
     case linkCards = "link-cards", roomMention = "room-mention", selectText = "select-text"
+    case reminder, reminderCustom = "reminder-custom"
 }
 
 @MainActor
@@ -62,10 +63,12 @@ enum Renderer {
             scene.sizeRestrictions?.maximumSize = size
             scene.sizeRestrictions?.minimumSize = size
             scene.windows.first?.overrideUserInterfaceStyle = shot.style
+            await seedReminder(shot.screen == .reminder, in: store, home: home)
             show(AnyView(view(shot.screen, store: store, home: home, staged: staged)
                 .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
                 .environment(\.scenePhase, .inactive)
                 .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
+                .environment(\.reminders, store.reminders)
                 .dynamicTypeSize(shot.large ? .accessibility3 : .large)
                 .apronStyle()
                 .id(UUID())))
@@ -137,10 +140,21 @@ enum Renderer {
         case .selectText:
             AnyView(SelectTextSheet(text: home.timeline(PreviewFixtures.busyRoomID).first { $0.plainText.hasPrefix("Notes from the sync") }
                 .map { SelectableBody($0.body).text } ?? "") {})
+        case .reminder:
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID) })
+        case .reminderCustom:
+            AnyView(ReminderDateSheet(date: .constant(Date(timeIntervalSince1970: 1_793_440_800)), set: {}, cancel: {}))
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))
         }
+    }
+
+    /// A reminder an hour off on the busy room's last message from Bram, for its shot alone.
+    static func seedReminder(_ shown: Bool, in store: SessionStore, home: ServerSession) async {
+        guard let message = home.timeline(PreviewFixtures.busyRoomID).last(where: { $0.from.userID == "bram" }) else { return }
+        let reminder = home.reminder(for: message, due: .now.addingTimeInterval(3630))
+        if shown { await store.reminders.set(reminder) } else { await store.reminders.remove(reminder.key) }
     }
 
     static func capture(_ scene: UIWindowScene, to url: URL) {

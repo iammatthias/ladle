@@ -24,12 +24,15 @@ struct TimelineView: View {
     @State private var sentCount = 0
     @State private var viewing: MediaRequest?
     @State private var selecting: SelectableBody?
+    @State private var remindingAt: CustomReminder?
+    @State private var notificationsOff = false
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openRoom) private var openRoom
     @Environment(\.requestSignIn) private var requestSignIn
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.reminders) private var reminders
 
     init(session: ServerSession, roomID: String, place: Binding<ApronLink?> = .constant(nil), draft: Draft = Draft(), showingMembers: Bool = false) {
         self.session = session
@@ -113,6 +116,14 @@ struct TimelineView: View {
         .toolbar { toolbar }
         .sheet(item: $selecting) { selected in
             SelectTextSheet(text: selected.text) { selecting = nil }
+        }
+        .sheet(item: $remindingAt) { pending in
+            ReminderDateSheet(date: Binding(get: { remindingAt?.date ?? pending.date }, set: { remindingAt?.date = $0 }),
+                              set: {
+                                  remind(pending.message, at: remindingAt?.date ?? pending.date)
+                                  remindingAt = nil
+                              },
+                              cancel: { remindingAt = nil })
         }
         .sheet(item: $reacting) { message in
             ReactionPicker(session: session) { emoji in
@@ -229,6 +240,18 @@ struct TimelineView: View {
                     .background(Palette.raised, in: Capsule())
                     .overlay(Capsule().strokeBorder(Palette.line))
             }
+            if notificationsOff {
+                ActionBanner(symbol: "bell.slash", title: "Notifications are off for Ladle",
+                             detail: "Your reminder shows on its message, but no alert will come. Turn on notifications for Ladle in Settings.") {
+                    Button("Settings") {
+                        notificationsOff = false
+                        URL(string: UIApplication.openNotificationSettingsURLString).map { openURL($0) }
+                    }
+                    .buttonStyle(GhostButtonStyle(tone: Palette.accent))
+                    Button("Dismiss", systemImage: "xmark") { notificationsOff = false }
+                        .labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
+                }
+            }
             if let problem {
                 ActionBanner(symbol: "exclamationmark.triangle", title: problem, tone: Palette.danger) {
                     Button("Dismiss", systemImage: "xmark") { self.problem = nil }
@@ -241,14 +264,17 @@ struct TimelineView: View {
             }
         }
         .padding(.horizontal, Tokens.Space.s4)
-        .padding(.top, state == nil && problem == nil && session.unavailableMessage == nil ? 0 : Tokens.Space.s2)
+        .padding(.top, state == nil && problem == nil && !notificationsOff && session.unavailableMessage == nil ? 0 : Tokens.Space.s2)
     }
 
     @ViewBuilder
     private func row(_ item: TimelineItem) -> some View {
         switch item {
         case .message(let message, let continues):
+            let reminder = reminders?[reminderKey(message)]
             MessageRow(session: session, message: message, continues: continues, highlighted: highlighted == message.messageID,
+                       reminderDue: reminder?.due,
+                       onClearReminder: { forget(reminder?.key) },
                        onReact: { emoji in perform { try await session.toggleReaction(emoji, on: message.messageID) } },
                        onAddReaction: { reacting = message },
                        onJump: { jumpTarget = $0.text })
@@ -310,11 +336,43 @@ struct TimelineView: View {
                 }
             }
         }
+        if reminders != nil { remindMenu(message) }
         linkActions(message.body)
         if session.status == .signedIn, session.mayWrite, session.isYou(message.from.userID), session.server?.has("edit") == true {
             Button("Edit", systemImage: "pencil") { draft = Draft(mode: .edit(message), text: message.plainText) }
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
         }
+    }
+
+    /// Remind Me: a time from now, tomorrow morning, or one picked; and the reminder's removal.
+    @ViewBuilder
+    private func remindMenu(_ message: MessageSnapshot) -> some View {
+        Menu("Remind Me", systemImage: "alarm") {
+            ForEach(ReminderChoice.allCases, id: \.self) { choice in
+                Button(choice.title) { remind(message, at: choice.due(after: .now, calendar: .current)) }
+            }
+            Button("Custom…", systemImage: "calendar") { remindingAt = CustomReminder(message: message, date: .now.addingTimeInterval(3600)) }
+            if let reminder = reminders?[reminderKey(message)] {
+                Button("Remove Reminder", systemImage: "bell.slash", role: .destructive) { forget(reminder.key) }
+            }
+        }
+    }
+
+    private func reminderKey(_ message: MessageSnapshot) -> ReminderKey {
+        ReminderKey(server: session.record.id, roomID: message.roomID, messageID: message.messageID)
+    }
+
+    private func remind(_ message: MessageSnapshot, at due: Date) {
+        guard let reminders else { return }
+        let reminder = session.reminder(for: message, due: due)
+        Task {
+            if !(await reminders.set(reminder)) { notificationsOff = true }
+        }
+    }
+
+    private func forget(_ key: ReminderKey?) {
+        guard let reminders, let key else { return }
+        Task { await reminders.remove(key) }
     }
 
     /// Open, Copy Link and Share for each of a body's first three links.
@@ -458,6 +516,13 @@ struct SelectableBody: Identifiable {
     let text: String
 
     init(_ body: JSONValue?) { text = MessageText.plain(body) }
+}
+
+/// Remind Me's Custom…: the message, and the time being picked.
+struct CustomReminder: Identifiable {
+    let id = UUID()
+    let message: MessageSnapshot
+    var date: Date
 }
 
 /// Which media the viewer opens at.
@@ -664,6 +729,8 @@ extension EnvironmentValues {
     @Entry var openRoom = OpenRoomAction { _ in }
     /// Opens the sign-in sheet for a saved server.
     @Entry var requestSignIn = SignInAction { _ in }
+    /// Reminders about messages, kept on this device.
+    @Entry var reminders: Reminders?
     /// The signed-in session of another saved server, for a link card naming a place on it.
     @Entry var liveSessions = SessionLookup { _ in nil }
 }

@@ -10,17 +10,22 @@ public final class SessionStore {
     public private(set) var sessions: [UUID: ServerSession] = [:]
     /// The last error saving `servers.json`, for the UI to show.
     public private(set) var saveError: String?
+    /// Reminders about messages on every server, kept beside `servers.json`.
+    public let reminders: Reminders
 
     private let serverStore: ServerStore?
     private let tokens: any TokenStore
     private let positions: any ReadPositionStore
     private let environment: ServerSession.Environment
 
-    /// `serverStore` nil keeps the list, and the read positions, in memory only.
-    public init(serverStore: ServerStore?, tokens: any TokenStore, environment: ServerSession.Environment = .live) {
+    /// `serverStore` nil keeps the list, the read positions and the reminders in memory only.
+    public init(serverStore: ServerStore?, tokens: any TokenStore, environment: ServerSession.Environment = .live,
+                notifier: any ReminderNotifier = SilentReminderNotifier()) {
         self.serverStore = serverStore
         self.tokens = tokens
         positions = serverStore.map { FileReadPositionStore(directory: $0.directory) } ?? InMemoryReadPositionStore()
+        reminders = Reminders(store: serverStore.map { FileReminderStore(directory: $0.directory) } ?? InMemoryReminderStore(),
+                              notifier: notifier)
         self.environment = environment
     }
 
@@ -51,9 +56,10 @@ public final class SessionStore {
         await sessions[record.id]?.update(record)
     }
 
-    /// Stops the session and forgets the server and its token.
+    /// Stops the session and forgets the server, its token and its reminders.
     public func remove(_ id: UUID) async {
         await sessions.removeValue(forKey: id)?.stop()
+        await reminders.removeAll(server: id)
         records.removeAll { $0.id == id }
         try? tokens.setToken(nil, for: id)
         save()
