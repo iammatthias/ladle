@@ -20,9 +20,12 @@ struct LocalReminderNotifier: ReminderNotifier {
         content.body = reminder.body
         content.sound = .default
         content.userInfo = reminder.key.userInfo
-        let when = Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: reminder.due)
-        let request = UNNotificationRequest(identifier: reminder.key.identifier, content: content,
-                                            trigger: UNCalendarNotificationTrigger(dateMatching: when, repeats: false))
+        // A calendar trigger for a time already past never fires; one picked just before Set still alerts.
+        let trigger: UNNotificationTrigger = reminder.due.timeIntervalSinceNow > 1
+            ? UNCalendarNotificationTrigger(dateMatching: Calendar.current.dateComponents([.year, .month, .day, .hour, .minute, .second], from: reminder.due),
+                                            repeats: false)
+            : UNTimeIntervalNotificationTrigger(timeInterval: 1, repeats: false)
+        let request = UNNotificationRequest(identifier: reminder.key.identifier, content: content, trigger: trigger)
         do {
             try await center.add(request)
             return true

@@ -353,7 +353,7 @@ struct TimelineView: View {
             }
             Button("Custom…", systemImage: "calendar") { remindingAt = CustomReminder(message: message, date: .now.addingTimeInterval(3600)) }
             if let reminder = reminders?[reminderKey(message)] {
-                Button("Remove Reminder", systemImage: "bell.slash", role: .destructive) { forget(reminder.key) }
+                Button("Remove Reminder", systemImage: "bell.slash") { forget(reminder.key) }
             }
         }
     }
