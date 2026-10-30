@@ -59,7 +59,7 @@ struct TimelineView: View {
                     }
                     ForEach(Array(session.notices.enumerated()).filter { $0.element.roomID == roomID }, id: \.offset) { _, notice in
                         let menu = NoticeMenu(notice, in: session)
-                        Callout(title: menu.title) { Text(rendered(notice.body, rooms: session.referencedTitle)).tint(Palette.denim) }
+                        Callout(title: menu.title) { Text(styled(MessageText.attributed(notice.body, rooms: session.referencedTitle))).tint(Palette.denim) }
                             .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Tokens.Radius.md))
                             .contextMenu { noticeActions(menu) }
                             .accessibilityActions { noticeActions(menu) }

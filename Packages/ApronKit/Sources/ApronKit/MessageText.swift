@@ -15,7 +15,8 @@ public enum MessageText {
         attributed(["text": .string(text), "format": "markdown"], emoji: emoji)
     }
 
-    public static func attributed(_ body: JSONValue?, emoji: EmojiCatalog? = nil, rooms: ((String) -> String?)? = nil) -> AttributedString {
+    public static func attributed(_ body: JSONValue?, emoji: EmojiCatalog? = nil, rooms: ((String) -> String?)? = nil,
+                                  mentions: [String: String] = [:], you: String? = nil) -> AttributedString {
         let text = TextDirection.withoutOverrides(body?["text"]?.stringValue ?? "")
         var out = AttributedString(text)
         if body?["format"]?.stringValue == "markdown" {
@@ -44,7 +45,23 @@ public enum MessageText {
         }
         if let rooms { markRooms(in: &out, rooms) }
         if let emoji { markKeys(in: &out, emoji) }
+        markMentions(in: &out, mentions, you: you)
         return out
+    }
+
+    /// Each `@name` or `@user_id` of a mentioned user (`mentions`: `user_id` to name), outside
+    /// links, as a chip (`MentionKey`).
+    private static func markMentions(in out: inout AttributedString, _ mentions: [String: String], you: String?) {
+        for (id, name) in mentions {
+            for token in Set(["@" + name, "@" + id]) {
+                var search = out.startIndex ..< out.endIndex
+                while let range = out[search].range(of: token) {
+                    search = range.upperBound ..< out.endIndex
+                    if out[range].runs.contains(where: { $0.link != nil }) { continue }
+                    out[range][MentionKey.self] = MentionChip(userID: id, isYou: id == you)
+                }
+            }
+        }
     }
 
     /// Each `#room_id` that `title` names, outside code and links, as a chip: `#title`, linked.
@@ -143,6 +160,18 @@ private extension Substring {
         while end > startIndex, predicate(self[index(before: end)]) { end = index(before: end) }
         return self[startIndex ..< end]
     }
+}
+
+/// A mention chip in rendered text: who, and whether it is you, which the app draws in accent.
+public struct MentionChip: Hashable, Sendable {
+    public var userID: String
+    public var isYou: Bool
+}
+
+/// Marks a mention in rendered text (`MessageText.attributed`).
+public enum MentionKey: AttributedStringKey {
+    public typealias Value = MentionChip
+    public static let name = "ApronMention"
 }
 
 /// Marks a custom emoji's key in rendered text (`MessageText`); the value is the key.

@@ -306,7 +306,7 @@ struct RoomRow: View {
         if mentions > 0 { parts.append("\(mentions) \(mentions == 1 ? "mention" : "mentions") of you") }
         if unread > 0 { parts.append("\(unread) new") }
         if !joined { parts.append("not joined") }
-        if isThread, let description = session.roomDescription(roomID) { parts.append(spoken(description, session.emojiCatalog)) }
+        if isThread, let description = session.roomDescription(roomID) { parts.append(EmojiKeys.spoken(description, catalog: session.emojiCatalog)) }
         return parts.joined(separator: ", ")
     }
 }
