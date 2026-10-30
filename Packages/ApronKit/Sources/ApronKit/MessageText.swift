@@ -5,14 +5,17 @@ import Foundation
 /// `http(s)` URL and §A.4 `apron:?` link linked, except inside code and existing links. A link
 /// whose scheme apron-web would not link (`javascript:`, another app's) is dropped. Bidirectional
 /// overrides are dropped too (§3.5.2). With a custom emoji catalog, each key it has outside code
-/// and links carries `CustomEmojiKey`, for the app to show as the emoji's image.
+/// and links carries `CustomEmojiKey`, for the app to show as the emoji's image. With `rooms`,
+/// each `#room_id` outside code and links (Appendix A.3) that it gives a title for shows as
+/// `#title`, carries `RoomReferenceKey`, and links to the room, as apron-web's room chips; any
+/// other `#word` stays text.
 public enum MessageText {
     /// CommonMark that isn't a message, such as a room's `description` or `server.welcome`.
     public static func markdown(_ text: String, emoji: EmojiCatalog? = nil) -> AttributedString {
         attributed(["text": .string(text), "format": "markdown"], emoji: emoji)
     }
 
-    public static func attributed(_ body: JSONValue?, emoji: EmojiCatalog? = nil) -> AttributedString {
+    public static func attributed(_ body: JSONValue?, emoji: EmojiCatalog? = nil, rooms: ((String) -> String?)? = nil) -> AttributedString {
         let text = TextDirection.withoutOverrides(body?["text"]?.stringValue ?? "")
         var out = AttributedString(text)
         if body?["format"]?.stringValue == "markdown" {
@@ -39,8 +42,32 @@ public enum MessageText {
             let lower = out.unicodeScalars.index(out.startIndex, offsetBy: link.offset)
             out[lower ..< out.unicodeScalars.index(lower, offsetBy: link.length)].link = link.url
         }
+        if let rooms { markRooms(in: &out, rooms) }
         if let emoji { markKeys(in: &out, emoji) }
         return out
+    }
+
+    /// Each `#room_id` that `title` names, outside code and links, as a chip: `#title`, linked.
+    private static func markRooms(in out: inout AttributedString, _ title: (String) -> String?) {
+        let text = String(out.characters)
+        var chips: [(offset: Int, length: Int, id: String, title: String)] = []
+        for match in RoomMentions.reference.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let whole = Range(match.range, in: text), let idRange = Range(match.range(at: 1), in: text) else { continue }
+            let id = String(text[idRange])
+            guard let name = title(id) else { continue }
+            chips.append((text.unicodeScalars.distance(from: text.startIndex, to: whole.lowerBound), text[whole].unicodeScalars.count, id, name))
+        }
+        for chip in chips.reversed() {
+            let lower = out.unicodeScalars.index(out.startIndex, offsetBy: chip.offset)
+            let range = lower ..< out.unicodeScalars.index(lower, offsetBy: chip.length)
+            let runs = out[range].runs
+            guard let first = runs.first,
+                  !runs.contains(where: { $0.link != nil || $0.inlinePresentationIntent?.contains(.code) == true }) else { continue }
+            var replacement = AttributedString("#" + TextDirection.isolated(chip.title), attributes: first.attributes)
+            replacement.link = RoomMentions.link(to: chip.id)
+            replacement[RoomReferenceKey.self] = chip.id
+            out.replaceSubrange(range, with: replacement)
+        }
     }
 
     /// Each key the catalog has, in runs that are neither code nor a link.

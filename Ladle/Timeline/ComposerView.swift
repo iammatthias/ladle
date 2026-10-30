@@ -43,6 +43,10 @@ struct ComposerView: View {
                 EmojiSuggestions(emoji: found, pick: insert)
                     .padding(.horizontal, Tokens.Space.s4)
                     .padding(.bottom, Tokens.Space.s1)
+            } else if let query = roomQuery, case let found = RoomMentions.search(session.roomSuggestions, query), !found.isEmpty {
+                RoomSuggestions(rooms: found) { draft.text = RoomMentions.insert($0.id, into: draft.text) }
+                    .padding(.horizontal, Tokens.Space.s4)
+                    .padding(.bottom, Tokens.Space.s1)
             }
             if let target {
                 HStack(spacing: Tokens.Space.s2) {
@@ -93,6 +97,7 @@ struct ComposerView: View {
         .animation(Motion.fast(reduceMotion), value: mentionQuery)
         .animation(Motion.fast(reduceMotion), value: emojiQuery)
         .animation(Motion.fast(reduceMotion), value: commandQuery)
+        .animation(Motion.fast(reduceMotion), value: roomQuery)
         .task(id: commandQuery != nil && session.status == .signedIn) {
             if commandQuery != nil { await session.loadCommands(in: roomID) }
         }
@@ -300,6 +305,9 @@ struct ComposerView: View {
         return String(word.dropFirst())
     }
 
+    /// The room id being typed after `#`, for the room list.
+    private var roomQuery: String? { RoomMentions.query(in: draft.text) }
+
     /// Puts the key in place of the `:name` being typed, then a space.
     private func insert(_ emoji: CustomEmoji) {
         guard let colon = draft.text.range(of: ":", options: .backwards) else { return }
@@ -326,6 +334,42 @@ struct ComposerView: View {
         guard canSend else { return }
         let mentions = draft.mentions.filter { text.contains("@" + $0.value) }.map(\.key).sorted()
         onSend(text, mentions, isEdit ? [] : draft.attachments.compactMap(\.attachment))
+    }
+}
+
+/// The composer's `#` list, styled as the mention list: each room's or thread's title, a lock
+/// when private, and its `#room_id`. Picking one puts `#room_id` in the draft.
+struct RoomSuggestions: View {
+    let rooms: [RoomSuggestion]
+    let pick: (RoomSuggestion) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(rooms, id: \.id) { room in
+                Button { pick(room) } label: {
+                    HStack(spacing: Tokens.Space.s2) {
+                        Image(systemName: room.isThread ? "text.bubble" : "number")
+                            .foregroundStyle(Palette.inkMuted)
+                            .frame(width: Tokens.AvatarSize.sm)
+                        if room.isPrivate { Lock(tint: Palette.private) }
+                        Text(TextDirection.isolated(room.title)).apText(.field, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
+                        Text("#" + room.id).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1).truncationMode(.middle)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, Tokens.Space.s2)
+                    .frame(minHeight: Tokens.Size.touchTarget)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(room.isThread ? "Thread" : "Room") \(room.title)\(room.isPrivate ? ", private" : "")")
+                .accessibilityHint("Links it in your message")
+            }
+        }
+        .padding(Tokens.Space.s1)
+        .frame(maxWidth: 320, alignment: .leading)
+        .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
+        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.line))
+        .shadow(color: .black.opacity(0.35), radius: 12, y: 8)
     }
 }
 

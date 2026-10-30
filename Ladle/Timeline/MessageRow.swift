@@ -86,7 +86,8 @@ struct MessageRow: View {
     @ViewBuilder
     private var content: some View {
         if !message.plainText.isEmpty {
-            EmojiText(text: rendered(message.body, mentions: mentionNames, you: session.you?.userID, emoji: session.emojiCatalog),
+            EmojiText(text: rendered(message.body, mentions: mentionNames, you: session.you?.userID, emoji: session.emojiCatalog,
+                                     rooms: session.referencedTitle),
                       catalog: session.emojiCatalog)
                 .apText(.body)
                 .foregroundStyle(Palette.ink)
@@ -176,10 +177,17 @@ func spoken(_ text: String, _ catalog: EmojiCatalog?) -> String {
     return out
 }
 
-/// The body as `MessageText` renders it, links and custom emoji keys included. Mentions outside
-/// links show as the web's chips: denim on denim-soft, and accent with on-accent for you.
-func rendered(_ body: JSONValue?, mentions: [String: String] = [:], you: String? = nil, emoji: EmojiCatalog? = nil) -> AttributedString {
-    var out = MessageText.attributed(body, emoji: emoji)
+/// The body as `MessageText` renders it, links, custom emoji keys and `#room` chips included.
+/// Mentions outside links show as the web's chips: denim on denim-soft, and accent with
+/// on-accent for you. A room chip (`RoomReferenceKey`) is denim on denim-soft too.
+func rendered(_ body: JSONValue?, mentions: [String: String] = [:], you: String? = nil, emoji: EmojiCatalog? = nil,
+              rooms: ((String) -> String?)? = nil) -> AttributedString {
+    var out = MessageText.attributed(body, emoji: emoji, rooms: rooms)
+    for run in out.runs where run[RoomReferenceKey.self] != nil {
+        out[run.range].backgroundColor = Palette.denimSoft
+        out[run.range].foregroundColor = Palette.denim
+        out[run.range].inlinePresentationIntent = .stronglyEmphasized
+    }
     for (id, name) in mentions {
         for token in Set(["@" + name, "@" + id]) {
             var search = out.startIndex ..< out.endIndex
