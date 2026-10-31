@@ -41,6 +41,9 @@ final class PreviewFixturesTests: XCTestCase {
             case .image: "image"
             }
         }), ["paragraph", "heading", "quote", "list", "code", "rule", "table"], "every block but an image, which the remote room has")
+        XCTAssertEqual(blocks.compactMap { block -> String? in
+            if case .code(let language, let text) = block { "\(language ?? "none"):\(CodeHighlighter.highlighted(text, fence: language) != nil)" } else { nil }
+        }, ["swift:true", "python:true", "diff:true", "json:true", "brainfuck:false"], "highlighted blocks, and one in a language nobody highlights")
         let gate = home.mediaGate
         let images = home.timeline(PreviewFixtures.elsewhereRoomID).flatMap { MessageText.blocks($0.body) }.compactMap { block -> MediaDecision? in
             if case .image(let image) = block { gate.decide(image.url) } else { nil }

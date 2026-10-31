@@ -4,8 +4,9 @@ import UIKit
 
 /// A body's blocks (`MessageText.blocks`) as apron-web's message markdown shows them: paragraphs
 /// and headings as `EmojiText`, quotes with a rule at their edge, lists with their bullets or
-/// numbers, code and tables scrolling sideways inside the message rather than widening it, and
-/// each markdown image as a block under the media gate. Text keeps the caller's role and color,
+/// numbers, code (highlighted where `CodeHighlighter` knows its language) and tables scrolling
+/// sideways inside the message rather than widening it, and each markdown image as a block under
+/// the media gate. Text keeps the caller's role and color,
 /// and follows Dynamic Type.
 struct MessageBlocksView: View {
     let blocks: [MessageBlock]
@@ -49,9 +50,10 @@ struct MessageBlocksView: View {
                     }
                 }
             }
-        case .code(_, let code):
+        case .code(let language, let code):
             ScrollView(.horizontal) {
-                Text(code).apText(.ui, mono: true).foregroundStyle(Palette.ink)
+                Text(CodeHighlighter.highlighted(code, fence: language).map(coloured) ?? AttributedString(code))
+                    .apText(.ui, mono: true).foregroundStyle(Palette.ink)
                     .fixedSize()
                     .padding(Tokens.Space.s3)
             }
@@ -82,6 +84,35 @@ struct MessageBlocksView: View {
     private func inline(_ text: AttributedString, _ role: TextRole) -> some View {
         EmojiText(text: styled(text), catalog: catalog, role: role)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// A highlighted block in the theme's colors, as apron.css's `.hljs-*` rules.
+    private func coloured(_ code: AttributedString) -> AttributedString {
+        var out = code
+        for (token, range) in code.runs[CodeTokenKey.self] {
+            guard let token else { continue }
+            switch token {
+            case .comment:
+                out[range].foregroundColor = Palette.inkMuted
+                out[range].inlinePresentationIntent = .emphasized
+            case .meta: out[range].foregroundColor = Palette.inkMuted
+            case .keyword: out[range].foregroundColor = Palette.termMagenta
+            case .string: out[range].foregroundColor = Palette.ok
+            case .number: out[range].foregroundColor = Palette.warn
+            case .title: out[range].foregroundColor = Palette.denim
+            case .type: out[range].foregroundColor = Palette.accent
+            case .attr: out[range].foregroundColor = Palette.termCyan
+            case .addition:
+                out[range].foregroundColor = Palette.ok
+                out[range].backgroundColor = Palette.ok.opacity(0.16)
+            case .deletion:
+                out[range].foregroundColor = Palette.danger
+                out[range].backgroundColor = Palette.danger.opacity(0.16)
+            case .emphasis: out[range].inlinePresentationIntent = .emphasized
+            case .strong: out[range].inlinePresentationIntent = .stronglyEmphasized
+            }
+        }
+        return out
     }
 
     private func cells(_ cells: [AttributedString], _ table: MessageTable, header: Bool) -> some View {

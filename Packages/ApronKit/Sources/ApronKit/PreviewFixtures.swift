@@ -255,6 +255,30 @@ public enum PreviewFixtures {
     Raw <b>HTML</b> stays text.
     """
 
+    private static let everyLanguage = """
+    ```python
+    @retry(times=3)
+    def backoff(attempt: int) -> float:
+        return min(60.0, 2 ** attempt)  # seconds
+    ```
+
+    ```diff
+    --- a/Origin.swift
+    +++ b/Origin.swift
+    @@ -1,2 +1,2 @@
+    -let origin = "https://web.apron.chat"
+    +let origin = record.origin
+    ```
+
+    ```json
+    {"room": "markdown", "unread": 2, "muted": false, "topic": null}
+    ```
+
+    ```brainfuck
+    ++++[>++++<-]>.
+    ```
+    """
+
     private static func room(_ id: String, _ title: String?, parent: String? = nil, members: [String],
                              description: String? = nil, isPrivate: Bool = false, logID: String? = nil, latest: Int? = nil) -> JSONValue {
         var room: [String: JSONValue] = [
@@ -427,6 +451,7 @@ public enum PreviewFixtures {
             "markdown": history("markdown", [
                 line(-401, "ada", everyInline, mentions: ["sam"]),
                 line(-400, "ada", everyBlock),
+                line(-399, "bram", everyLanguage),
             ]),
             "remote": history("remote", [
                 line(-410, "bram", "The walkthrough, hosted elsewhere.",
@@ -457,7 +482,7 @@ public enum PreviewFixtures {
             iconThread: message(-18), "random": message(-90),
             loadTestThread: message(-140), originThread: message(-480), docsThread: message(-1100), passkeyThread: message(-5000),
             untitledThreadID: message(-9000), archiveThread: message(-600_000), "ops": message(-290), "kitchen": message(-126),
-            "markdown": message(-400), "remote": message(-408),
+            "markdown": message(-399), "remote": message(-408),
             directRoomID: message(31), groupRoomID: message(34), addedRoomID: message(35),
         ],
         notices: [[

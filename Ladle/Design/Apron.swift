@@ -38,6 +38,9 @@ enum Palette {
     static var danger: Color { C.danger.color() }
     static var warn: Color { C.warn.color() }
     static var ok: Color { C.ok.color() }
+    /// Code's keywords and its attributes, properties and variables (apron.css's `.hljs-*`).
+    static var termMagenta: Color { C.termMagenta.color() }
+    static var termCyan: Color { C.termCyan.color() }
     static var `private`: Color { C.private.color() }
     static var privateSoft: Color { C.privateSoft.color() }
     /// The web's `color-mix(in srgb, var(--private-soft) N%, var(--bg-100))`: a private room's

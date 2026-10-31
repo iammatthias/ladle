@@ -225,9 +225,9 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Hide deleted messages from the feed (fork) | fork "Hide deleted messages from the feed" | has | `Kit/ServerSession.swift` (`timeline`) | |
 | Reply quote as one line with a bent spine, tap to jump, across rooms | #98 | has | `Timeline/MessageRow.swift` (`ReplyQuote`) | |
 | Markdown quoted as plain text | #146 | has | `Kit/MessageText+Plain.swift` | |
-| CommonMark blocks: headings, lists, blockquotes, fenced code | #12 | partial | `Kit/MessageBlocks.swift`, `Timeline/MessageBlocksView.swift` | Every block renders; fenced code has no syntax highlighting. |
+| CommonMark blocks: headings, lists, blockquotes, fenced code | #12 | has | `Kit/MessageBlocks.swift`, `Timeline/MessageBlocksView.swift` | Every block renders; fenced code is highlighted (next row). |
 | GitHub tables and strikethrough | #12 | partial | `Kit/MessageText.swift` | Strikethrough is inline and may render. Tables do not. |
-| Syntax-highlighted code blocks | #16 | missing | | |
+| Syntax-highlighted code blocks | #16 | has | `Kit/CodeHighlighter.swift`, `Kit/CodeGrammars.swift`, `Timeline/MessageBlocksView.swift` (`coloured`) | The web's 32 languages and its aliases, in apron.css's token colours from the active theme. A small scanner per language, not highlight.js: comments, strings, numbers, keywords, types, names after `func`/`def`/`class`, keys, and diff's headers, hunks and +/- lines. No language, an unknown one, or over 20,000 characters stays plain, as on the web (no guessing). Fewer token kinds than highlight.js (no regex literals, string interpolation or nested languages). |
 | Raw HTML as text | bh | has | `Kit/MessageText.swift` | |
 | Bare URL linking | #6 | has | `Kit/MessageText.swift` | |
 | `@user_id` as a chip with current name | bh | has | `Kit/MessageRowModel.swift` (`MentionKey`) | |
@@ -449,7 +449,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Custom theme CSS: Apply, Discard, live preview while it reads, errors | #174 | has | `Kit/ThemeCSS.swift` (`parse`), `Kit/Appearance.swift` (`ThemeEditor`), `Servers/AppearanceView.swift` (`ThemeCSSView`) | `parseThemeCss`'s grammar, limits and messages; a theme pasted from apron-web reads the same. Tokens iOS has no use for stay in the text and are listed as not used on iOS. |
 | Custom starts from the theme chosen before, the first time | #174 | has | `Kit/Appearance.swift` (`choosing`) | |
 | Base colors from color pickers | | has | `Servers/AppearanceView.swift` (`BaseColorsView`), `Kit/Appearance.swift` (`ThemeBases`) | Ladle's addition: writes the same `--base-*` CSS. |
-| Theme fonts: interface, messages, code (`--font-sans`, `--font-chat`, `--font-mono`) | #23, #174 | has | `Kit/ThemeFonts.swift`, `Design/Fonts.swift`, `Ladle/Fonts` | Recursive and Nunito bundled from the web's files (OFL 1.1, `tools/design/fonts.py`); first available family, scaled with Dynamic Type. Installed fonts work too. |
+| Theme fonts: interface, messages, code (`--font-sans`, `--font-chat`, `--font-mono`) | #23, #174 | has | `Kit/ThemeFonts.swift`, `Design/Fonts.swift`, `Ladle/Fonts` | Recursive and Nunito bundled from the web's files (OFL 1.1, `tools/design/fonts.py`); first available family, scaled with Dynamic Type. Installed fonts work too. Inline code takes `--font-mono` (`EmojiText`). |
 | Appearance kept per device | #174 | has | `Kit/Appearance.swift` (`AppearanceSettings`) | `appearance.json` beside `servers.json`, as the web's `apron.appearance` in this browser. |
 | Fonts saved before themes become a custom theme | #174 | N/A-iOS | | Ladle never kept font fields. |
 | Browser chrome (`theme-color`) takes the theme's ground | #174 | N/A-iOS | | iOS has no page chrome; the navigation bars take the theme's grounds and face. |
@@ -525,7 +525,7 @@ These have no apron-web counterpart. They stay.
 
 Sizes are rough. S is a day or less. M is a few days. L is a week or more, or needs outside work such as a relay or associated domains. Items lower down often depend on items above them.
 
-1. **Code highlighting.** Every markdown block renders since deac4e3; fenced code still has no syntax highlighting. S.
+1. ~~**Code highlighting.**~~ Done (`Kit/CodeHighlighter.swift`): the web's 32 languages and aliases, unknown ones plain; inline code in the theme's mono face. Left out: highlight.js's finer tokens (regex literals, interpolation, embedded languages). Inline code takes the web's `--text-ui` size and `bg-300` ground, square, since a run of text has no padding or radius.
 2. ~~**Profile card.**~~ Done (`Profile/ProfileCardView.swift`), Message included since item 10.
 3. ~~**Your profile and status.**~~ Done: You (`Profile/YouView.swift`) edits the name, bio and avatar and picks a status, with the server's answer.
 4. ~~**Drafts per room.**~~ Done (`Kit/Drafts.swift`): text, mentions, reply target and ready files per room and thread, kept across a relaunch.

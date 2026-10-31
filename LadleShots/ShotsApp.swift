@@ -81,6 +81,9 @@ enum Renderer {
             shots.append((.timeline, .dark, false, look))
             shots.append((.timeline, .light, false, look))
         }
+        // Highlighted code and inline code in a theme whose code face is not SF Mono.
+        shots.append((.markdown, .dark, false, Look.premade(PremadeTheme.all.first { $0.id == "ferrous" }!)))
+        shots.append((.markdown, .light, false, Look.premade(PremadeTheme.all.first { $0.id == "ferrous" }!)))
         // The busy room drawn in Apron and then given Linocut without being made again: what a
         // theme chosen in Preferences does to the screens already open.
         shots.append((.timeline, .dark, false, Look.switched))

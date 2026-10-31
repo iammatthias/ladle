@@ -50,7 +50,9 @@ struct EmojiText: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        let font = UIFont.systemFont(ofSize: ScaledRole.size(role, at: fixed ?? dynamic))
+        let size = ScaledRole.size(role, at: fixed ?? dynamic)
+        let font = UIFont.systemFont(ofSize: size)
+        let text = inMonoFace(text, size: ScaledRole.size(.ui, at: fixed ?? dynamic))
         var out = Text("")
         var spoken = ""
         for (key, range) in text.runs[CustomEmojiKey.self] {
@@ -67,6 +69,22 @@ struct EmojiText: View {
             }
         }
         return out.accessibilityLabel(spoken)
+    }
+
+    /// Inline code in the theme's `--font-mono` at the ui size on the `--bg-300` ground, as the
+    /// web's `.ap-msg-text code`, in place of the system monospaced face the `.code` intent alone
+    /// draws in. A run of `Text` has no padding or corner radius, so the ground is square.
+    private func inMonoFace(_ text: AttributedString, size: CGFloat) -> AttributedString {
+        var out = text
+        let mono = BundledFonts.font(ActiveTheme.shared.theme.fonts.list(.mono), size: size, weight: .regular, mono: true).font
+        for run in out.runs {
+            guard var intent = run.inlinePresentationIntent, intent.contains(.code) else { continue }
+            intent.remove(.code)
+            out[run.range].inlinePresentationIntent = intent.isEmpty ? nil : intent
+            out[run.range].font = mono
+            out[run.range].backgroundColor = Palette.hover
+        }
+        return out
     }
 }
 
