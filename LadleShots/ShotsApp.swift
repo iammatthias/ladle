@@ -28,7 +28,7 @@ enum Screen: String, CaseIterable {
     case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing", rolePicker = "role-picker", roleChip = "role-chip"
     case muted, paused, notificationsPaused = "notifications-paused", limited
     case appearance, appearanceCustom = "appearance-custom", preferences, history
-    case threadRenamed = "thread-renamed", startThread = "start-thread"
+    case threadRenamed = "thread-renamed", startThread = "start-thread", roomsInactive = "rooms-inactive"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -95,6 +95,7 @@ enum Renderer {
             ActiveTheme.shared.theme = shot.look?.drawnIn ?? store.appearance.shown
             await seedReminder(shot.screen == .reminder, in: store, home: home)
             await seedPause(shot.screen.isPaused, home: home)
+            UserDefaults.standard.set(shot.screen == .roomsInactive, forKey: "inactiveThreadsOpen")
             if shot.screen == .limited { await seedWaits(home: home) }
             show(AnyView(view(shot.screen, store: store, home: home, staged: staged)
                 .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
@@ -222,6 +223,9 @@ enum Renderer {
         case .threadRenamed:
             // The Release thread's rename, and in #general (the busy room) Dev's join.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.releaseThreadID, reminders: store.reminders, drafts: Drafts()) })
+        case .roomsInactive:
+            // Inactive unfolded, with the untitled thread there open.
+            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.untitledThreadID, open: { _ in }) })
         case .startThread:
             // Start Thread on Bram's checklist message: its first line as the title, its text quoted.
             AnyView(Group {

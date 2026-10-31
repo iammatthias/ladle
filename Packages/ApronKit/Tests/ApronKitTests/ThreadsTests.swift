@@ -66,17 +66,49 @@ final class ThreadsTests: XCTestCase {
         XCTAssertEqual([elsewhere.joined, elsewhere.others], [["c"], []], "another room shows only its joined threads with news")
     }
 
+    func testInactivePutsAwayQuietJoinedThreadsPastTheNewestFive() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        let ago = { (hours: Double) in LogID(String(Int64((now.timeIntervalSince1970 - hours * 3600) * 1000)))! }
+        let entry = { (id: String, hours: Double?, news: Bool) in
+            ThreadList.Entry(id: id, joined: true, activity: hours.map(ago), hasNews: news)
+        }
+        var entries = (1 ... 5).map { entry("new\($0)", Double($0), false) }
+        entries += [entry("quiet", 100, false), entry("news", 200, true), entry("unknown", nil, false), entry("edge", 72, false)]
+        let list = ThreadList(entries, isOpenRoom: true, openThread: nil, othersFolded: false, allOthers: false, now: now, inactiveFolded: false)
+        XCTAssertEqual(list.inactive, ["quiet"], "news, an unknown time and the newest five stay; 72 h is still within the hour-floored cutoff")
+        XCTAssertEqual(list.joined, ["new1", "new2", "new3", "new4", "new5", "edge", "news", "unknown"])
+        XCTAssertEqual(list.inactiveCount, 1)
+
+        let few = ThreadList(Array(entries.prefix(4)) + [entry("old", 10_000, false)], isOpenRoom: true, openThread: nil, othersFolded: false,
+                             allOthers: false, now: now, inactiveFolded: false)
+        XCTAssertEqual(few.inactiveCount, 0, "a room of five or fewer keeps them all in view")
+
+        let opened = ThreadList(entries, isOpenRoom: true, openThread: "quiet", othersFolded: false, allOthers: false, now: now, openedQuiet: false)
+        XCTAssertEqual([opened.inactiveCount, opened.openThreadIsQuiet == true ? 1 : 0], [0, 1], "it stays on the side it was opened on")
+        let folded = ThreadList(entries, isOpenRoom: true, openThread: "quiet", othersFolded: false, allOthers: false, now: now)
+        XCTAssertEqual([folded.inactive, [String(folded.inactiveCount)]], [["quiet"], ["1"]], "folded, the open one shows")
+        XCTAssertEqual(ThreadList.inactiveAfter, 259_200)
+        XCTAssertEqual(ThreadList.activeKept, 5)
+    }
+
     func testTheFixturesThreadsUnderTheOpenRoomAndElsewhere() async throws {
         let store = await PreviewFixtures.makeStore()
         let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
         let general = try XCTUnwrap(home.roomTree.first { $0.roomID == "general" })
-        let open = home.threadList(of: general, open: "general")
-        XCTAssertEqual(open.joined.map(home.title(of:)), ["Release 0.2", "Load test", "Origin check", "Docs", "Passkeys", "Untitled", "Archive 2025"])
+        let now = PreviewFixtures.now
+        let open = home.threadList(of: general, open: "general", now: now)
+        XCTAssertEqual(open.joined.map(home.title(of:)), ["Release 0.2", "Load test", "Origin check", "Docs", "Passkeys"],
+                       "the newest five stay up top, Passkeys though quiet for 3.5 days")
+        XCTAssertEqual([open.inactiveCount, open.inactive.count], [2, 0], "Untitled and Archive 2025, folded away")
+        XCTAssertEqual(home.threadList(of: general, open: "general", now: now, inactiveFolded: false).inactive.map(home.title(of:)),
+                       ["Untitled", "Archive 2025"])
         XCTAssertEqual(open.others.map(home.title(of:)), ["Benchmarks", "Hiring", "2024 offsite"])
         XCTAssertEqual(open.moreOthers, 1)
-        let now = PreviewFixtures.now
         XCTAssertEqual(open.others.compactMap(home.lastActive(of:)).map { LastActive.words($0, now: now) }, ["4d", "9w", "2y"])
-        XCTAssertEqual(home.threadList(of: general, open: PreviewFixtures.releaseThreadID).joined.count, 7, "a thread open is its room open")
+        XCTAssertEqual(home.threadList(of: general, open: PreviewFixtures.releaseThreadID, now: now).joined.count, 5, "a thread open is its room open")
+        let reading = home.threadList(of: general, open: PreviewFixtures.untitledThreadID, now: now)
+        XCTAssertEqual([reading.inactive, [String(reading.openThreadIsQuiet ?? false)]], [[PreviewFixtures.untitledThreadID], ["true"]],
+                       "folded, Inactive still shows the open one")
         XCTAssertEqual(home.threadList(of: general, open: "random").joined.map(home.title(of:)), ["Release 0.2"], "only the thread with news")
         XCTAssertEqual(home.threadList(of: general, open: nil).others, [])
 

@@ -112,9 +112,10 @@ public enum LastActive {
 }
 
 /// What the rooms list shows of one room's threads, as apron-web's ThreadList. Under the open
-/// room: its joined threads, most recently active first, then Other Threads, those you have not
-/// joined, the first three and "N more…". Under any other room, only joined threads with news,
-/// so activity there is not missed, and the thread open in it.
+/// room: its joined threads, most recently active first, then Inactive, the quiet ones put away
+/// (apron-web #185), then Other Threads, those you have not joined, the first three and "N
+/// more…". Under any other room, only joined threads with news, so activity there is not missed,
+/// and the thread open in it.
 public struct ThreadList: Hashable, Sendable {
     /// One thread as the list weighs it.
     public struct Entry: Hashable, Sendable {
@@ -135,8 +136,20 @@ public struct ThreadList: Hashable, Sendable {
 
     /// How many threads you have not joined show before "N more…".
     public static let othersShown = 3
+    /// How long a joined thread can go without activity before it may move down to Inactive:
+    /// long enough to cover a weekend.
+    public static let inactiveAfter: TimeInterval = 3 * 24 * 3600
+    /// How many of the most recently active joined threads stay up top however quiet, so a room
+    /// of a few keeps them all in view.
+    public static let activeKept = 5
 
     public var joined: [String] = []
+    /// Inactive: how many there are, and those shown (all, or while folded the open one).
+    public var inactiveCount = 0
+    public var inactive: [String] = []
+    /// Whether the open thread would be under Inactive, whatever side it was opened on: what the
+    /// app keeps for `openedQuiet` when another thread is opened.
+    public var openThreadIsQuiet: Bool?
     /// Other Threads: how many there are, and those shown.
     public var othersCount = 0
     public var others: [String] = []
@@ -146,14 +159,26 @@ public struct ThreadList: Hashable, Sendable {
     public init() {}
 
     /// `entries` in any order. `isOpenRoom` is the room open or holding the open thread;
-    /// `openThread` the thread open in it, if any.
-    public init(_ entries: [Entry], isOpenRoom: Bool, openThread: String?, othersFolded: Bool, allOthers: Bool) {
+    /// `openThread` the thread open in it, if any, and `openedQuiet` the side it was on when it
+    /// was opened, where it stays until another is, so reading it never moves its row.
+    public init(_ entries: [Entry], isOpenRoom: Bool, openThread: String?, othersFolded: Bool, allOthers: Bool,
+                now: Date = Date(), inactiveFolded: Bool = true, openedQuiet: Bool? = nil) {
         let ordered = entries.sorted(by: Self.byActivity)
         guard isOpenRoom else {
             joined = ordered.filter { $0.joined && ($0.hasNews || $0.id == openThread) }.map(\.id)
             return
         }
-        joined = ordered.filter(\.joined).map(\.id)
+        let mine = ordered.filter(\.joined)
+        let quiet = Self.quiet(mine, now: now)
+        var sides = Dictionary(uniqueKeysWithValues: mine.map { ($0.id, quiet.contains($0.id)) })
+        if let openThread, sides[openThread] != nil {
+            openThreadIsQuiet = sides[openThread]
+            sides[openThread] = openedQuiet ?? sides[openThread]
+        }
+        joined = mine.filter { sides[$0.id] == false }.map(\.id)
+        let putAway = mine.filter { sides[$0.id] == true }
+        inactiveCount = putAway.count
+        inactive = (inactiveFolded ? putAway.filter { $0.id == openThread || $0.hasNews } : putAway).map(\.id)
         let unjoined = ordered.filter { !$0.joined }.map(\.id)
         othersCount = unjoined.count
         let open = unjoined.first { $0 == openThread }
@@ -164,6 +189,20 @@ public struct ThreadList: Hashable, Sendable {
             if let open, !others.contains(open) { others.append(open) }
             moreOthers = unjoined.count - others.count
         }
+    }
+
+    /// The joined threads Inactive puts away: past the `activeKept` most recently active, those
+    /// quiet since `inactiveAfter` before `now`, to the hour, with nothing unread or mentioning
+    /// you. One whose time is not known stays up top.
+    static func quiet(_ joined: [Entry], now: Date) -> Set<String> {
+        let millis = { (entry: Entry) in entry.activity.flatMap { Double($0.text) } }
+        let newest = Set(joined.sorted { (millis($0) ?? .infinity) > (millis($1) ?? .infinity) }.prefix(activeKept).map(\.id))
+        let hour = 3_600_000.0
+        let since = ((now.timeIntervalSince1970 * 1000 - inactiveAfter * 1000) / hour).rounded(.down) * hour
+        return Set(joined.filter { entry in
+            guard !newest.contains(entry.id), !entry.hasNews, let at = millis(entry) else { return false }
+            return at < since
+        }.map(\.id))
     }
 
     /// apron-web's `byActivity`: most recently active first, ones with nothing known last, ties by
@@ -192,14 +231,15 @@ extension ServerSession {
     }
 
     /// One room's threads as the rooms list shows them, with `openRoomID` the room or thread open.
-    public func threadList(of node: RoomNode, open openRoomID: String?, othersFolded: Bool = false, allOthers: Bool = false) -> ThreadList {
+    public func threadList(of node: RoomNode, open openRoomID: String?, othersFolded: Bool = false, allOthers: Bool = false,
+                           now: Date = Date(), inactiveFolded: Bool = true, openedQuiet: Bool? = nil) -> ThreadList {
         let openRoom = openRoomID.map { store.room($0)?.parentRoomID ?? $0 }
         let entries = node.threadIDs.map { id in
             ThreadList.Entry(id: id, joined: joinedRoomIDs.contains(id), activity: activity(of: id),
                              hasNews: unreadCount(in: id) > 0 || mentionCount(in: id) > 0)
         }
         return ThreadList(entries, isOpenRoom: openRoom == node.roomID, openThread: openRoomID == openRoom ? nil : openRoomID,
-                          othersFolded: othersFolded, allOthers: allOthers)
+                          othersFolded: othersFolded, allOthers: allOthers, now: now, inactiveFolded: inactiveFolded, openedQuiet: openedQuiet)
     }
 
     /// Whether a room is a thread without a title, which shows as "Untitled".

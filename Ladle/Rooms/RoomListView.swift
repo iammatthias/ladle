@@ -21,6 +21,12 @@ struct RoomListView: View {
     @State private var naming: NewRoom?
     /// Other Threads is open until folded, and stays as it was left, as the web's.
     @AppStorage("otherThreadsOpen") private var othersOpen = true
+    /// Inactive is folded until opened, as it is there to put quiet threads away, and stays as it
+    /// was left (apron-web #185).
+    @AppStorage("inactiveThreadsOpen") private var inactiveOpen = false
+    /// The open thread and whether it was under Inactive when it was opened: it stays on that
+    /// side until another is opened, so reading it never moves its row.
+    @State private var opened: OpenedThread?
     /// The room whose other threads all show, past the first three, after "N more…".
     @State private var allOthersFor: String?
     @Environment(\.fixedNow) private var fixedNow
@@ -37,6 +43,11 @@ struct RoomListView: View {
     enum Panel: String, Identifiable {
         case server, you
         var id: String { rawValue }
+    }
+
+    struct OpenedThread: Equatable {
+        var id: String
+        var quiet: Bool
     }
 
     /// A room to create: top level, or a thread under `parent`.
@@ -78,6 +89,12 @@ struct RoomListView: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .environment(\.defaultMinListRowHeight, Tokens.Size.touchTarget)
+        .onChange(of: selected, initial: true) { _, thread in
+            guard let thread, let parent = session.store.room(thread)?.parentRoomID,
+                  let node = session.roomTree.first(where: { $0.roomID == parent }) else { return opened = nil }
+            let side = session.threadList(of: node, open: thread, now: fixedNow ?? .now).openThreadIsQuiet
+            opened = side.map { OpenedThread(id: thread, quiet: $0) }
+        }
         .background(Palette.chrome)
         .safeAreaInset(edge: .bottom, spacing: 0) { profileBar }
         .navigationTitle(session.serverName)
@@ -156,8 +173,14 @@ struct RoomListView: View {
     /// Other Threads; under another, only its joined threads with news.
     @ViewBuilder
     private func threads(of node: RoomNode) -> some View {
-        let list = session.threadList(of: node, open: selected, othersFolded: !othersOpen, allOthers: allOthersFor == node.roomID)
+        let list = session.threadList(of: node, open: selected, othersFolded: !othersOpen, allOthers: allOthersFor == node.roomID,
+                                      now: fixedNow ?? .now, inactiveFolded: !inactiveOpen,
+                                      openedQuiet: opened.flatMap { $0.id == selected ? $0.quiet : nil })
         ForEach(list.joined, id: \.self) { roomRow($0, isThread: true) }
+        if list.inactiveCount > 0 {
+            FoldHeading(label: "Inactive", count: list.inactiveCount, open: $inactiveOpen)
+            ForEach(list.inactive, id: \.self) { roomRow($0, isThread: true) }
+        }
         if list.othersCount > 0 {
             FoldHeading(label: "Other Threads", count: list.othersCount, open: $othersOpen)
             ForEach(list.others, id: \.self) { roomRow($0, isThread: true) }
