@@ -16,6 +16,15 @@ final class PreviewFixturesTests: XCTestCase {
         for _ in 0 ..< 100 where home.typingNames(in: PreviewFixtures.typingRoomID).count < 2 { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(home.typingNames(in: PreviewFixtures.typingRoomID), ["Ada Okafor", "Bram"])
         XCTAssertEqual(home.typingNames(in: PreviewFixtures.busyRoomID), [])
+        XCTAssertEqual(home.mute(of: PreviewFixtures.mutedRoomID), .own(.untilChanged))
+        XCTAssertEqual(home.mute(of: PreviewFixtures.linkCardRoomID), .withRoom(PreviewFixtures.mutedRoomID, .untilChanged))
+        XCTAssertNil(home.mute(of: PreviewFixtures.busyRoomID))
+        try await home.setPause(.untilChanged)
+        for _ in 0 ..< 100 where home.pause == nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(home.profileLine, "Paused until you resume", "the preview server echoes a pause")
+        try await home.setPause(nil)
+        for _ in 0 ..< 100 where home.pause != nil { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertNil(home.pause)
 
         let blocks = home.timeline(PreviewFixtures.markdownRoomID).flatMap { MessageText.blocks($0.body) }
         XCTAssertEqual(Set(blocks.map { block -> String in

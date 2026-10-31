@@ -26,6 +26,10 @@ enum Screen: String, CaseIterable {
     case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded"
     case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline", serverPane = "server-pane", serverPaneDemo = "server-pane-demo", mentionChip = "mention-chip"
     case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing", rolePicker = "role-picker", roleChip = "role-chip"
+    case muted, paused, youPaused = "you-paused"
+
+    /// Shots of home with its notifications paused.
+    var isPaused: Bool { self == .paused || self == .youPaused }
 
     var isPad: Bool { self == .ipad || self == .ipadTyping }
 }
@@ -69,6 +73,7 @@ enum Renderer {
             scene.sizeRestrictions?.minimumSize = size
             scene.windows.first?.overrideUserInterfaceStyle = shot.style
             await seedReminder(shot.screen == .reminder, in: store, home: home)
+            await seedPause(shot.screen.isPaused, home: home)
             show(AnyView(view(shot.screen, store: store, home: home, staged: staged)
                 .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
                 .environment(\.scenePhase, .inactive)
@@ -193,6 +198,14 @@ enum Renderer {
                 TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders,
                              drafts: kept(home, PreviewFixtures.busyRoomID, ComposerDraft(field: DraftField(text: "Release is out, @&"))))
             })
+        case .muted:
+            // A muted room: the bell-off left of ⋯ in its header, and its thread card.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.mutedRoomID, reminders: store.reminders, drafts: Drafts()) })
+        case .paused:
+            // The profile bar while paused, over the muted room and its thread's bells.
+            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
+        case .youPaused:
+            AnyView(YouView(session: home))
         case .roleChip:
             // Ada's `@&announce` as a role chip, and the same words in code left as written.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkRoomID, reminders: store.reminders, drafts: Drafts()) })
@@ -212,6 +225,13 @@ enum Renderer {
     }
 
     /// A reminder an hour off on the busy room's last message from Bram, for its shot alone.
+    /// Pauses home until resumed for the paused shots (the preview server echoes it), else resumes.
+    static func seedPause(_ paused: Bool, home: ServerSession) async {
+        guard (home.pause != nil) != paused else { return }
+        try? await home.setPause(paused ? .untilChanged : nil)
+        for _ in 0 ..< 100 where (home.pause != nil) != paused { try? await Task.sleep(for: .milliseconds(10)) }
+    }
+
     static func seedReminder(_ shown: Bool, in store: SessionStore, home: ServerSession) async {
         guard let message = home.timeline(PreviewFixtures.busyRoomID).last(where: { $0.from.userID == "bram" }) else { return }
         let reminder = home.reminder(for: message, due: .now.addingTimeInterval(3630))

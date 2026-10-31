@@ -85,7 +85,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Sidebar head: server avatar, title, host | #138 | has | `Servers/ServerListView.swift`, `Rooms/RoomListView.swift` title | |
 | Server pane: description, connection dot, who you are, address with copy, protocol version | #177 | has | `Profile/ServerPaneView.swift`, `Kit/ServerPane.swift` | From the room list's title, and on iPad the sidebar head. Connect to Another Server… opens Connect; Disconnect signs out of this server after a confirmation, since Ladle keeps every server. |
 | Edit profile from the server pane | #177 | has | `Profile/ServerPaneView.swift`, `Rooms/RoomListView.swift` | Opens You. |
-| Profile bar: avatar, name, status line or "notifications paused", gear | #177 | partial | `Rooms/RoomListView.swift` (`profileBar`), `Kit/Profile.swift` (`profileLine`) | Avatar with your dot, name, your status in words or else `@user_id`, and a gear that opens You. No paused line until pause exists (gap 7). |
+| Profile bar: avatar, name, status line or "notifications paused", gear | #177 | has | `Rooms/RoomListView.swift` (`profileBar`), `Kit/Profile.swift` (`profileLine`) | Avatar with your dot, name, "Paused until 14:30" with a bell-off while paused, else your status in words or `@user_id`, and a gear (with a small bell-off while paused) that opens You. |
 | Edit display name (`me {name}`) | bh | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`save`) | Says when the server kept another name or declined it. |
 | Edit bio (`ext:bio`) | #115 | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`Bio`, `save`) | Cleaned as `cleanBio`, 250 code points, `too_large` explained. |
 | Upload avatar (`/avatar` with an upload embed) | bh | has | `Profile/YouView.swift`, `Kit/ServerSession+Uploads.swift` | |
@@ -102,8 +102,8 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Status picker: Online, None, Do not disturb, Invisible per `server.status` | #48 | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`StatusChoice`, `chooseStatus`) | Your chosen status is read only from `you`. |
 | Server answered another status: callout | bh | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`StatusAnswer`) | An optional one it answered otherwise for is not offered again. |
 | Idle after 5 minutes, `status {idle}` reporting | #52 | missing | `App/RootView.swift` | UX.md 4.1 wants `{idle: 0}` on background. Not sent. |
-| Pause notifications (1 h, 8 h, until tomorrow, until I resume) | #48 | missing | | |
-| Pause set elsewhere shows here | bh | missing | | |
+| Pause notifications (1 h, 8 h, until tomorrow, until I resume) | #48 | has | `Kit/Mutes.swift` (`MuteChoice.pause`), `Kit/ServerSession+Mutes.swift` (`setPause`), `Profile/YouView.swift` | In You, with Resume and the server's words on a refusal. |
+| Pause set elsewhere shows here | bh | has | `Kit/ServerSession+Mutes.swift` (`applyStatus`) | The server's `status` sets it on every device, and again after each sign-in. |
 | Last seen on the profile card and member tooltip | #126 | partial | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` (`LastSeen`) | On the card, as `lastSeen`. No member-list tooltip (iOS has no hover); apron-web's local `sawOffline` floor is not kept. |
 | Do not disturb silences this device | bh | missing | | Depends on notifications. |
 
@@ -125,7 +125,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Private room named for its members ("Dev, Mira", "You") | #123 | missing | `Kit/ServerSession.swift` (`title`) | An untitled room shows its `room_id`. |
 | Other Rooms section with member count and Join | #74 | partial | `Rooms/RoomListView.swift` (`BrowseRoomsView`) | A Browse sheet, not a section. No member count or description. A tap on a row does not open it to read. |
 | News from other rooms on the phone's back button | #84 | partial | `Servers/ServerListView.swift` | The server list shows unread per server. The room's back button has no tag. |
-| Room row context menu | | partial | `Rooms/RoomListView.swift` (`roomActions`) | New Thread, Join, Leave. No Copy Link, Mute, or Mark as Read. |
+| Room row context menu | | partial | `Rooms/RoomListView.swift` (`roomActions`) | Mute or Unmute, New Thread, Join, Leave; Mute and Unmute on the swipe too. No Copy Link or Mark as Read. |
 | Leave by swipe | | has | `Rooms/RoomListView.swift` (`swipeActions`) | |
 | Sidebar resize and collapse by drag or arrow keys | #59, #62 | N/A-iOS | | `NavigationSplitView` owns the column. |
 
@@ -160,7 +160,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Description button to pin it again | #117 | missing | | |
 | ⋯ menu: Search local history | #137, #166 | missing | | |
 | ⋯ menu: Copy link to room or thread | #112 | missing | `Timeline/TimelineView.swift` | Copy Link exists for messages only. |
-| ⋯ menu: Mute and Unmute room or thread (bell-off button while muted) | #125 | missing | | No `status {mute, room_id}`. |
+| ⋯ menu: Mute and Unmute room or thread (bell-off button while muted) | #125 | has | `Rooms/MuteMenu.swift`, `Timeline/TimelineView.swift`, `Kit/ServerSession+Mutes.swift` | For 1, 2 or 8 hours or until unmuted; a thread muted with its room unmutes the room. Rows show the bell-off and stay quiet. |
 | ⋯ menu: Edit room or thread (title, description) | bh | missing | | Kit's `room_set` creates only. |
 | ⋯ menu: Leave, after asking | bh | has | `Timeline/TimelineView.swift` | |
 | Join button in the header of an unjoined room or thread | bh | has | `Timeline/TimelineView.swift` (`Join Room`) | Inside the ⋯ menu. |
@@ -406,7 +406,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Close notifications when read here or on another device | #52, #154 | missing | | |
 | App badge from `unread` | bh | missing | | |
 | Mention chime and tab title flash | bh | N/A-iOS | | Notification sounds and the badge cover it. |
-| Muted rooms and threads don't notify | #125 | missing | | Depends on mute. |
+| Muted rooms and threads don't notify | #125 | missing | | Mute exists (`mute(of:)`); waits for notifications (gap 6). |
 | "Only while open" for scopes the server doesn't push | bh | missing | | |
 | Alert for this server instead (one subscription) | bh | N/A-iOS | | One APNs token per device. Each server registers it. |
 
@@ -516,9 +516,9 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 4. ~~**Drafts per room.**~~ Done (`Kit/Drafts.swift`): text, mentions, reply target and ready files per room and thread, kept across a relaunch.
 5. ~~**Typing.**~~ Done (`Kit/ServerSession+Typing.swift`, `Timeline/TypingIndicator.swift`): sends `activity typing` as the web does, and shows others typing in the header on iPhone and above the composer on iPad.
 6. **Notifications and push.** Local alerts for other rooms while open, then APNs push through a §4.9.2 relay. Add Notify me about scopes, the per-device switch, the first-mention offer, the app badge, tap to open, closing notifications once read, and a test notification. Push, never polling. L.
-7. **Mute and pause.** Mute a room or thread from its header and row (`status {mute, room_id}`), show the bell-off state, and add Pause notifications. These matter on other devices even before Ladle notifies. M.
+7. ~~**Mute and pause.**~~ Done (`Kit/ServerSession+Mutes.swift`, `Rooms/MuteMenu.swift`, You's Pause notifications). Muted rooms not notifying waits for item 6, since Ladle does not notify yet.
 8. **Threads.** Start thread from a message (title from its first line, quote as Description, first reply links back). Add a Description field to New Thread. Add an Other Threads heading with last active times. Order joined threads by activity. Show threads only under the open room, plus those with news. Name untitled threads "Untitled". Show "N+ replies". M.
-9. **Room header.** Pin the Description under the header with expand and dismiss. Add Edit room or thread (`room_set` title and description), Copy link to the room, and Mute to the ⋯ menu. M.
+9. **Room header.** Pin the Description under the header with expand and dismiss. Add Edit room or thread (`room_set` title and description) and Copy link to the room to the ⋯ menu (Mute is there). M.
 10. **Private rooms and direct messages.** Create a room with Private. Add New private conversation with a people picker. Add Message on the profile card. Add a Private section with faces. Name untitled private rooms for their members. Add the intro card, the "You were added" banner, and the private room limit. L.
 11. **Kept view and local history.** Cache rooms and recent messages on disk so a relaunch shows them at once. Keep history with Retention, delete it on sign-out, and page older messages from the device first. L.
 12. **Join, leave, and rename lines.** Show them in the timeline, netted per user, with the 20-user baseline rule. S.

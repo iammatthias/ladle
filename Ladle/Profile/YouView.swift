@@ -18,6 +18,9 @@ struct YouView: View {
     @State private var avatarBusy: String?
     @State private var avatarError: String?
     @State private var signingOut = false
+    /// What the server refused of the last Pause or Resume (§4.5: nothing changed), until the next.
+    @State private var pauseRefused: (title: String, message: String)?
+    @State private var pausing = false
     @FocusState private var focused: Bool
     @Environment(\.dismiss) private var dismiss
 
@@ -33,6 +36,7 @@ struct YouView: View {
                     identity(you)
                     if session.keepsBio { bio }
                     if session.maySetStatus { status }
+                    if session.mayMute { pause }
                 }
                 signIn
             }
@@ -176,6 +180,59 @@ struct YouView: View {
             answer = await session.chooseStatus(value)
             choosing = nil
             if let answer { AccessibilityNotification.Announcement("\(answer.title). \(answer.text)").post() }
+        }
+    }
+
+    // MARK: Pause
+
+    /// apron-web's Pause notifications: a Pause… menu of how long, or Resume while paused, which
+    /// only ask; the line changes when the server's `status` says so, perhaps shorter.
+    private var pause: some View {
+        Section {
+            if let paused = session.pausedLine {
+                Label("\(paused) · no notifications on your devices.", systemImage: "bell.slash")
+                    .apText(.ui).foregroundStyle(Palette.warn)
+                Button("Resume") { ask(nil) }
+                    .disabled(pausing || !connected)
+            } else {
+                Menu {
+                    ForEach(MuteChoice.pause(now: Date())) { choice in
+                        Button {
+                            ask(choice.end)
+                        } label: {
+                            Text(choice.title)
+                            if let hint = choice.hint { Text(hint) }
+                        }
+                    }
+                } label: {
+                    Label(pausing ? "Pausing…" : "Pause…", systemImage: "bell.slash")
+                }
+                .disabled(pausing || !connected)
+            }
+            if let pauseRefused {
+                Callout(title: pauseRefused.title) { Text(pauseRefused.message) }
+                    .listRowInsets(EdgeInsets(top: Tokens.Space.s2, leading: Tokens.Space.s4, bottom: Tokens.Space.s2, trailing: Tokens.Space.s4))
+            }
+        } header: {
+            Text("Pause Notifications")
+        } footer: {
+            if session.pause == nil {
+                Text("Silence notifications on all your devices for a while. Only you see it.")
+            }
+        }
+    }
+
+    private func ask(_ end: MuteEnd?) {
+        pausing = true
+        pauseRefused = nil
+        Task {
+            do {
+                try await session.setPause(end)
+            } catch {
+                pauseRefused = (end == nil ? "Notifications are still paused" : "Notifications weren’t paused", errorText(error))
+                AccessibilityNotification.Announcement(pauseRefused?.title ?? "").post()
+            }
+            pausing = false
         }
     }
 

@@ -22,6 +22,8 @@ struct RoomListView: View {
     @State private var newTitle = ""
     @State private var problem: String?
     @State private var leaving: String?
+    /// The room a swipe asked to mute, whose choices a dialog lists.
+    @State private var muting: String?
     @State private var panel: Panel?
     /// What the server pane asked for, once it has gone.
     @State private var afterPanel: (() -> Void)?
@@ -104,6 +106,14 @@ struct RoomListView: View {
         } message: { roomID in
             Text(session.isPrivate(roomID) ? "It is private, so you need an invitation to come back." : "You can join it again from Browse Rooms.")
         }
+        .confirmationDialog(muting.map { "Mute \(session.title(of: $0))" } ?? "", isPresented: Binding(get: { muting != nil }, set: { if !$0 { muting = nil } }),
+                            titleVisibility: .visible, presenting: muting) { roomID in
+            ForEach(MuteChoice.room(now: Date())) { choice in
+                Button(choice.hint.map { "\(choice.title), \($0)" } ?? choice.title) { perform { try await session.setMute(roomID, choice.end) } }
+            }
+        } message: { _ in
+            Text("No notifications from it or its threads on your devices. Only you see it.")
+        }
         .sheet(item: $panel, onDismiss: {
             afterPanel?()
             afterPanel = nil
@@ -152,6 +162,17 @@ struct RoomListView: View {
             if session.joinedRoomIDs.contains(roomID), session.server?.has("rooms") == true {
                 Button("Leave", systemImage: "rectangle.portrait.and.arrow.right") { leaving = roomID }.tint(Palette.danger)
             }
+            if session.mayMute {
+                if let mute = session.mute(of: roomID) {
+                    Button("Unmute", systemImage: "bell") {
+                        let target = if case .withRoom(let parent, _) = mute { parent } else { roomID }
+                        perform { try await session.setMute(target, nil) }
+                    }
+                    .tint(Palette.denim)
+                } else {
+                    Button("Mute", systemImage: "bell.slash") { muting = roomID }.tint(Palette.inkMuted)
+                }
+            }
         }
         .contextMenu { roomActions(roomID, isThread: isThread) }
         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -159,6 +180,7 @@ struct RoomListView: View {
 
     @ViewBuilder
     private func roomActions(_ roomID: String, isThread: Bool) -> some View {
+        MuteActions(session: session, roomID: roomID, perform: perform)
         if session.server?.has("rooms") == true, session.status == .signedIn {
             if session.joinedRoomIDs.contains(roomID) {
                 if !isThread {
@@ -216,10 +238,28 @@ struct RoomListView: View {
                     Avatar(name: name, userID: you.userID, presence: session.presence(of: you.userID), image: session.avatarURL(of: you.userID))
                     VStack(alignment: .leading, spacing: 0) {
                         Text(name).apText(.ui, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
-                        if let line { Text(line).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1) }
+                        if let paused = session.pausedLine {
+                            Label(paused, systemImage: "bell.slash")
+                                .labelStyle(TightLabel())
+                                .apText(.sm).foregroundStyle(Palette.warn).lineLimit(1)
+                        } else if let line {
+                            Text(line).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
+                        }
                     }
                     Spacer(minLength: 0)
-                    Image(systemName: "gearshape").foregroundStyle(Palette.inkMuted).accessibilityHidden(true)
+                    Image(systemName: "gearshape").foregroundStyle(Palette.inkMuted)
+                        .overlay(alignment: .bottomTrailing) {
+                            if session.pause != nil {
+                                Image(systemName: "bell.slash.fill")
+                                    .font(.system(size: 8, weight: .bold))
+                                    .foregroundStyle(Palette.warn)
+                                    .padding(2)
+                                    .background(Palette.timeline, in: Circle())
+                                    .overlay(Circle().strokeBorder(Palette.line, lineWidth: 1))
+                                    .offset(x: 5, y: 5)
+                            }
+                        }
+                        .accessibilityHidden(true)
                 }
                 .padding(.horizontal, Tokens.Space.s4)
                 .padding(.vertical, Tokens.Space.s2)
@@ -229,7 +269,8 @@ struct RoomListView: View {
             .buttonStyle(.plain)
             .background(Palette.chrome)
             .overlay(alignment: .top) { Rectangle().fill(Palette.line).frame(height: 1) }
-            .accessibilityLabel("Your profile on \(session.serverName): \(name)" + (line.map { ", \($0)" } ?? ""))
+            .accessibilityLabel((session.pausedLine.map { "Notifications \($0.lowercased()). " } ?? "")
+                + "Your profile on \(session.serverName): \(name)" + (Presence.words(session.chosenStatus, yours: true).map { ", \($0)" } ?? ""))
             .accessibilityHint("Opens your profile and status")
         }
     }
@@ -252,7 +293,9 @@ struct RoomRow: View {
         let unread = session.unreadCount(in: roomID)
         let mentions = session.mentionCount(in: roomID)
         let joined = session.joinedRoomIDs.contains(roomID)
-        let strong = isSelected || unread > 0
+        let muted = session.mute(of: roomID) != nil
+        // A muted room's news stays quiet: no bold name, a quiet count (the web's RoomItem).
+        let strong = isSelected || (unread > 0 && !muted)
         HStack(alignment: isThread ? .top : .center, spacing: Tokens.Space.s2) {
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: Tokens.Space.s1) {
@@ -282,10 +325,11 @@ struct RoomRow: View {
                 }
             }
             Spacer(minLength: Tokens.Space.s2)
+            if muted { MutedBell() }
             if mentions > 0 {
-                UnreadCount(count: mentions, mentions: true)
+                UnreadCount(count: mentions, mentions: true, quiet: muted)
             } else if unread > 0 {
-                UnreadCount(count: unread)
+                UnreadCount(count: unread, quiet: muted)
             } else if !joined {
                 Text("Not joined").apText(.sm).foregroundStyle(Palette.inkMuted)
             }
@@ -308,7 +352,7 @@ struct RoomRow: View {
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityText(unread: unread, mentions: mentions, joined: joined))
+        .accessibilityLabel(accessibilityText(unread: unread, mentions: mentions, joined: joined, muted: muted))
         .task(id: session.server?.emojiCatalogURL) { await session.loadEmojiCatalog(for: session.roomDescription(roomID)) }
     }
 
@@ -321,12 +365,13 @@ struct RoomRow: View {
         .foregroundStyle(Palette.inkMuted)
     }
 
-    private func accessibilityText(unread: Int, mentions: Int, joined: Bool) -> String {
+    private func accessibilityText(unread: Int, mentions: Int, joined: Bool, muted: Bool) -> String {
         var parts = [session.title(of: roomID)]
         if isThread {
             parts.append("thread in \(session.store.room(roomID)?.parentRoomID.map(session.title(of:)) ?? "a room")")
         }
         if session.isPrivate(roomID) { parts.append("private") }
+        if muted { parts.append("muted") }
         if mentions > 0 { parts.append("\(mentions) \(mentions == 1 ? "mention" : "mentions") of you") }
         if unread > 0 { parts.append("\(unread) new") }
         if !joined { parts.append("not joined") }

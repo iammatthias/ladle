@@ -1,7 +1,8 @@
 import Foundation
 
 /// An in-memory server that answers a session from a fixed script: the greeting, `auth`,
-/// `room_list`, `history` by room, the user's read cursors as `activity` (§4.6), and others' typing. A room's
+/// `room_list`, `history` by room, the user's read cursors as `activity` (§4.6), others' typing, and the
+/// mutes in effect (§4.5). A `status` mute is echoed back before its `{}`, as servers do. A room's
 /// unjoined threads are none, since the script joins every room. Every other request gets `{}`.
 /// It never sends anything unasked, so a seeded session stays still.
 public actor PreviewServer: FrameTransport {
@@ -18,6 +19,8 @@ public actor PreviewServer: FrameTransport {
         public var notices: [JSONValue] = []
         /// Others' `activity` (§4.6), such as typing, sent after the notices.
         public var activities: [JSONValue] = []
+        /// `status` params (§4.5 `mute`) in effect, sent after the `auth` result.
+        public var statuses: [JSONValue] = []
     }
 
     private let script: Script
@@ -41,6 +44,7 @@ public actor PreviewServer: FrameTransport {
         switch request["method"]?.stringValue {
         case "auth":
             deliver(["id": id, "result": ["you": script.you, "token": "preview"]])
+            for status in script.statuses { deliver(["method": "status", "params": status]) }
         case "room_list" where params?["parent_room_id"] != nil:
             deliver(["id": id, "result": ["not_joined": []]])
         case "room_list":
@@ -60,6 +64,9 @@ public actor PreviewServer: FrameTransport {
                 "room_id": params?["room_id"] ?? "general", "from": ["user_id": "~private", "name": "System message to you"],
                 "body": ["text": .string(Self.help), "format": "markdown"],
             ]])
+            deliver(["id": id, "result": [:]])
+        case "status" where params?["mute"] != nil:
+            deliver(["method": "status", "params": params ?? [:]])
             deliver(["id": id, "result": [:]])
         default:
             deliver(["id": id, "result": [:]])

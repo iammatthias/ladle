@@ -170,7 +170,7 @@ Each screen section below lists only where it departs from these conventions.
 | Leading | `number` for a room, `lock.fill` for a private room, `bubble.left.and.text.bubble.right` for a promoted thread | `Label` icon |
 | Title | `title`, or `room_id` (§3.4). Bold when unread. | `Text`, one line |
 | Second line | "Ada: last message…" when held. Otherwise the first line of `description`. For a promoted thread, "Thread in General". When threads have news, "2 threads with new replies". | `.secondary`, one line |
-| Trailing | Unread count, or a dot when the count is unknown (4.3). `at` when you are mentioned. `bell.slash` when muted. | Count pill in the accent color, not a red badge ([notifications]: "Avoid creating a custom image or component that mimics the appearance or behavior of a badge.") |
+| Trailing | Unread count, or a dot when the count is unknown (4.3). `at` when you are mentioned. `bell.slash` before the count when muted (its own mute, or for a thread its room's), and then the news stays quiet: no bold title and a quiet count, as apron-web's RoomItem. | Count pill in the accent color, not a red badge ([notifications]: "Avoid creating a custom image or component that mimics the appearance or behavior of a badge.") |
 
 Rows stay in title order with `codePointLess`. They do not move by recency. **Judgment call.** A stable order keeps your memory of where a room is (Slack's default sidebar works this way), and rows never jump under your finger while new messages arrive. Unread rooms stand out by weight and the count.
 
@@ -189,8 +189,10 @@ Rows stay in title order with `codePointLess`. They do not move by recency. **Ju
 | Gesture | Action | Plain path |
 |---|---|---|
 | Leading swipe | **Mark as Read** (`checkmark.message`), full swipe allowed | Context menu |
-| Trailing swipe | **Mute** or **Unmute** (`bell.slash` / `bell`), then **Leave** (destructive, `rectangle.portrait.and.arrow.right`) | Context menu, Room info |
-| Long-press | Context menu: Mark as Read, Mute, Copy Link, Room Info, Leave (last, destructive) | Room info |
+| Trailing swipe | **Leave** (destructive, `rectangle.portrait.and.arrow.right`), then **Mute** (`bell.slash`, a dialog of how long) or **Unmute** (`bell`) | Context menu, the room's ⋯ menu |
+| Long-press | Context menu: **Mute Room** or **Mute Thread** (a submenu: For 1 hour, For 2 hours, For 8 hours, each with "until 15:42", and Until I unmute) or **Unmute** with when it ends, New Thread, Leave (last, destructive). Mark as Read, Copy Link and Room Info are not built yet. | Room's ⋯ menu |
+
+**Mute** (§4.5 `status {room_id, mute}`, capability `status`, signed in) silences a room and its threads on all your devices, as apron-web's `roomMuteChoices`: `mute` goes as the seconds left or `true`. Nothing changes until the server's `status` comes back, on every device; a refusal shows its words in the banner. A timed mute ends here at its time, and the server's `mute: false` later agrees. Unmute in a muted room's thread unmutes the room.
 | Pull to refresh | None. Rooms are live over the socket. [progress-indicators] says "Don't make people responsible for initiating every update." | n/a |
 
 Leave asks for confirmation only for a private room. You cannot rejoin a private room without an invitation, while a public room is one tap from Browse.
@@ -335,7 +337,7 @@ The HIG has no Live Text or scanning page. The `live-text` page returned 404, so
 
 **Layout.**
 
-- **Top.** Back, the title (one line), and a subtitle with the first line of the description or "8 members" (`navigationSubtitle`). The trailing group holds **Threads** (`bubble.left.and.text.bubble.right`, badged with the count of threads with news) and **Room Info** (`info.circle`). That is at most two items ([toolbars]: "Prioritize only the most important items").
+- **Top.** Back, the title (one line), and a subtitle with the first line of the description or "8 members" (`navigationSubtitle`). The trailing group holds **Threads** (`bubble.left.and.text.bubble.right`, badged with the count of threads with news) and **Room Info** (`info.circle`). That is at most two items ([toolbars]: "Prioritize only the most important items"). As built: **Members** (`person.2`) and the ⋯ menu (`ellipsis`), which holds **Mute Room** or **Mute Thread** (the row's submenu, 3.1) or **Unmute** with when it ends ("until 14:30", "until you unmute"; in a thread silenced by its room, **Unmute Room**), then Join or Leave. While muted, a `bell.slash` button left of Members says so and unmutes, as apron-web's RoomHeader; VoiceOver reads "Muted, until you unmute".
 - **Middle.** Messages, oldest at top, anchored to the bottom.
 - **Bottom, floating.** The status pill (4.1), centered above the composer, and **Jump to Latest** (`arrow.down`, with a count of new messages below the fold) at the trailing edge. Who is typing, as apron-web shows it: on iPhone a centered denim line under the navigation bar ("Ada is typing…", "2 people are typing…"), the web's header subtitle kept out of the bar so the centered title never moves; on iPad a line above the composer with three bobbing dots ("Ada and Bram are typing…", "Several people are typing…"), whose row stays while nobody is, when the server has `activity`. Your own typing, relayed from your other devices, never shows. Someone shows until their seconds run out (at most 300 s), their next message there, or their `typing: 0`.
 - **Bottom, fixed.** The reply or edit banner, the mention suggestions, and the composer (3.7), on the keyboard layout guide ([virtual-keyboards]).
@@ -535,20 +537,21 @@ Last seen reads "recently" under ten minutes (a server may record `seen` coarsel
 
 ### 3.11 You (profile and status)
 
-**Purpose.** Change how this server's account appears, as apron-web's Preferences > Profile. Each server has its own. **Entry.** The profile bar at the foot of the room list (your face, your name, your status in words or else your `@user_id`, and a gear), or Edit Profile in the server pane (3.12). **Layout.** A sheet with a grouped `Form` (`YouView`). **Done** closes it; **Save** is on while the name or bio differs from what the server keeps.
+**Purpose.** Change how this server's account appears, as apron-web's Preferences > Profile. Each server has its own. **Entry.** The profile bar at the foot of the room list (your face, your name, a gear, and under the name "Paused until 14:30" with `bell.slash` in the warning color while your notifications are paused, else your status in words, else your `@user_id`; the gear then carries a small bell-off, and VoiceOver hears "Notifications paused until 14:30"), or Edit Profile in the server pane (3.12). **Layout.** A sheet with a grouped `Form` (`YouView`). **Done** closes it; **Save** is on while the name or bio differs from what the server keeps.
 
 | Section | Rows | Protocol |
 |---|---|---|
 | Display Name | Your avatar with **Upload Avatar** or **Change Avatar** (where `/avatar` takes an upload) and **Remove Avatar** (when you have one), the **Display name** field, which saves on Return, and **Revert** while it differs. The footer reads "User ID assigned by server: @ada", selectable. | `/avatar` with an upload embed (§4.8.6); `me {avatar: ""}`; `me {name}` (§3.3.2). The result's `you` is complete and replaces what is kept. |
 | Bio (`ext:bio` or `ext`) | A multi-line field, "A few words about you, in plain text", with a count to 250 in the header that turns red over the limit | `me {ext: {bio}}`, cleaned as apron-web's `cleanBio`; `""` clears it. Sent before the name. |
 | Status (`status`, signed in) | A menu picker, **Show Me As**, each choice with its dot and hint: **Online** (Automatic) and **None** (Show no status) always, **Do not disturb** (Mutes notifications) and **Invisible** (Appear offline) only where `server.status` lists them (§4.5.1). The footer says what the current one means to others. | `me {status}`. |
+| Pause Notifications (`status`, signed in) | **Pause…**, a menu of For 1 hour ("until 15:30"), For 8 hours, Until tomorrow ("9:00", or Until this morning before 9:00) and Until I resume, as apron-web's `pauseChoices`. While paused, "Paused until 22:30 · no notifications on your devices." in the warning color, and **Resume**. The footer, when not paused: "Silence notifications on all your devices for a while. Only you see it." A refusal shows a callout, "Notifications weren’t paused" or "Notifications are still paused", with the server's words. | `status {mute}` without `room_id` (§4.5): seconds left, `true`, or `false` to resume. The line changes when the server's `status` says so, on every device, set here or elsewhere. |
 | Sign-in | How this account signs in, and **Sign Out** (3.12's confirmation). The footer reads "Signed in to Home as Ada." | |
 
 What the server did with a save shows under the name: "Saved." for two seconds, "The server saved your name as “Ada L.”" when it kept another, or "The server declined this name (…). Your old one is still in use." in red. A bio the server refuses as `too_large` says "Your bio is too long for this server. Try a shorter one." and the name is not sent.
 
 When the server keeps another status than the one chosen, a callout under the picker says so: "This server doesn’t offer Do not disturb. Your status is None." for an optional one, which the picker then stops offering on this server, or "The server chose another status." A refusal, such as `retry_after`, reads "Your status didn’t change. The server declined Invisible (…)." and nothing changes (§4.5.3). VoiceOver announces the callout. Your chosen status comes only from `you` (§4.5.2); your own Invisible reads "Invisible · others see you as offline".
 
-Not built yet: Pause notifications (PARITY gap 7), Add Email and the other ways to add a sign-in (gap 28).
+Not built yet: Add Email and the other ways to add a sign-in (gap 28).
 
 ### 3.12 Server pane
 

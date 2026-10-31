@@ -170,10 +170,10 @@ extension ServerSession {
     /// Whether the server keeps a bio: it names `ext:bio`, or `ext`, which keeps any key.
     public var keepsBio: Bool { server?.has("ext:bio") == true || server?.has("ext") == true }
 
-    /// The line under your name in the profile bar, as apron-web's: your status in words, else
-    /// your `@user_id`.
+    /// The line under your name in the profile bar, as apron-web's: "Paused until 14:30" while
+    /// your notifications are paused, else your status in words, else your `@user_id`.
     public var profileLine: String? {
-        you.map { Presence.words(chosenStatus, yours: true) ?? "@\($0.userID)" }
+        you.map { pausedLine ?? Presence.words(chosenStatus, yours: true) ?? "@\($0.userID)" }
     }
 
     /// How this account signs in here, for the You sheet.

@@ -182,7 +182,8 @@ clone), which is only a worked example.
   - `PreviewServer` and `PreviewFixtures`: an in-memory server that answers from a script, and a
     two-server world built on it (rooms, threads, unread rooms, replies, reactions, an edit, a
     deleted message, presence). The design screenshots render from it; `PreviewFixturesTests`
-    pins what it holds. Message ids are server-wide, so no two rooms share a minute in the
+    pins what it holds. It sends the script's `statuses` after `auth` (the design room is muted)
+    and echoes a `status` mute back, as servers do. Message ids are server-wide, so no two rooms share a minute in the
     script.
   - `MessageText`: a body as apron-web renders it (§3.5, §3.5.2): `blocks` gives `MessageBlock`s
     (`MessageBlocks.swift`). `markdown` is Foundation's full CommonMark and GFM parse (no
@@ -320,6 +321,18 @@ clone), which is only a worked example.
     `server.status` lists them and not after the server answered otherwise for one),
     `chooseStatus` sends `me {status}` and returns a `StatusAnswer` when the server kept another.
     `Presence` has `unknown` for a value the client does not know (a dashed ring).
+  - Mutes (`Mutes.swift`, `ServerSession+Mutes.swift`, §4.5 `status {mute}`), as apron-web's
+    `pause.ts` and `setMute`/`handleStatus`: `MuteEnd` (`.at(Date)` or `.untilChanged`) reads a
+    wire `mute` (`true`, seconds, `false`/`0` none), sends whole seconds left (at least 1) or
+    `true`, and words its end ("until 14:30", "until tomorrow 9:00", "until Fri 9:00", "until
+    you resume"). `MuteChoice.pause` is the Pause menu (1 h, 8 h, until the next 9:00, until
+    resumed) and `MuteChoice.room` the Mute menu (1, 2, 8 h, until unmuted). `setPause` and
+    `setMute(_:_:)` only ask; `pausedUntil` and `roomMutes` change only from the server's
+    `status` notifications (sent to every device, and after each sign-in's result, so each
+    `auth` sent clears them first). `pause` and `mute(of:)` read them at `Environment.now`, a
+    thread taking its room's as `RoomMute.withRoom`; a timer drops ended ones, since the server's
+    `mute: false` comes up to 15 s later. `profileLine` puts "Paused until …" first. `mayMute`
+    is capability `status` while signed in.
   - `ServerPane` (`ServerPane.swift`): `ServerSession.pane`, the server pane's facts as
     apron-web's ServerPane: name, host, description, the connection in words with a tone,
     "Signed in as Ada (guest)", the address, and "Apron 9".
@@ -353,6 +366,9 @@ clone), which is only a worked example.
   name, a mention chip, a member row or a link's `user`; `ServerPaneView`: the server pane, from
   the room list's title or, on iPad, its server head, with Edit Profile, Connect to Another
   Server… and Disconnect, which signs out of that server),
+  `Rooms/MuteMenu.swift` (`MuteActions`: Mute Room or Thread's submenu, or Unmute, in a row's
+  context menu and the room's ⋯ menu; `MutedBell`), a muted row's bell-off and quiet count, the
+  header's bell-off button, the profile bar's paused line, and You's Pause notifications;
   `Servers/` (the server list and iPad rail, `PreferencesView`: the media policy and trusted sites, from the list's toolbar and the rail's foot, `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
   mention list, the custom emoji `:` list, the `#` room list and the command list (`CommandSuggestions`: usage and
@@ -464,7 +480,7 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room; the busy room at AX3; and the iPad
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the room list and You while paused; the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light, on the busy room and on the random room with its typing line. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with

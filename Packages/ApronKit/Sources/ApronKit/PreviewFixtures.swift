@@ -390,8 +390,12 @@ public enum PreviewFixtures {
         activities: [
             ["room_id": .string(typingRoomID), "from": people["ada"]!, "typing": 3600],
             ["room_id": .string(typingRoomID), "from": people["bram"]!, "typing": 3600],
-        ]
+        ],
+        statuses: [["room_id": .string(mutedRoomID), "mute": true]]
     )
+
+    /// The room muted until unmuted, with its threads: its rows ring no bell.
+    public static let mutedRoomID = "design"
 
     /// The room where Ada and Bram are typing, held for an hour so every shot of it sees them.
     public static let typingRoomID = "random"

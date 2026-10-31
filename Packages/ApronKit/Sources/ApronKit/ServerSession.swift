@@ -65,6 +65,8 @@ public final class ServerSession {
         public var readCursorInterval: Duration
         /// How typing goes out and how long others show as typing (§4.6).
         public var typing: TypingTimes
+        /// The wall clock, which mutes end by (§4.5).
+        public var now: @Sendable () -> Date
 
         public init(
             makeTransport: @escaping @Sendable (ServerRecord) -> any FrameTransport,
@@ -79,7 +81,8 @@ public final class ServerSession {
             fetchEmojiCatalog: @escaping @Sendable (URL) async throws -> Data = EmojiCatalogFetch.live,
             fetchConnectionStatus: @escaping ConnectionStatusFetch = ConnectionStatusProbe.live,
             readCursorInterval: Duration = .seconds(5),
-            typing: TypingTimes = TypingTimes()
+            typing: TypingTimes = TypingTimes(),
+            now: @escaping @Sendable () -> Date = { Date() }
         ) {
             self.makeTransport = makeTransport
             self.sleep = sleep
@@ -94,6 +97,7 @@ public final class ServerSession {
             self.fetchConnectionStatus = fetchConnectionStatus
             self.readCursorInterval = readCursorInterval
             self.typing = typing
+            self.now = now
         }
 
         public static let live = Environment(makeTransport: { record in
@@ -137,6 +141,11 @@ public final class ServerSession {
     /// When this user was last said to be typing in each room, and the timers that end it.
     @ObservationIgnored var typingSentAt: [String: ContinuousClock.Instant] = [:]
     @ObservationIgnored var typingIdle: [String: Task<Void, Never>] = [:]
+    /// Your pause (§4.5 `mute` without `room_id`) as the server last said; `pause` is it while it lasts.
+    public internal(set) var pausedUntil: MuteEnd?
+    /// Each room's mute (§4.5 `mute` with its `room_id`) as the server last said; `mute(of:)` reads it.
+    public internal(set) var roomMutes: [String: MuteEnd] = [:]
+    @ObservationIgnored var muteExpiry: Task<Void, Never>?
     private var formerUserIDs: Set<String> = []
     /// The fraction written of each of this user's uploads in flight, by `embed_id` (§4.8.3).
     public internal(set) var uploadProgress: [String: Double] = [:]
@@ -382,6 +391,9 @@ public final class ServerSession {
 
     @discardableResult
     private func authenticate(_ method: SignIn, on connection: Connection) async throws -> SignInOutcome {
+        // A sign-in starts without mutes: the server sends those in effect after its result
+        // (§4.5), which may be applied before this function sees the result.
+        if method.authenticates { resetMutes() }
         let auth = try await connection.send("auth", params: method.params(agent: environment.agent, state: environment.makeState()))
         let rooms = method.authenticates ? try await connection.send("room_list", params: Self.roomListParams) : nil
         let before = status
@@ -469,6 +481,7 @@ public final class ServerSession {
         readPositions = [:]
         formerUserIDs = []
         clearTyping()
+        resetMutes()
     }
 
     // MARK: Frames
@@ -519,6 +532,8 @@ public final class ServerSession {
                 advancePosition(roomID, to: read)
             }
             applyTyping(params)
+        case "status":
+            applyStatus(params)
         default:
             break
         }

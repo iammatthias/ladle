@@ -261,14 +261,28 @@ struct TimelineView: View {
             .accessibilityAddTraits(.isHeader)
         }
         ToolbarItemGroup(placement: .primaryAction) {
+            // Muted: a bell-off left of the ⋯ menu says so and unmutes, as the web's RoomHeader.
+            if session.mayMute, let mute = session.mute(of: roomID) {
+                Button {
+                    let target = if case .withRoom(let parent, _) = mute { parent } else { roomID }
+                    perform { try await session.setMute(target, nil) }
+                } label: {
+                    Label("Unmute", systemImage: "bell.slash")
+                }
+                .accessibilityLabel(mute.isWithRoom ? "Muted with its room, \(session.muteWords(mute))" : "Muted, \(session.muteWords(mute))")
+                .accessibilityHint(mute.isWithRoom ? "Unmutes the room" : "Unmutes it")
+            }
             Button("Members", systemImage: "person.2") { showingMembers.toggle() }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
-            if session.status == .signedIn, session.server?.has("rooms") == true {
+            if session.status == .signedIn, session.server?.has("rooms") == true || session.mayMute {
                 Menu("Room", systemImage: "ellipsis") {
-                    if session.joinedRoomIDs.contains(roomID) {
-                        Button("Leave Room", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leaving = true }
-                    } else {
-                        Button("Join Room", systemImage: "plus.circle") { perform { try await session.join(roomID) } }
+                    MuteActions(session: session, roomID: roomID, perform: perform)
+                    if session.server?.has("rooms") == true {
+                        if session.joinedRoomIDs.contains(roomID) {
+                            Button("Leave Room", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leaving = true }
+                        } else {
+                            Button("Join Room", systemImage: "plus.circle") { perform { try await session.join(roomID) } }
+                        }
                     }
                 }
             }
