@@ -219,6 +219,16 @@ clone), which is only a worked example.
     field takes its default. An edit is never kept, nor a file still being fitted.
     `pruneStaging()` runs at launch and removes every staged folder no draft holds (the outbox
     does not outlive a launch); `removeAll(server:)` goes with the server.
+  - `RoleMentions` (`RoleMentions.swift`): `@&role`, as apron-web #181. `roles(of:you:roles:)`
+    is apron-web's `roomRoles` (others' latest roles that read as one ID, most held first, then
+    by name), `ServerSession.mentionableRoles(in:)` over the room's members; `search` puts the
+    exact role first; `written(in:)` finds each `@&<id>` not after a letter or digit.
+    `ServerSession.mentionSuggestions` merges people and roles as apron-web's `matching` (8 rows,
+    roles keeping 3, `@&` roles alone) into `DraftSuggestions.mentions`. `DraftField.insert(role:)`
+    writes `@&role `, and `sentMentions(holders:)` lists mentions in the order the text names
+    them, a role's holders where it stands, each once; `submit` passes the room's holders.
+    `MessageText` marks `@&role` outside code and links as `RoleMentionKey` reading `@role`
+    before it marks users; `plain` reads it `@role` too. Mention-of-you stays `body.mentions` only.
   - `RoomMentions`: the composer's `#` list, as apron-web's `room-autocomplete.ts`: `query(in:)`
     is the `#` word being typed (`[A-Za-z0-9_.-]`, at least one), `search` ranks exact, prefix,
     then contains on id and title, 8 at most, over `ServerSession.roomSuggestions` (every room
@@ -454,7 +464,7 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar); the busy room at AX3; and the iPad
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room; the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light, on the busy room and on the random room with its typing line. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with

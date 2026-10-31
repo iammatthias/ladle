@@ -67,8 +67,26 @@ public enum MessageText {
         }
         if let rooms { markRooms(in: &out, rooms) }
         if let emoji { markKeys(in: &out, emoji) }
+        markRoles(in: &out)
         markMentions(in: &out, mentions, you: you)
         return out
+    }
+
+    /// Each `@&role` outside code and links as a role chip (`RoleMentionKey`) that reads `@role`
+    /// and opens nothing, whether or not anyone holds the role, as apron-web's `mentionChip`. It
+    /// is marked before users are, so `@&mod` never reads as a mention of someone called `mod`.
+    private static func markRoles(in out: inout AttributedString) {
+        let text = String(out.characters)
+        for written in RoleMentions.written(in: text).reversed() {
+            let lower = out.unicodeScalars.index(out.startIndex, offsetBy: written.offset)
+            let range = lower ..< out.unicodeScalars.index(lower, offsetBy: written.length)
+            let runs = out[range].runs
+            guard let first = runs.first,
+                  !runs.contains(where: { $0.link != nil || $0.inlinePresentationIntent?.contains(.code) == true }) else { continue }
+            var replacement = AttributedString("@" + written.role, attributes: first.attributes)
+            replacement[RoleMentionKey.self] = written.role
+            out.replaceSubrange(range, with: replacement)
+        }
     }
 
     /// Each `@name` or `@user_id` of a mentioned user (`mentions`: `user_id` to name), outside
@@ -80,7 +98,9 @@ public enum MessageText {
                 var search = out.startIndex ..< out.endIndex
                 while let range = out[search].range(of: token) {
                     search = range.upperBound ..< out.endIndex
-                    if out[range].runs.contains(where: { $0.link != nil || $0.inlinePresentationIntent?.contains(.code) == true }) { continue }
+                    if out[range].runs.contains(where: {
+                        $0.link != nil || $0.inlinePresentationIntent?.contains(.code) == true || $0[RoleMentionKey.self] != nil
+                    }) { continue }
                     out[range][MentionKey.self] = MentionChip(userID: id, isYou: id == you)
                     out[range].link = ApronLink.relative(user: id)
                 }

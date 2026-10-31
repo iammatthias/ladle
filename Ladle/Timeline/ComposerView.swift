@@ -40,8 +40,13 @@ struct ComposerView: View {
                         draft.field.insert(command)
                         focused = true
                     }
-                case .people(let found):
-                    MentionPicker(session: session, people: found) { draft.field.insert(mention: $0.userID, named: session.displayName(for: $0)) }
+                case .mentions(let found):
+                    MentionPicker(session: session, items: found) { item in
+                        switch item {
+                        case .person(let person): draft.field.insert(mention: person.userID, named: session.displayName(for: person))
+                        case .role(let role): draft.field.insert(role: role.role)
+                        }
+                    }
                 case .emoji(let found):
                     EmojiSuggestions(emoji: found) { draft.field.insert($0) }
                 case .rooms(let found):
@@ -335,22 +340,34 @@ struct RoomSuggestions: View {
 }
 
 /// The web's MentionPicker: a raised list above the composer, each person with their face,
-/// name and `@user_id`.
+/// name and `@user_id`, and each role with a group glyph on denim-soft, `@role` and how many
+/// people it mentions.
 struct MentionPicker: View {
     let session: ServerSession
-    let people: [UserObject]
-    let pick: (UserObject) -> Void
+    let items: [MentionSuggestion]
+    let pick: (MentionSuggestion) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(people, id: \.userID) { person in
-                let name = session.displayName(for: person)
-                Button { pick(person) } label: {
+            ForEach(items, id: \.self) { item in
+                Button { pick(item) } label: {
                     HStack(spacing: Tokens.Space.s2) {
-                        Avatar(name: name, userID: person.userID, presence: session.presence(of: person.userID), size: .sm,
-                               image: session.avatarURL(of: person.userID))
-                        Text(name).apText(.field, .semibold).foregroundStyle(Palette.ink)
-                        Text("@" + person.userID).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
+                        switch item {
+                        case .person(let person):
+                            let name = session.displayName(for: person)
+                            Avatar(name: name, userID: person.userID, presence: session.presence(of: person.userID), size: .sm,
+                                   image: session.avatarURL(of: person.userID))
+                            Text(name).apText(.field, .semibold).foregroundStyle(Palette.ink)
+                            Text("@" + person.userID).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
+                        case .role(let role):
+                            Image(systemName: "person.2.fill")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(Palette.denim)
+                                .frame(width: Tokens.AvatarSize.sm, height: Tokens.AvatarSize.sm)
+                                .background(Palette.denimSoft, in: RoundedRectangle(cornerRadius: Tokens.Radius.sm))
+                            Text("@" + role.role).apText(.field, .semibold).foregroundStyle(Palette.ink)
+                            Text(Self.reach(role)).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
+                        }
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, Tokens.Space.s2)
@@ -358,7 +375,7 @@ struct MentionPicker: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Mention \(name)")
+                .accessibilityLabel(label(item))
             }
         }
         .padding(Tokens.Space.s1)
@@ -366,6 +383,18 @@ struct MentionPicker: View {
         .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
         .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.line))
         .shadow(color: .black.opacity(0.35), radius: 12, y: 8)
+    }
+
+    /// "1 person" or "3 people", as the web's picker row.
+    static func reach(_ role: RoleSuggestion) -> String {
+        role.members.count == 1 ? "1 person" : "\(role.members.count) people"
+    }
+
+    private func label(_ item: MentionSuggestion) -> String {
+        switch item {
+        case .person(let person): "Mention \(session.displayName(for: person))"
+        case .role(let role): "Mention everyone with the role \(role.role), \(Self.reach(role))"
+        }
     }
 }
 

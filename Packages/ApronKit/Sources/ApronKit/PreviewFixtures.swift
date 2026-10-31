@@ -333,6 +333,9 @@ public enum PreviewFixtures {
                      embeds: [["kind": "link", "url": "https://home.example/clips/kettle", "og": [
                          "title": "Kettle, close up", "description": "The whistle the glyph is named for.", "site_name": "home.example",
                          "image": media(9, "image/jpeg", 1200, 630), "audio": media(10, "audio/mp4")]]]),
+                // A role mention: Eun-ji holds announce, so she is listed; Sam, who reads it, is not.
+                line(-22, "ada", "@&announce the bowl-only mark is in the Icon sketches thread. Not `@&announce` in code.",
+                     mentions: ["eunji"]),
             ]),
             iconThread: history(iconThread, [
                 line(-20, "eunji", "Bowl-only, 2 pt stroke, rounded caps."),
@@ -376,7 +379,7 @@ public enum PreviewFixtures {
             ]),
         ],
         readCursors: [
-            "general": message(9), releaseThread: message(17), "design": message(-30),
+            "general": message(9), releaseThread: message(17), "design": message(-22),
             iconThread: message(-18), "random": message(-90), "ops": message(-290), "kitchen": message(-126),
             "markdown": message(-400), "remote": message(-408),
         ],

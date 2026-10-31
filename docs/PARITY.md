@@ -2,7 +2,7 @@
 
 This is the backlog of record for parity with apron-web. The rule is that every apron-web feature exists in Ladle. The iOS form may differ. Ladle may do more. Nothing is left out.
 
-The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`. It carries upstream through #178 and #179, plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
+The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`. It carries upstream through #178 and #179, and role mentions (#181), plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
 
 Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections 3.10 to 3.12 describe the profile card, You and the server pane as built.
 
@@ -229,6 +229,8 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Bare URL linking | #6 | has | `Kit/MessageText.swift` | |
 | `@user_id` as a chip with current name | bh | has | `Kit/MessageRowModel.swift` (`MentionKey`) | |
 | `#room_id` as a chip that opens the room | bh | has | `Kit/MessageText.swift` (`RoomReferenceKey`) | |
+| `@&role` as a role chip that reads `@role` and opens nothing, never in code, also in reply quotes and previews | #181 | has | `Kit/MessageText.swift` (`RoleMentionKey`), `Kit/MessageText+Plain.swift`, `Timeline/MessageRow.swift` (`styled`) | Any role, known or not. Denim on denim-soft with a dotted denim rule in place of the web's 1 px ring, which a run of `Text` cannot draw. |
+| A message mentions you only when `body.mentions` lists you, never for a role you hold | #181 | has | `Kit/Timeline.swift` (`mentions`), `Kit/MessageRowModel.swift` | Badges, the tint and mention counts follow the list, as the web and push do. |
 | Bidi overrides dropped, text isolated in its own direction | #138 | has | `Kit/TextDirection.swift` | |
 | Join and leave lines ("Ada and Bob joined · Carol left") | #170 | missing | | UX.md 4.8 left it out for guest churn. |
 | Rename lines ("Room renamed to Ops") | #170 | missing | | |
@@ -289,6 +291,8 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | `:` shortcode autocomplete for standard emoji | bh | partial | `Kit/DraftField.swift` (`.emoji`) | Custom emoji only. Standard emoji come from the system keyboard. |
 | Emoji button that inserts at the caret | bh | has | System emoji keyboard | iOS-native form. |
 | Mentions and autocomplete also in the editor | #159 | has | `Kit/DraftField.swift` | |
+| `@` suggests people and roles; `@&` roles only, with how many each reaches | #181 | has | `Kit/RoleMentions.swift`, `Kit/DraftField.swift` (`mentionSuggestions`), `Timeline/ComposerView.swift` (`MentionPicker`) | Roles others in the room hold, most held first; the exact role after the exact person; roles keep 3 of the 8 rows when people fill the list. Ladle's people still match on contains, not prefix. |
+| A role sends as `@&role` and lists every other holder in `body.mentions`, in draft order | #181 | has | `Kit/DraftField.swift` (`sentMentions(holders:)`, `insert(role:)`) | No chip in the field: the text holds `@&role` as sent, so a typed one counts too, and Backspace edits it as text. An edit recomputes the holders at save. Only as complete as the member list the server sent. |
 | Reply bar "Replying to" | bh | has | `Timeline/ComposerView.swift` | |
 | Command mode: Command tag, monospace, Run | bh | partial | `Timeline/ComposerView.swift`, `Kit/CommandHelp.swift` | Sends `command` and lists commands. No Command tag, monospace line, or Run label. |
 | `/help` lists the server's commands | bh | has | `Kit/CommandHelp.swift` | Ladle lists them as you type, a superset. |

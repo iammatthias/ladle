@@ -1167,8 +1167,8 @@ final class ServerSessionTests: XCTestCase {
         field.insert(mention: "ada", named: "Ada")
         let edit = Task { try await session.submit(field, in: "general", attachments: []) }
         let sent = await frame(socket, 2)
-        XCTAssertEqual(sent, #"{"id":"c3","method":"message","params":{"body":{"format":"markdown","mentions":["ada","guest_1234"],"text":"@guest_1234 look, and @Ada"},"message_id":"200","room_id":"general"}}"#,
-                       "Bob's @ is gone and Ada is picked")
+        XCTAssertEqual(sent, #"{"id":"c3","method":"message","params":{"body":{"format":"markdown","mentions":["guest_1234","ada"],"text":"@guest_1234 look, and @Ada"},"message_id":"200","room_id":"general"}}"#,
+                       "Bob's @ is gone and Ada is picked, in the order the text names them")
         await socket.deliver(["id": "c3", "result": [:]])
         try await edit.value
     }

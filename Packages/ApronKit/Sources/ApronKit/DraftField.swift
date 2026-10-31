@@ -5,7 +5,8 @@ import Foundation
 /// lists in both, the `/` command list outside an edit only, since an edit is never a command.
 ///
 /// A mention is written as `@` and the name picked, and kept in `mentions` (§3.5.5): the text
-/// still showing `@name` is what keeps it when the message goes.
+/// still showing `@name` is what keeps it when the message goes. A role is written `@&role`, as
+/// sent, and mentions everyone else in the room who holds it when the message goes.
 public struct DraftField: Hashable, Sendable {
     /// A reply names its message by id alone, as apron-web's kept `reply`: the composer shows
     /// whatever the session holds of it, so a reply kept across a relaunch still goes.
@@ -79,10 +80,22 @@ public struct DraftField: Hashable, Sendable {
     /// The text that goes: without leading and trailing whitespace.
     public var sentText: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    /// The `user_id`s for `body.mentions`, in order: each mention whose `@` word the text still shows.
-    public var sentMentions: [String] {
+    /// The `user_id`s for `body.mentions` in the order the text names them, each once, as
+    /// apron-web's `draftMentions`: each mention whose `@` word the text still shows, and for each
+    /// `@&role` written, the holders `holders` gives for it (the room's, without you).
+    public func sentMentions(holders: [String: [String]] = [:]) -> [String] {
         let text = sentText
-        return mentions.filter { text.contains("@" + $0.value) }.map(\.key).sorted()
+        var named: [(offset: Int, ids: [String])] = []
+        for (id, word) in mentions {
+            guard let at = text.range(of: "@" + word) else { continue }
+            named.append((text.unicodeScalars.distance(from: text.startIndex, to: at.lowerBound), [id]))
+        }
+        for written in RoleMentions.written(in: text) {
+            if let ids = holders[written.role] { named.append((written.offset, ids)) }
+        }
+        var seen = Set<String>()
+        return named.sorted { $0.offset != $1.offset ? $0.offset < $1.offset : codePointLess($0.ids[0], $1.ids[0]) }
+            .flatMap(\.ids).filter { seen.insert($0).inserted }
     }
 
     /// Whether Send is on, given the staged files: none still being prepared, the text within
@@ -96,6 +109,13 @@ public struct DraftField: Hashable, Sendable {
         guard let at = text.range(of: "@", options: .backwards) else { return }
         text.replaceSubrange(at.lowerBound..., with: "@\(name) ")
         mentions[userID] = name
+    }
+
+    /// Puts `@&role ` in place of the `@` word being typed: everyone else here who holds the
+    /// role is mentioned when the message goes.
+    public mutating func insert(role: String) {
+        guard let at = text.range(of: "@", options: .backwards) else { return }
+        text.replaceSubrange(at.lowerBound..., with: "@&\(role) ")
     }
 
     /// Mentions a user picked elsewhere, as a profile card's Mention: `@name ` at the end of the
@@ -126,15 +146,18 @@ public struct DraftField: Hashable, Sendable {
 /// The list above the composer for what is being typed: at most one kind, never empty.
 public enum DraftSuggestions: Hashable, Sendable {
     case commands([ServerCommand])
-    case people([UserObject])
+    case mentions([MentionSuggestion])
     case emoji([CustomEmoji])
     case rooms([RoomSuggestion])
 }
 
 extension ServerSession {
+    /// The most rows the `@` list shows (apron-web's `MENTION_MATCHES_MAX`).
+    public static let mentionRows = 8
+
     /// The list for `field`'s query in `roomID`: the commands `/help` gave that start with the
-    /// word, up to six of the room's other members whose name or `user_id` contains it (the first
-    /// six for a bare `@`), up to six custom emoji, or the `#` list. Nil when nothing matches.
+    /// word, the `@` list (`mentionSuggestions`), up to six custom emoji, or the `#` list. Nil
+    /// when nothing matches.
     public func suggestions(for field: DraftField, in roomID: String) -> DraftSuggestions? {
         switch field.query {
         case nil:
@@ -143,11 +166,8 @@ extension ServerSession {
             guard let found = commands?.matching(word), !found.isEmpty else { return nil }
             return .commands(found)
         case .mention(let word):
-            let people = memberSections(roomID).flatMap(\.people).filter { $0.userID != you?.userID }
-            let found = word.isEmpty ? Array(people.prefix(6)) : Array(people.filter {
-                displayName(for: $0).localizedCaseInsensitiveContains(word) || $0.userID.localizedCaseInsensitiveContains(word)
-            }.prefix(6))
-            return found.isEmpty ? nil : .people(found)
+            let found = mentionSuggestions(word, in: roomID)
+            return found.isEmpty ? nil : .mentions(found)
         case .emoji(let name):
             guard let found = emojiCatalog?.search(name, limit: 6), !found.isEmpty else { return nil }
             return .emoji(found)
@@ -157,11 +177,38 @@ extension ServerSession {
         }
     }
 
+    /// The `@` list for the word after `@`, as apron-web's `matching`: the room's other members
+    /// whose name or `user_id` contains it (all of them for a bare `@`), and the roles
+    /// (`mentionableRoles`) whose name starts with it. Whoever and whatever it names exactly
+    /// comes first, then people, then roles, which keep up to `RoleMentions.placesKept` places
+    /// when people fill the list. `@&` lists roles alone.
+    public func mentionSuggestions(_ word: String, in roomID: String) -> [MentionSuggestion] {
+        let limit = Self.mentionRows
+        let roles = RoleMentions.search(mentionableRoles(in: roomID), word)
+        if word.hasPrefix("&") { return roles.prefix(limit).map(MentionSuggestion.role) }
+        let exact = word.lowercased()
+        let people = memberSections(roomID).flatMap(\.people).filter { person in
+            person.userID != you?.userID
+                && (word.isEmpty || displayName(for: person).localizedCaseInsensitiveContains(word) || person.userID.localizedCaseInsensitiveContains(word))
+        }
+        let isNamed = { (person: UserObject) in !exact.isEmpty && (self.displayName(for: person).lowercased() == exact || person.userID.lowercased() == exact) }
+        let named = people.filter(isNamed), rest = people.filter { !isNamed($0) }
+        let exactRoles = roles.filter { !exact.isEmpty && $0.role.lowercased() == exact }
+        let otherRoles = roles.filter { !exactRoles.contains($0) }
+        let free = limit - named.count - exactRoles.count - rest.count
+        let roleCount = min(otherRoles.count, max(RoleMentions.placesKept, free))
+        let shown = named.map(MentionSuggestion.person) + exactRoles.map(MentionSuggestion.role)
+            + rest.prefix(max(0, limit - named.count - exactRoles.count - roleCount)).map(MentionSuggestion.person)
+            + otherRoles.prefix(roleCount).map(MentionSuggestion.role)
+        return Array(shown.prefix(limit))
+    }
+
     /// Sends what the composer wrote: a command or a message (queued in the outbox) for a new
     /// message or a reply, or the edit's save, which sends no files.
     public func submit(_ field: DraftField, in roomID: String, attachments: [Attachment]) async throws {
         let text = field.sentText
-        let mentions = field.sentMentions
+        let holders = Dictionary(mentionableRoles(in: roomID).map { ($0.role, $0.members) }, uniquingKeysWith: { first, _ in first })
+        let mentions = field.sentMentions(holders: holders)
         switch field.mode {
         case .new, .reply:
             let replyTo = field.replyTo

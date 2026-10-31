@@ -25,7 +25,7 @@ enum Screen: String, CaseIterable {
     case reminder, reminderCustom = "reminder-custom"
     case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded"
     case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline", serverPane = "server-pane", serverPaneDemo = "server-pane-demo", mentionChip = "mention-chip"
-    case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing"
+    case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing", rolePicker = "role-picker", roleChip = "role-chip"
 
     var isPad: Bool { self == .ipad || self == .ipadTyping }
 }
@@ -187,6 +187,15 @@ enum Renderer {
         case .typing:
             // Ada and Bram typing: the header's subtitle on a phone.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.typingRoomID, reminders: store.reminders, drafts: Drafts()) })
+        case .rolePicker:
+            // `@&` lists the roles others here hold, with how many each mentions.
+            AnyView(NavigationStack {
+                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders,
+                             drafts: kept(home, PreviewFixtures.busyRoomID, ComposerDraft(field: DraftField(text: "Release is out, @&"))))
+            })
+        case .roleChip:
+            // Ada's `@&announce` as a role chip, and the same words in code left as written.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkRoomID, reminders: store.reminders, drafts: Drafts()) })
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))

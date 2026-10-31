@@ -156,9 +156,16 @@ struct MessageRow: View {
 
 /// Rendered text (`MessageText.blocks`) with its chips drawn as the web's: a room
 /// (`RoomReferenceKey`) and a mention (`MentionKey`) in denim on denim-soft, a mention of you in
-/// on-accent on accent.
+/// on-accent on accent, and a role (`RoleMentionKey`) in denim on denim-soft with a dotted denim
+/// rule under it in place of the web's ring, which a run of `Text` cannot draw: it opens nothing.
 func styled(_ text: AttributedString) -> AttributedString {
     var out = text
+    for run in out.runs where run[RoleMentionKey.self] != nil {
+        out[run.range].backgroundColor = Palette.denimSoft
+        out[run.range].foregroundColor = Palette.denim
+        out[run.range].inlinePresentationIntent = .stronglyEmphasized
+        out[run.range].underlineStyle = Text.LineStyle(pattern: .dot, color: Palette.denim.opacity(0.45))
+    }
     for run in out.runs where run[RoomReferenceKey.self] != nil {
         out[run.range].backgroundColor = Palette.denimSoft
         out[run.range].foregroundColor = Palette.denim

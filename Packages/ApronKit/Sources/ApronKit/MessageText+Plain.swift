@@ -5,10 +5,11 @@ extension MessageText {
     /// as apron-web's `plainTextOf`: a `markdown` body without its syntax, so `**0 errors**` reads
     /// "0 errors", code keeps what is in it and a link shows its text, with each block on its own
     /// line and typed line breaks kept (`breaks: true`). Any other format is the text as written.
-    /// Mentions stay as written, and bidirectional overrides are dropped (§3.5.2).
+    /// Mentions stay as written but for a role's, which reads `@role` as its chip does, outside
+    /// code; bidirectional overrides are dropped (§3.5.2).
     public static func plain(_ body: JSONValue?) -> String {
         let text = TextDirection.withoutOverrides(body?["text"]?.stringValue ?? "")
-        guard !text.isEmpty, body?["format"]?.stringValue == "markdown" else { return text }
+        guard !text.isEmpty, body?["format"]?.stringValue == "markdown" else { return roleChips(text) }
         let breaking = text.replacingOccurrences(of: "\n", with: "  \n")
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)
         guard let parsed = try? AttributedString(markdown: breaking, options: options) else { return text }
@@ -18,10 +19,18 @@ extension MessageText {
             let id = run.presentationIntent?.components.first?.identity
             if let block, id != block { out += "\n" }
             block = id
-            out += String(parsed[run.range].characters)
+            let written = String(parsed[run.range].characters)
+            let code = run.inlinePresentationIntent?.contains(.code) == true
+                || run.presentationIntent?.components.contains { if case .codeBlock = $0.kind { true } else { false } } == true
+            out += code ? written : roleChips(written)
         }
         let lines = out.split(separator: "\n", omittingEmptySubsequences: true).map { $0.trimmingCharacters(in: .whitespaces) }
         return lines.filter { !$0.isEmpty }.joined(separator: "\n")
+    }
+
+    /// `@&role` as its chip reads, `@role`.
+    private static func roleChips(_ text: String) -> String {
+        RoleMentions.reference.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "@$1")
     }
 
     /// The first `lines` non-empty lines of `plain`, cut to about `max` characters, as apron-web's

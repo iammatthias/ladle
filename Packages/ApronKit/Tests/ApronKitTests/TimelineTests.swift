@@ -40,7 +40,7 @@ final class TimelineTests: XCTestCase {
     func testAMessageContinuesItsAuthorsRunWithinFiveMinutes() async throws {
         let home = try await home()
         let items = home.timelineItems(PreviewFixtures.linkRoomID, lineBefore: nil, calendar: utc)
-        XCTAssertEqual(names(items, in: home).filter { !$0.hasPrefix("day") && !$0.hasPrefix("thread") }, ["eunji", "ada", "sam", "sam", "sam+"])
+        XCTAssertEqual(names(items, in: home).filter { !$0.hasPrefix("day") && !$0.hasPrefix("thread") }, ["eunji", "ada", "sam", "sam", "sam+", "ada"])
         let random = home.timelineItems(PreviewFixtures.mediaRoomID, lineBefore: nil, calendar: utc)
         XCTAssertEqual(names(random, in: home).filter { !$0.hasPrefix("day") }, ["chiara", "bram", "chiara", "chiara+", "chiara+", "bram", "chiara", "sam"])
     }

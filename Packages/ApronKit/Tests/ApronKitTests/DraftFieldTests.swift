@@ -22,8 +22,8 @@ final class DraftFieldTests: XCTestCase {
     func testSuggestionsListTheRoomsOtherMembersEmojiAndRooms() async throws {
         let home = try await home()
         func people(_ text: String) -> [String]? {
-            guard case .people(let found) = home.suggestions(for: DraftField(text: text), in: "general") else { return nil }
-            return found.map(\.userID)
+            guard case .mentions(let found) = home.suggestions(for: DraftField(text: text), in: "general") else { return nil }
+            return found.compactMap { if case .person(let person) = $0 { person.userID } else { nil } }
         }
         XCTAssertEqual(people("Thanks @"), ["ada", "bram", "chiara", "eunji", "dev"], "online first, never you")
         XCTAssertEqual(people("@CH"), ["chiara"], "by name, ignoring case")
@@ -61,9 +61,9 @@ final class DraftFieldTests: XCTestCase {
     func testAMentionGoesWhileTheTextShowsIt() {
         var field = DraftField(text: "  @Ada and @Bram  ", mentions: ["ada": "Ada", "bram": "Bram", "chiara": "Chiara"])
         XCTAssertEqual(field.sentText, "@Ada and @Bram")
-        XCTAssertEqual(field.sentMentions, ["ada", "bram"])
+        XCTAssertEqual(field.sentMentions(), ["ada", "bram"])
         field.text = "@Bram"
-        XCTAssertEqual(field.sentMentions, ["bram"])
+        XCTAssertEqual(field.sentMentions(), ["bram"])
     }
 
     func testAnEditOpensWithTheMentionsItsTextShows() async throws {
