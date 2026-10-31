@@ -646,6 +646,17 @@ Connection state is not a screen. It is one model, rendered in the Rooms section
 - **You were added.** A top-level private room that arrives joined without this device asking (not one it created or joined; the first listing for an account is the baseline, and later listings count, so one added while away shows) gets "You were added to this private room." under the header, with × in its corner and **Mute** (or **Unmute**), **Leave** (asking first) and **Dismiss** in a row under it, on a plum wash. Each is kept on the device (`added-rooms.json`) until dismissed. A room joined on another of your devices arrives the same way, as membership records don't say who made a change (§4.2.2).
 - **Threads.** A thread started in a private room (New Thread or Start Thread) must come back private: one that doesn't says "The server made the new thread visible to people outside this private room, so nothing was posted into it." and isn't opened. Once it opens, the room's other listed members are added to it (`room_join` with each `user_id`), so they see it and its replies; refusals show in the room's banner.
 
+### 3.17 Search Local History
+
+**Purpose.** Find a message this device holds, as apron-web's SearchDialog (#137, #166). The protocol has no search request, so it searches what is kept (2.5) and what is loaded, and says so under the field.
+
+- **Opening.** The magnifying glass beside the room's title (apron-web #166 moved it there), or ⌘F on a hardware keyboard, opens a sheet titled **Search Local History**, its field already holding the open room's filter (`room:#general `) with the caret after it. From the rooms list, Search Rooms' **Search Messages for "…"** opens it with the words typed there.
+- **Query.** Results update as you type, 150 ms after the last key. A message matches when its text holds the words, in any case, with or without accents, any run of spaces as one. `user:@ada`, `user:ada` or `user:"Ada Okafor"` keeps what someone sent; `room:#general`, `room:general` or a room's title keeps a room and its threads. With the caret in a filter's value, people (by name or `@user_id`) or rooms show under the field, and a tap puts in `@user_id` or `#room_id` and a space.
+- **Note.** Under the field: "Messages kept on this device from the last 30 days, and those loaded now." (the Retention's span), or "Messages loaded now." where nothing is kept. The Retention's title ("30 Days") sits at the bar's trailing edge and opens Preferences > History.
+- **Results.** The newest 100, newest first, each with its room (a thread's with its room's after it) in denim, the sender, the date and time, and up to three lines of its text from a little before the first match, the words found marked. "Type to search.", "Searching…" and "No messages match "ops"." stand in for an empty list; past 100, "Only the newest are listed. Add words to narrow it down."
+- **Opening a result.** The sheet closes and the message opens where it is, as a link to it does: its room, paged back to it from the device and then the server, scrolled to and highlighted.
+- **Rooms by name.** The rooms list's search field (`.searchable` where iOS places it, at the bottom on iPhone as 3.1 asks; at the top of the iPad sidebar, whose bar is hidden; the Mac render draws it under the title) narrows to the rooms and threads whose title or id holds the words, in any case, with or without accents: exact names first, then those starting with them, then the rest, each by title.
+
 ## 4. Cross-cutting
 
 ### 4.1 Connection and sync, as you see them
@@ -761,7 +772,7 @@ Never for these: incoming messages, mentions, typing, connection changes, paging
 | ⌘Return | Send |
 | Esc, ⌘. | Cancel reply or edit, close suggestions, close a sheet |
 | ↑ (empty composer) | Edit your last message |
-| ⌘F | Search rooms |
+| ⌘F | Search Local History in a room (3.17) |
 | ⌥⌘↑, ⌥⌘↓ | Previous or next room |
 | ⇧⌥⌘↑, ⇧⌥⌘↓ | Previous or next unread room |
 | ⌘↓ | Jump to latest |
@@ -779,7 +790,6 @@ Ladle overrides no standard shortcut ([keyboards]: "Respect standard keyboard sh
 | Inline `iframe` and `html` embeds | Rendering them safely needs a sandboxed `WKWebView` that matches the §4.8 iframe sandbox. A mistake there exposes the token. They render as fallback cards. |
 | Live stream reading | v1 shows the finished `text`. Reading the live `url` needs streaming HTTP and a reconnect rule. |
 | Passkeys and external sign-in | AGENTS.md records the open questions about Apple's documentation. Token, email, and guest cover v1. |
-| Message search | The protocol has no search request. Ladle could only search what it holds, which would look complete and not be. |
 | Moving messages and select mode | Rare on a phone, and the web client covers it. Ladle shows moves correctly. |
 | Edit history (`prev_log_id`) | Rarely needed. "Edited" is enough. |
 | A browsable emoji picker | The system emoji keyboard covers any emoji (3.9). |

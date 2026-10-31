@@ -28,6 +28,7 @@ enum Screen: String, CaseIterable {
     case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing", rolePicker = "role-picker", roleChip = "role-chip"
     case muted, paused, notificationsPaused = "notifications-paused", limited
     case appearance, appearanceCustom = "appearance-custom", preferences, history
+    case search, searchFiltered = "search-filtered", roomsSearch = "rooms-search"
     case threadRenamed = "thread-renamed", startThread = "start-thread", roomsInactive = "rooms-inactive", editRoom = "edit-room", descriptionPutAway = "description-put-away"
     case directMessage = "direct-message", addedBanner = "added-banner", newPrivate = "new-private", newPrivateGroup = "new-private-group"
     case newRoomPrivate = "new-room-private", privateFull = "private-full", roomsPrivate = "rooms-private"
@@ -318,6 +319,14 @@ enum Renderer {
             AnyView(PreferencesView(store: store))
         case .history:
             AnyView(PreferencesView(store: store, request: PreferencesRequest(section: .history)))
+        case .search:
+            // Every room's messages with "icon", newest first, the word marked.
+            AnyView(SearchView(session: home, initial: "icon", focusesField: false))
+        case .searchFiltered:
+            // Started narrowed to the design room, as from its header, with "room:" suggesting rooms at the caret.
+            AnyView(SearchView(session: home, initial: ServerSession.searchStart(in: PreviewFixtures.linkRoomID) + "icon room:", focusesField: false))
+        case .roomsSearch:
+            AnyView(NavigationStack { RoomListView(session: home, selected: nil, open: { _ in }, startingSearch: "des") })
         case .roleChip:
             // Ada's `@&announce` as a role chip, and the same words in code left as written.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })

@@ -28,6 +28,7 @@ struct TimelineView: View {
     /// The ends of the long waits put away, which show again on the next Send.
     @State private var dismissedWaits: Set<Date> = []
     @State private var showingMembers = false
+    @State private var searchingHistory = false
     @State private var atBottom = true
     @State private var visit = Visit.opening
     @State private var visible = false
@@ -175,6 +176,9 @@ struct TimelineView: View {
         // A private room's header takes the plum wash, as the web's.
         .toolbarBackground(session.isPrivate(roomID) ? Palette.privateWash(0.6) : Palette.timeline, for: .navigationBar)
         .toolbarBackgroundVisibility(session.isPrivate(roomID) ? .visible : .automatic, for: .navigationBar)
+        .sheet(isPresented: $searchingHistory) {
+            SearchView(session: session, initial: ServerSession.searchStart(in: roomID))
+        }
         .sheet(item: $selecting) { selected in
             SelectTextSheet(text: selected.text) { selecting = nil }
         }
@@ -342,6 +346,9 @@ struct TimelineView: View {
                 .accessibilityLabel(mute.isWithRoom ? "Muted with its room, \(session.muteWords(mute))" : "Muted, \(session.muteWords(mute))")
                 .accessibilityHint(mute.isWithRoom ? "Unmutes the room" : "Unmutes it")
             }
+            // Beside the title, as apron-web #166 put it there, and ⌘F, as its Ctrl or ⌘F.
+            Button("Search Local History", systemImage: "magnifyingglass") { searchingHistory = true }
+                .keyboardShortcut("f", modifiers: .command)
             Button("Members", systemImage: "person.2") { showingMembers.toggle() }
                 .keyboardShortcut("m", modifiers: [.command, .shift])
             if session.status == .signedIn, session.server?.has("rooms") == true || session.mayMute {

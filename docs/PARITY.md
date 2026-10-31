@@ -161,7 +161,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Header title with lock for private | bh | has | `Timeline/TimelineView.swift` toolbar | |
 | Pinned Description under the header, three lines, expand, × to put away | #91, #94, #117 | has | `Timeline/TimelineView.swift` (`PinnedDescription`), `Kit/HiddenDescriptions.swift` | A tap opens the rest and folds it. Put away by server and `room_id` as a fingerprint of its text (apron-web's FNV-1a), so an edit pins it again; the newest 200, in `hidden-descriptions.json`, across launches. Once put away, a room's first line is the header's subtitle (`HeaderLine.topic`). |
 | Description button to pin it again | #117 | has | `Timeline/TimelineView.swift` (⋯ menu, Show Description) | In the ⋯ menu, as the bar has room for two buttons. |
-| ⋯ menu: Search local history | #137, #166 | missing | | |
+| ⋯ menu: Search local history | #137, #166 | has | `Timeline/TimelineView.swift` (Search Local History), `Timeline/SearchView.swift` | A magnifying glass beside the title, where #166 moved it, and ⌘F. |
 | ⋯ menu: Copy link to room or thread | #112 | has | `Timeline/TimelineView.swift`, `Kit/RoomHeader.swift` (`link(to:)`) | The web form; "Link copied" under the title for two seconds. |
 | ⋯ menu: Mute and Unmute room or thread (bell-off button while muted) | #125 | has | `Rooms/MuteMenu.swift`, `Timeline/TimelineView.swift`, `Kit/ServerSession+Mutes.swift` | For 1, 2 or 8 hours or until unmuted; a thread muted with its room unmutes the room. Rows show the bell-off and stay quiet. |
 | ⋯ menu: Edit room or thread (title, description) | bh | has | `Kit/RoomHeader.swift` (`editRoom`, `mayEdit`), `Rooms/RoomFormSheet.swift` | Offered with `rooms` to whoever may write, as the web; the server decides who may edit what ("Only an admin may edit the general room") and its words show in the form. Both fields go on a save, an emptied one left out, which clears it. |
@@ -417,12 +417,12 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
-| Search local history, as you type | #137 | missing | | UX.md 4.8 left it out because history isn't kept. It searches kept and loaded messages. |
-| `user:` and `room:` filters with suggestions | #137 | missing | | |
-| Starts narrowed to the open room | #137 | missing | | |
-| Open a result where it is, paging back | #137 | missing | `Kit/ServerSession.swift` (`reveal`) exists | |
-| Note on how far back history is kept, linking to History | #166 | missing | | |
-| Search rooms by name in the rooms list | | missing | | UX.md 3.1 plans `.searchable`. Not built. |
+| Search local history, as you type | #137 | has | `Kit/LocalSearch.swift`, `Kit/ServerSession+Search.swift` (`search`), `Timeline/SearchView.swift` | Kept and loaded messages (`ServerSession.kept`), 150 ms after the last key, scanned off the main actor, the newest 100. Folding, filters and snippets are apron-web's `search.ts`, offsets in UTF-16 units, its tests mirrored. Where the web's snippet marks the wrong letters after an emoji, Ladle marks the word. |
+| `user:` and `room:` filters with suggestions | #137 | has | `Kit/LocalSearch.swift` (`parse`, `filterAtCaret`, `withFilterValue`, `searchPeople`), `Timeline/SearchView.swift` | People or rooms under the field with the caret in a filter's value; a tap puts in `@user_id` or `#room_id`. |
+| Starts narrowed to the open room | #137 | has | `Kit/ServerSession+Search.swift` (`searchStart`) | `room:#<id> `, the caret after it. |
+| Open a result where it is, paging back | #137 | has | `Timeline/SearchView.swift` (`open`), `App/RootView.swift` | As a link to the message: its room, revealed from the device then the server, and highlighted. |
+| Note on how far back history is kept, linking to History | #166 | has | `Kit/ServerSession+Search.swift` (`searchNote`, `searchKept`), `Timeline/SearchView.swift` | The note under the field, and the Retention's title ("30 Days") at the bar's trailing edge, which opens Preferences > History. |
+| Search rooms by name in the rooms list | | has | `Kit/ServerSession+Search.swift` (`rooms(named:)`), `Rooms/RoomListView.swift` | `.searchable` on iPhone, a field at the top of the iPad sidebar; rooms and threads by title or id, then Search Messages for the same words. |
 
 ## 22. Export and archive
 
@@ -474,7 +474,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Enter, Shift+Enter in the composer | bh | has | `Timeline/ComposerView.swift` | |
 | Escape closes pickers, dialogs, the editor | bh | has | `Timeline/ComposerView.swift` (`.cancelAction`) | |
 | ↑ ↓ Tab Enter in mention, room, emoji, command lists | bh | missing | `Timeline/ComposerView.swift` | Hardware keyboard on iPad. Touch picks work. |
-| Ctrl or ⌘F opens Search local history | #137 | missing | | Depends on search. |
+| Ctrl or ⌘F opens Search local history | #137 | has | `Timeline/TimelineView.swift` | ⌘F in a room. |
 | `x` selects a message | bh | missing | | Depends on select mode. |
 | Alt+↑ and Alt+↓ move a room | #151 | missing | | Depends on room order. |
 | ← → in the image viewer | #53 | partial | `Media/MediaViewer.swift` | Swipe pages. No arrow keys. |
@@ -533,14 +533,14 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 6. **Notifications and push.** Local alerts for other rooms while open, then APNs push through a §4.9.2 relay. Add Notify me about scopes, the per-device switch, the first-mention offer, the app badge, tap to open, closing notifications once read, and a test notification. Push, never polling. L.
 7. ~~**Mute and pause.**~~ Done (`Kit/ServerSession+Mutes.swift`, `Rooms/MuteMenu.swift`, Preferences > Notifications' Pause, `Profile/PauseSection.swift`). Muted rooms not notifying waits for item 6, since Ladle does not notify yet.
 8. ~~**Threads.**~~ Done (`Kit/Threads.swift`, `Rooms/RoomFormSheet.swift`): Start Thread from a message, Description on New Thread, Other Threads with last active times, joined threads by activity under the open room and those with news elsewhere, "Untitled", "N+ replies". A private room's members are added to its new threads since item 10.
-9. ~~**Room header.**~~ Done (`Kit/RoomHeader.swift`, `Kit/HiddenDescriptions.swift`): the pinned Description with expand and dismiss, Show Description, Edit room or thread, Copy Link in the ⋯ menu, and Copy Link and Mark as Read on a row. Search local history waits for item 16.
+9. ~~**Room header.**~~ Done (`Kit/RoomHeader.swift`, `Kit/HiddenDescriptions.swift`): the pinned Description with expand and dismiss, Show Description, Edit room or thread, Copy Link in the ⋯ menu, and Copy Link and Mark as Read on a row. Search local history came with item 16.
 10. ~~**Private rooms and direct messages.**~~ Done (`Kit/PrivateRooms.swift`, `Rooms/NewPrivateSheet.swift`): New Room with Private, New private conversation with a people picker, Message on the profile card, the Private section with faces, rooms named for their members, the header line and plum wash, the intro card, the "You were added" banner, the private room limit, and a private room's members added to its new threads. A room someone added you to counting unread from your join (section 19) is not built.
 11. ~~**Kept view and local history.**~~ Done (`Kit/KeptHistory.swift`, `Kit/ServerSession+History.swift`, `Kit/Archive.swift`). Cache rooms and recent messages on disk so a relaunch shows them at once. Keep history with Retention, delete it on sign-out, and page older messages from the device first. L.
 12. ~~**Join, leave, and rename lines.**~~ Done (`Kit/MembershipLines.swift`): netted per run, baselines of 21 joins skipped, adds as joins and renames in rooms and threads (#170).
 13. **Open at the New divider.** Land on the divider instead of the latest message. Needs a device to verify the scroll. S.
 14. ~~**Member management.**~~ Done (`Kit/Members.swift`, `Timeline/AddMembersSheet.swift`, `Timeline/MemberList.swift`): Add People with the people picker, Remove from Room after a confirmation, and the member menu (Profile, Direct Message, Remove) on a long press, a tap opening the card. A server that answers `unsupported` stops the offers.
 15. **Select mode.** Select several messages, move them to a thread or a new thread, add authors to the thread, and copy them as a Markdown log with quotes, cut marks, and reactions. M.
-16. **Search local history.** As-you-type search with `user:` and `room:`, narrowed to the open room, opening results in place. Also search rooms by name. Depends on item 11. M.
+16. ~~**Search local history.**~~ Done (`Kit/LocalSearch.swift`, `Kit/ServerSession+Search.swift`, `Timeline/SearchView.swift`). As-you-type search with `user:` and `room:`, narrowed to the open room, opening results in place. Also search rooms by name. Depends on item 11. M.
 17. **Message editing with embeds.** Edit shows embeds as tiles with ×. Remove an embed from a sent message (asking for uploads). Rename a file before and after sending. Remove reply reference. M.
 18. **Rooms list order and folding.** Keep room order on device with drag to reorder. Fold sections to rooms with news, remember folded rooms, and fold a room's threads when it is picked again. Make Browse Rooms show member counts and descriptions, and open a room to read before joining. M.
 19. **Streams and terminal output.** Read a stream's `url` live with a Live badge. Render `terminal` with ANSI colors and carriage-return overwrite. Only from the server's origin. M.
@@ -560,4 +560,4 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 33. **Presence details.** An unknown status as a dashed placeholder with its value, the full status sort order, foldable member sections, and the `member_count` note. S.
 34. **Composer details.** Standard emoji `:shortcode` autocomplete, mention chips in the field, and hardware-keyboard ↑ ↓ Tab Enter in every picker. S.
 35. **Timeline polish.** The floating day while scrolling, the mention pulse on arrival, the 3-second wait for thread listings on first show, and the welcome notice in the first room. S.
-36. **Keyboard shortcuts.** ⌘F for search, `x` to select, Alt+↑ and Alt+↓ to move a room, ← → in the image viewer, once the features behind them exist. S.
+36. **Keyboard shortcuts.** ⌘F for search (done with item 16), `x` to select, Alt+↑ and Alt+↓ to move a room, ← → in the image viewer, once the features behind them exist. S.

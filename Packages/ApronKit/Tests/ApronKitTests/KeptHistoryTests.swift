@@ -303,6 +303,46 @@ final class KeptHistorySessionTests: XCTestCase {
         XCTAssertEqual(second.timeline("general").first?.messageID, LogID("998"))
     }
 
+    func testSearchFindsWhatTheDeviceKeepsBeyondWhatTheRoomShows() async throws {
+        let first = try await keptSession()
+        await first.stop()
+        transports.queued.withLock { $0 = [FakeTransport()] }
+        let second = session(first.record)
+        second.start()
+        await eventually("restored") { second.timeline("general").count == 50 }
+        XCTAssertFalse(second.timeline("general").contains { $0.messageID == LogID("1003") })
+
+        let found = await second.search("#1003")
+        XCTAssertEqual(found.messages.map(\.messageID.text), ["1003"], "kept, though the room shows only its newest 50")
+        let hit = second.hit(try XCTUnwrap(found.messages.first), in: found)
+        XCTAssertEqual(hit.place, "General")
+        XCTAssertEqual(hit.parts, [SnippetPart("#1003", match: true)])
+
+        let several = await second.search("#100")
+        XCTAssertEqual(several.messages.map(\.messageID.text), ["1009", "1008", "1007", "1006", "1005", "1004", "1003", "1002", "1001"],
+                       "newest first; #1000 and #1010 on are other words")
+        let inRoom = await second.search(ServerSession.searchStart(in: "general") + "#1003")
+        XCTAssertEqual(inRoom.messages.count, 1)
+        let elsewhere = await second.search("room:#random #1003")
+        XCTAssertEqual(elsewhere.messages, [])
+        let byBob = await second.search("user:@bob #1003")
+        XCTAssertEqual(byBob.messages.count, 1)
+        let empty = await second.search("   ")
+        XCTAssertEqual(empty.messages, [])
+        XCTAssertEqual(second.rooms(named: "gen").map(\.id), ["general"])
+        XCTAssertEqual(second.rooms(named: "GÉNÉ").map(\.id), ["general"], "any case, with or without accents")
+        XCTAssertEqual(second.rooms(named: "zzz").map(\.id), [])
+    }
+
+    func testTheNoteSaysWhatIsSearched() async throws {
+        let first = try await keptSession()
+        XCTAssertEqual(first.searchNote, "Messages kept on this device from the last 30 days, and those loaded now.")
+        XCTAssertEqual(first.searchKept, "30 Days")
+        first.keeping?.settings.update(.forever)
+        XCTAssertEqual(first.searchNote, "Messages kept on this device, and those loaded now.")
+        XCTAssertEqual(ServerSession.searchStart(in: nil), "")
+    }
+
     func testSigningOutDeletesWhatIsKept() async throws {
         let first = try await keptSession()
         XCTAssertNotNil(files.read(record.id))

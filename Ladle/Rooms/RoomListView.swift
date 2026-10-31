@@ -17,6 +17,8 @@ struct RoomListView: View {
     var onConnect: () -> Void = {}
     /// The iPad sidebar, whose navigation bar is hidden: the server's head leads the list.
     var showsServerHead = false
+    /// What Search Rooms starts with: the renderer's typed words, which it cannot type.
+    var startingSearch = ""
     @State private var browsing = false
     @State private var naming: NewRoom?
     /// New Room's Private.
@@ -39,7 +41,16 @@ struct RoomListView: View {
     /// The room a swipe asked to mute, whose choices a dialog lists.
     @State private var muting: String?
     @State private var panel: Panel?
+    /// Rooms by name, as typed in the search field.
+    @State private var roomQuery = ""
+    /// Search Local History, from the rooms search's "Search Messages for".
+    @State private var searchingHistory: HistoryQuery?
     @Environment(\.openPreferences) private var openPreferences
+
+    struct HistoryQuery: Identifiable {
+        var query: String
+        var id: String { query }
+    }
     /// What the server pane asked for, once it has gone.
     @State private var afterPanel: (() -> Void)?
 
@@ -64,8 +75,13 @@ struct RoomListView: View {
         List {
             if showsServerHead {
                 serverHead.listRowBackground(Color.clear).listRowSeparator(.hidden)
+                // The iPad sidebar hides its navigation bar, and the search field with it.
+                RoomSearchField(text: $roomQuery).listRowBackground(Color.clear).listRowSeparator(.hidden)
             }
             if let banner = bannerView { banner.listRowBackground(Color.clear).listRowSeparator(.hidden) }
+            if !roomQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                roomsFound
+            } else {
             Section {
                 ForEach(session.publicRoomTree) { node in
                     roomRow(node.roomID, isThread: false)
@@ -113,8 +129,13 @@ struct RoomListView: View {
                     .textCase(nil)
                 }
             }
+            }
         }
         .listStyle(.plain)
+        // Where iOS puts it: at the bottom on iPhone, in reach (UX.md 1.2).
+        .searchable(text: $roomQuery, prompt: "Search Rooms")
+        .sheet(item: $searchingHistory) { SearchView(session: session, initial: $0.query) }
+        .onAppear { if !startingSearch.isEmpty { roomQuery = startingSearch } }
         .scrollContentBackground(.hidden)
         .environment(\.defaultMinListRowHeight, Tokens.Size.touchTarget)
         .onChange(of: selected, initial: true) { _, thread in
@@ -185,6 +206,26 @@ struct RoomListView: View {
             case .you:
                 YouView(session: session)
             }
+        }
+    }
+
+    /// Rooms and threads by name, and the same words searched in messages.
+    @ViewBuilder
+    private var roomsFound: some View {
+        let typed = roomQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        Section {
+            ForEach(session.rooms(named: typed), id: \.id) { room in
+                roomRow(room.id, isThread: room.isThread)
+            }
+            Button {
+                searchingHistory = HistoryQuery(query: typed)
+            } label: {
+                Label("Search Messages for “\(typed)”", systemImage: "text.magnifyingglass")
+                    .apText(.ui).foregroundStyle(Palette.denim)
+            }
+            .listRowBackground(Color.clear)
+        } header: {
+            SectionHead(title: "Rooms").textCase(nil)
         }
     }
 
@@ -583,5 +624,29 @@ private struct BrowseRoomsView: View {
                 }
             }
         }
+    }
+}
+
+/// Search Rooms where the list has no navigation bar to put `.searchable` in: the iPad sidebar.
+struct RoomSearchField: View {
+    @Binding var text: String
+
+    var body: some View {
+        HStack(spacing: Tokens.Space.s2) {
+            Image(systemName: "magnifyingglass").foregroundStyle(Palette.inkMuted)
+            TextField("Search Rooms", text: $text)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .submitLabel(.search)
+            if !text.isEmpty {
+                Button("Clear", systemImage: "xmark.circle.fill") { text = "" }
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(Palette.inkMuted)
+            }
+        }
+        .apText(.ui)
+        .padding(.horizontal, Tokens.Space.s3)
+        .frame(minHeight: Tokens.Size.touchTarget)
+        .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
     }
 }
