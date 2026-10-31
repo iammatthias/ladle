@@ -62,9 +62,9 @@ public enum PreviewFixtures {
 
     private static let greeting: JSONValue = [
         "apron": 9, "auth": ["token", "guest"], "agent": "aprond/0.9",
-        "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity", "command", "embed:upload", "ext", "ext:emoji", "ext:limits"],
+        "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity", "command", "embed:upload", "ext", "ext:emoji", "ext:limits", "ext:settings"],
         "status": ["dnd", "invisible"],
-        "ext": ["emoji": ["catalog_url": "https://home.example/emoji/catalog.json"]],
+        "ext": ["emoji": ["catalog_url": "https://home.example/emoji/catalog.json"], "settings": ["private_rooms": 5]],
     ]
 
     /// Home's custom emoji: the demo's `:apron:`, an animated one with a still copy, a wide one,
@@ -145,7 +145,8 @@ public enum PreviewFixtures {
         ]
     }
 
-    private static func history(_ roomID: String, _ lines: [Line], memberships: [JSONValue] = [], rooms: [JSONValue] = []) -> JSONValue {
+    /// `floor` is the result's `history_log_id`, the first line's by default.
+    private static func history(_ roomID: String, _ lines: [Line], memberships: [JSONValue] = [], rooms: [JSONValue] = [], floor: String? = nil) -> JSONValue {
         var messages: [JSONValue] = []
         var reactions: [JSONValue] = []
         for line in lines {
@@ -182,7 +183,7 @@ public enum PreviewFixtures {
         return [
             "messages": .array(messages), "reactions": .array(reactions), "memberships": .array(memberships), "rooms": .array(rooms), "more": false,
             "first_log_id": .string(message(lines.first?.minute ?? 0)), "last_log_id": .string(latest),
-            "latest_log_id": .string(latest), "history_log_id": .string(message(lines.first?.minute ?? 0)),
+            "latest_log_id": .string(latest), "history_log_id": .string(floor ?? message(lines.first?.minute ?? 0)),
         ]
     }
 
@@ -351,6 +352,9 @@ public enum PreviewFixtures {
                 room(iconThread, "Icon sketches", parent: "design", members: ["sam", "eunji"]),
                 room("random", "random", members: ["sam", "ada", "bram", "chiara"]),
                 room("ops", "ops", members: ["sam", "dev"], isPrivate: true),
+                room(directRoomID, nil, members: ["sam", "ada"], isPrivate: true, logID: directRoomStart),
+                room(groupRoomID, nil, members: ["sam", "bram", "chiara"], isPrivate: true),
+                room(addedRoomID, "Launch plan", members: ["sam", "ada", "eunji"], isPrivate: true),
                 room("kitchen", "kitchen", members: ["sam", "ada", "bram", "eunji"], description: "Pots, pans and :apron:"),
                 room("markdown", "markdown", members: ["sam", "ada"]),
                 room("remote", "remote", members: ["sam", "bram"]),
@@ -436,6 +440,17 @@ public enum PreviewFixtures {
                 line(-300, "dev", "Rotated the TLS cert on home. Next renewal in 60 days."),
                 line(-290, "sam", "Thanks!"),
             ]),
+            // From its creation: the intro card heads it.
+            directRoomID: history(directRoomID, [
+                line(30, "ada", "Got a minute for the cert renewal before Friday?"),
+                line(31, "sam", "Sure, after lunch."),
+                line(32, "ada", "Great. I'll bring the checklist."),
+            ], floor: directRoomStart),
+            groupRoomID: history(groupRoomID, [
+                line(33, "bram", "Flea market on Saturday?"),
+                line(34, "chiara", "Only if we're back by noon."),
+            ]),
+            addedRoomID: history(addedRoomID, [line(35, "eunji", "Added you so you can see the press list.")]),
         ],
         readCursors: [
             "general": message(9), releaseThread: message(17), "design": message(-22),
@@ -443,6 +458,7 @@ public enum PreviewFixtures {
             loadTestThread: message(-140), originThread: message(-480), docsThread: message(-1100), passkeyThread: message(-5000),
             untitledThreadID: message(-9000), archiveThread: message(-600_000), "ops": message(-290), "kitchen": message(-126),
             "markdown": message(-400), "remote": message(-408),
+            directRoomID: message(31), groupRoomID: message(34), addedRoomID: message(35),
         ],
         notices: [[
             "room_id": "general", "from": ["user_id": "~room", "name": "general"],
@@ -455,6 +471,14 @@ public enum PreviewFixtures {
         statuses: [["room_id": .string(mutedRoomID), "mute": true]],
         unjoinedThreads: ["general": .array(otherThreads)]
     )
+
+    /// The conversation with Ada: private, untitled, so named for her, its history from its start.
+    public static let directRoomID = "dm_ada"
+    private static let directRoomStart = String(start + 30 * 60_000 - 30_000)
+    /// A private room with Bram and Chiara, named "Bram, Chiara".
+    public static let groupRoomID = "dm_crew"
+    /// A private room Ada added you to, with its banner.
+    public static let addedRoomID = "launch"
 
     /// The room muted until unmuted, with its threads: its rows ring no bell.
     public static let mutedRoomID = "design"

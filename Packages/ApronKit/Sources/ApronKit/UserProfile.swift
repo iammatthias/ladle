@@ -25,6 +25,8 @@ public struct UserProfile: Hashable, Sendable {
     public let mayMention: Bool
     /// Add to room (§4.2.2, `room_join` with `user_id`), as apron-web offers it.
     public let mayAddToRoom: Bool
+    /// Message opens the private conversation you have with them, or starts one (`message(_:)`).
+    public let mayMessage: Bool
 }
 
 extension ServerSession {
@@ -60,7 +62,8 @@ extension ServerSession {
             bio: keepsBio ? Bio.of(kept) : nil,
             membership: membership,
             mayMention: roomID != nil && mayWrite && status == .signedIn && !system,
-            mayAddToRoom: mayAdd
+            mayAddToRoom: mayAdd,
+            mayMessage: mayStartPrivate && !yours && !system
         )
     }
 

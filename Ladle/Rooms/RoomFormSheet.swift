@@ -14,6 +14,8 @@ struct RoomFormSheet: View {
     var subtitle: String?
     /// A thread of a private room is private too.
     var isPrivate = false
+    /// New Room's Private (§4.2.4): only members see it, and members add others.
+    var privateChoice: Binding<Bool>?
     @State var title: String
     @State var description: String
     let submit: (String, String) async throws -> Void
@@ -54,6 +56,17 @@ struct RoomFormSheet: View {
                     Text("Description")
                 } footer: {
                     Text(mode == .edit ? "Markdown" : "Markdown, optional")
+                }
+                if let privateChoice {
+                    Section {
+                        Toggle(isOn: privateChoice) {
+                            Label { Text("Private") } icon: { Lock(tint: Palette.private) }
+                        }
+                        .tint(Palette.private)
+                        .disabled(saving)
+                    } footer: {
+                        Text("Only members see it, and members add others.")
+                    }
                 }
                 if let error {
                     Section { Text(error).apText(.ui).foregroundStyle(Palette.danger) }

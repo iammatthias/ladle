@@ -11,8 +11,9 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.status, .signedIn)
         XCTAssertEqual(demo.status, .signedIn)
 
-        XCTAssertEqual(home.roomTree.map { home.title(of: $0.roomID) }, ["design", "general", "kitchen", "markdown", "ops", "random", "remote"])
-        XCTAssertEqual(home.roomTree.map { $0.threadIDs.map(home.title(of:)) }, [["Icon sketches"], ["Release 0.2", "Load test", "Origin check", "Docs", "Passkeys", "Benchmarks", "Untitled", "Hiring", "Archive 2025", "2024 offsite", "Icons v1"], [], [], [], [], []],
+        XCTAssertEqual(home.publicRoomTree.map { home.title(of: $0.roomID) }, ["design", "general", "kitchen", "markdown", "random", "remote"])
+        XCTAssertEqual(home.privateRoomTree.map { home.title(of: $0.roomID) }, ["Ada Okafor", "Bram, Chiara", "Launch plan", "ops"])
+        XCTAssertEqual(home.publicRoomTree.map { $0.threadIDs.map(home.title(of:)) }, [["Icon sketches"], ["Release 0.2", "Load test", "Origin check", "Docs", "Passkeys", "Benchmarks", "Untitled", "Hiring", "Archive 2025", "2024 offsite", "Icons v1"], [], [], [], []],
                        "most recently active first, those not joined among them")
         for _ in 0 ..< 100 where home.typingNames(in: PreviewFixtures.typingRoomID).count < 2 { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(home.typingNames(in: PreviewFixtures.typingRoomID), ["Ada Okafor", "Bram"])

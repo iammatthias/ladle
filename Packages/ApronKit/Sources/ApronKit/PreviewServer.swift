@@ -3,7 +3,9 @@ import Foundation
 /// An in-memory server that answers a session from a fixed script: the greeting, `auth`,
 /// `room_list`, `history` by room, the user's read cursors as `activity` (§4.6), others' typing, and the
 /// mutes in effect (§4.5). A `status` mute is echoed back before its `{}`, as servers do. A room's
-/// unjoined threads are the script's `unjoinedThreads`. Every other request gets `{}`.
+/// unjoined threads are the script's `unjoinedThreads`. A `room_set` without a `room_id` creates
+/// the room as asked, with you its one member, in a `room_update` before its result. Every other
+/// request gets `{}`.
 /// It never sends anything unasked, so a seeded session stays still.
 public actor PreviewServer: FrameTransport {
     public struct Script: Sendable {
@@ -29,6 +31,7 @@ public actor PreviewServer: FrameTransport {
     private var inbox: [String] = []
     private var reader: CheckedContinuation<String?, Never>?
     private var closed = false
+    private var created = 0
 
     public init(script: Script) {
         self.script = script
@@ -73,6 +76,15 @@ public actor PreviewServer: FrameTransport {
         case "message" where LimitScope.addsUpload("message", params):
             deliver(["id": id, "error": ["code": -32002, "message": "Daily upload limit reached",
                                          "data": ["retry_after": 7500, "ext": ["limits": "upload"]]]])
+        case "room_set" where params?["room_id"] == nil:
+            created += 1
+            let roomID = "new_\(created)"
+            var room = params?.objectValue ?? [:]
+            room["room_id"] = .string(roomID)
+            room["log_id"] = .string(String(9_000_000_000_000 + created))
+            room["members"] = [["user_id": script.you["user_id"] ?? nil]]
+            deliver(["method": "room_update", "params": ["joined": [.object(room)]]])
+            deliver(["id": id, "result": ["room_id": .string(roomID)]])
         case "status" where params?["mute"] != nil:
             deliver(["method": "status", "params": params ?? [:]])
             deliver(["id": id, "result": [:]])

@@ -46,6 +46,9 @@ public struct UserDirectory: Hashable, Sendable {
         kept[id] = fields
     }
 
+    /// Every kept user's `user_id`.
+    public var userIDs: [String] { kept.keys.sorted(by: codePointLess) }
+
     public func user(_ userID: String) -> JSONValue? {
         kept[current(userID)].map(JSONValue.object)
     }

@@ -20,6 +20,8 @@ public final class SessionStore {
     public let drafts: Drafts
     /// The room and thread descriptions put away with their ×, kept beside `servers.json`.
     public let hiddenDescriptions: HiddenDescriptions
+    /// The private rooms someone else added you to whose banner still shows, kept beside `servers.json`.
+    public let addedRooms: AddedRooms
     /// Whether anyone attends the app, which every session tells its server (§4.5 `idle`).
     public let attention: Attention
 
@@ -40,6 +42,7 @@ public final class SessionStore {
         mediaSettings = MediaSettings(directory: serverStore?.directory)
         appearance = AppearanceSettings(directory: serverStore?.directory)
         hiddenDescriptions = HiddenDescriptions(directory: serverStore?.directory)
+        addedRooms = AddedRooms(directory: serverStore?.directory)
         if let directory = serverStore?.directory {
             drafts = Drafts(store: FileDraftStore(directory: directory), staging: directory.appending(path: "Staged", directoryHint: .isDirectory))
             drafts.pruneStaging()
@@ -88,6 +91,7 @@ public final class SessionStore {
         await reminders.removeAll(server: id)
         drafts.removeAll(server: id)
         hiddenDescriptions.removeAll(server: id)
+        addedRooms.removeAll(server: id)
         records.removeAll { $0.id == id }
         try? tokens.setToken(nil, for: id)
         save()
@@ -95,7 +99,7 @@ public final class SessionStore {
 
     @discardableResult
     private func startSession(for record: ServerRecord) -> ServerSession {
-        let session = ServerSession(record: record, tokens: tokens, positions: positions, mediaSettings: mediaSettings, environment: environment)
+        let session = ServerSession(record: record, tokens: tokens, positions: positions, mediaSettings: mediaSettings, addedRooms: addedRooms, environment: environment)
         session.onRecordChange = { [weak self] changed in self?.accountChanged(changed) }
         session.onInput = { [weak self] in self?.attention.input() }
         if attention.idle { session.setIdle(true, inputAt: attention.inputAt) }

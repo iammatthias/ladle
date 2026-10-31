@@ -40,6 +40,9 @@ enum Palette {
     static var ok: Color { C.ok.color() }
     static var `private`: Color { C.private.color() }
     static var privateSoft: Color { C.privateSoft.color() }
+    /// The web's `color-mix(in srgb, var(--private-soft) N%, var(--bg-100))`: a private room's
+    /// header (60%), its intro card (55%) and its added banner (70%).
+    static func privateWash(_ fraction: Double) -> Color { timeline.mix(with: privateSoft, by: fraction, in: .device) }
     static var scrim: Color { C.scrim.color() }
     /// The media viewer: dark like a photo viewer whatever the theme.
     static var viewerGround: Color { C.viewerGround.color() }

@@ -29,6 +29,8 @@ enum Screen: String, CaseIterable {
     case muted, paused, notificationsPaused = "notifications-paused", limited
     case appearance, appearanceCustom = "appearance-custom", preferences, history
     case threadRenamed = "thread-renamed", startThread = "start-thread", roomsInactive = "rooms-inactive", editRoom = "edit-room", descriptionPutAway = "description-put-away"
+    case directMessage = "direct-message", addedBanner = "added-banner", newPrivate = "new-private", newPrivateGroup = "new-private-group"
+    case newRoomPrivate = "new-room-private", privateFull = "private-full", roomsPrivate = "rooms-private"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -63,7 +65,7 @@ enum Renderer {
         guard let home = store.session(for: PreviewFixtures.homeID) else { exit(1) }
 
         var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool, look: Look?)] = []
-        for screen in Screen.allCases where screen != .limited {
+        for screen in Screen.allCases where screen != .limited && screen != .privateFull {
             shots.append((screen, .dark, false, Look.seeded(screen)))
             shots.append((screen, .light, false, Look.seeded(screen)))
         }
@@ -77,6 +79,9 @@ enum Renderer {
         // The busy room drawn in Apron and then given Linocut without being made again: what a
         // theme chosen in Preferences does to the screens already open.
         shots.append((.timeline, .dark, false, Look.switched))
+        // After the others, since it starts home's fifth private room, which the rooms list would show.
+        shots.append((.privateFull, .dark, false, nil))
+        shots.append((.privateFull, .light, false, nil))
         // Last, since the waits it asks for hold home back for the shots after it.
         shots.append((.limited, .dark, false, nil))
         shots.append((.limited, .light, false, nil))
@@ -97,6 +102,7 @@ enum Renderer {
             await seedPause(shot.screen.isPaused, home: home)
             UserDefaults.standard.set(shot.screen == .roomsInactive, forKey: "inactiveThreadsOpen")
             if shot.screen == .limited { await seedWaits(home: home) }
+            if shot.screen == .privateFull, !home.atPrivateRoomLimit { _ = try? await home.startPrivateRoom(with: []) }
             show(AnyView(view(shot.screen, store: store, home: home, staged: staged)
                 .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
                 .environment(\.scenePhase, .inactive)
@@ -246,6 +252,32 @@ enum Renderer {
                                   description: ThreadStart.description(message.body) ?? "") { _, _ in }
                 }
             })
+        case .roomsPrivate:
+            // The conversation with Ada open: the Private section, each room with its faces.
+            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.directRoomID, open: { _ in }) })
+        case .directMessage:
+            // The conversation with Ada from its start: her face and line in the header, the intro card.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.directRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
+        case .addedBanner:
+            // Ada added Sam to Launch plan: its banner under the header.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.addedRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
+                .onAppear { store.addedRooms.add(DraftKey(server: home.record.id, roomID: PreviewFixtures.addedRoomID)) })
+        case .newPrivate:
+            // The + beside Private: Ada is already talked to; 4 of 5 private rooms.
+            AnyView(NewPrivateSheet(session: home) { _, _ in })
+        case .newPrivateGroup:
+            // Bram and Eun-ji picked: their chips, and Name for the group.
+            AnyView(NewPrivateSheet(session: home, picker: {
+                var picker = PeoplePicker()
+                picker.toggle("bram")
+                picker.toggle("eunji")
+                return picker
+            }()) { _, _ in })
+        case .newRoomPrivate:
+            AnyView(RoomFormSheet(kind: .room, mode: .create, privateChoice: .constant(true), title: "Launch", description: "") { _, _ in })
+        case .privateFull:
+            // At the server's limit, 5 of 5: your private rooms to leave, the quietest first.
+            AnyView(NewPrivateSheet(session: home) { _, _ in })
         case .typing:
             // Ada and Bram typing: the header's subtitle on a phone.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.typingRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })

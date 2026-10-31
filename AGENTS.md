@@ -186,7 +186,10 @@ clone), which is only a worked example.
     deleted message, presence). The design screenshots render from it; `PreviewFixturesTests`
     pins what it holds. It sends the script's `statuses` after `auth` (the design room is muted)
     and echoes a `status` mute back, as servers do; it refuses the `⏳` reaction for 45 s
-    (`write`) and any new upload for two hours (`upload`), for the waits shot. Message ids are server-wide, so no two rooms share a minute in the
+    (`write`) and any new upload for two hours (`upload`), for the waits shot. A `room_set` without a
+    `room_id` creates the room (`new_1`, …) with you its one member. Home's private rooms: Ada's
+    untitled conversation from its start (`directRoomID`), Bram and Chiara's (`groupRoomID`), Launch
+    plan (`addedRoomID`) and ops, 4 of a limit of 5. Message ids are server-wide, so no two rooms share a minute in the
     script.
   - `MessageText`: a body as apron-web renders it (§3.5, §3.5.2): `blocks` gives `MessageBlock`s
     (`MessageBlocks.swift`). `markdown` is Foundation's full CommonMark and GFM parse (no
@@ -405,10 +408,31 @@ clone), which is only a worked example.
   - `UserProfile` (`UserProfile.swift`): what a profile card shows, as apron-web's ProfileCard:
     `ServerSession.profile(of:in:)` gives the plain name (`UserDirectory.plainName`) and
     `sharesName`, the status in words, `LastSeen` (only while offline, never yours), roles, bio,
-    membership of the open room, and whether Mention and Add to room (`addMember`, `room_join`
-    with `user_id`: `add_members`, or a private room you are in) are offered. A mention chip
+    membership of the open room, and whether Message (`mayStartPrivate`), Mention and Add to room
+    (`addMember`, `room_join` with `user_id`: `add_members`, or a private room you are in) are offered. A mention chip
     carries `ApronLink.relative(user:)` (`apron:?user=<id>`), which the timeline opens as the
     card; `DraftField.mention` appends `@name ` for the card's Mention.
+  - Private rooms (`PrivateRooms.swift`, `PeoplePicker.swift`, `AddedRooms.swift`), as apron-web's
+    `private-rooms.ts` (#123, #124, #128, #129, #165), by `private: true` and `parent_room_id`, never
+    a `room_id`: `isPrivateRoom` (joined, private, top level) is what `privateRoomTree` lists under
+    Private and `publicRoomTree` leaves out; `title(of:)` names an untitled one (`isNamedForMembers`)
+    by `PeopleTitle` ("Bram, Chiara", "You", "Private room" while members are unknown) and
+    `headerLine` gives its `.privateRoom` line; `directRoom(with:)` is the untitled room of just
+    the two of you. `startPrivateRoom(with:title:)` sends `room_set {private: true}` through
+    `createRoom(_:)`, waits for the record (`record(of:)`, 10 s), refuses one that came back
+    public (`PrivateRoomError.notPrivate`, nobody added), then `addMembers` one by one, collecting
+    `Refusal`s; `message(_:)` reuses the direct room or starts one. `createRoom(title:…isPrivate:)`
+    checks a private room, and a thread of a private room, the same way (`threadNotPrivate`), and
+    `includeMembers(of:in:)` adds a private room's other members to its new thread.
+    `ServerInfo.privateRoomLimit` is `ext.settings.private_rooms`; `privateRoomQuota`,
+    `privateRoomsQuietestFirst` and `lastActiveDetail` serve the limit's Leave list.
+    `reachesStart`/`privateIntro` are the intro card (history complete, floor at or before
+    `ReplayStore.firstRecordLogID`). `ArrivalWatch` (rooms joined without this device asking:
+    not created or joined here, nothing created in flight; the first listing per account is the
+    baseline) feeds `AddedRooms` (`added-rooms.json`, owned by `SessionStore`, passed to every
+    session, dropped with the server): `wasAdded(to:)` and `dismissAdded`. `PeoplePicker` is the
+    picker's query and chips; `pickable`/`matching` everyone known but you and `~` ids, by name,
+    50 at a time; `privatePeople` marks who you already talk to.
 - `Ladle/`: the app, views only; logic belongs in ApronKit where `swift test` reaches it. The
   design follows apron-web, the official web client (see "Design").
   `App/` (`RootView`: one pane at a time in compact width, a split view with the server rail,
@@ -433,7 +457,10 @@ clone), which is only a worked example.
   the room list's title or, on iPad, its server head, with Edit Profile, Connect to Another
   Server… and Disconnect, which signs out of that server),
   `Rooms/RoomFormSheet.swift` (the web's RoomForm: title and Markdown description for New Room,
-  New Thread, Start Thread and Edit Room or Thread), `PinnedDescription` in `Timeline/TimelineView.swift`, `FoldHeading` and the `fixedNow` environment value (the renderer
+  with its Private toggle, New Thread, Start Thread and Edit Room or Thread), `Rooms/NewPrivateSheet.swift`
+  (the + beside Private: the web's PrivateRoomForm, with `QuotaLine` and the limit's Leave list),
+  `Rooms/PeoplePickerView.swift` (`PeoplePickerSections`: chips, field and people as form sections),
+  `Timeline/PrivateRoomViews.swift` (`PrivateIntroCard`, `AddedBanner`), `Faces` in `Design/People.swift`, `PinnedDescription` in `Timeline/TimelineView.swift`, `FoldHeading` and the `fixedNow` environment value (the renderer
   pins the rooms list's clock to `PreviewFixtures.now`) in `Rooms/RoomListView.swift`,
     `Rooms/MuteMenu.swift` (`MuteActions`: Mute Room or Thread's submenu, or Unmute, in a row's
   context menu and the room's ⋯ menu; `MutedBell`), a muted row's bell-off and quiet count, the
@@ -569,7 +596,7 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the Release thread's rename line (and Dev's join line in the busy room), the Start Thread form on Bram's message, #general's threads in the room list (five joined, Inactive folded, Other Threads with "4d", "9w", "2y" and "1 more…"), and Inactive unfolded with its untitled thread open, the kitchen's pinned description (the emoji shot), put away (its first line under the title), and Edit Room, the room list and Preferences > Notifications while paused (`ladle-notifications-paused`), and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; the busy room in Ferrous, Gumball, Linocut and a custom CSS theme (`ladle-timeline-<theme>-<mode>`), and drawn in Apron then given Linocut in place (`ladle-timeline-switched-linocut-dark`: a new theme redraws open screens); Preferences' sections and History; Appearance with Ferrous chosen, and the custom theme's CSS with its "not used on iOS" line; and the iPad
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the Release thread's rename line (and Dev's join line in the busy room), the Start Thread form on Bram's message, #general's threads in the room list (five joined, Inactive folded, Other Threads with "4d", "9w", "2y" and "1 more…"), and Inactive unfolded with its untitled thread open, the kitchen's pinned description (the emoji shot), put away (its first line under the title), and Edit Room, the Private section with faces (`ladle-rooms-private`), the conversation with Ada (faces, plum header and its line, the intro card), Launch plan's "You were added" banner, New private conversation empty and with two picked (chips, Name), New Room with Private, and at the limit after starting home's fifth private room (`ladle-private-full`, taken after the others), the room list and Preferences > Notifications while paused (`ladle-notifications-paused`), and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; the busy room in Ferrous, Gumball, Linocut and a custom CSS theme (`ladle-timeline-<theme>-<mode>`), and drawn in Apron then given Linocut in place (`ladle-timeline-switched-linocut-dark`: a new theme redraws open screens); Preferences' sections and History; Appearance with Ferrous chosen, and the custom theme's CSS with its "not used on iOS" line; and the iPad
 split view at 1180x820 pt (regular width) in dark and light, on the busy room and on the random room with its typing line. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with

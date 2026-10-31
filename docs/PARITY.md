@@ -121,8 +121,8 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Section headings fold to rooms with news, with "…" | #148 | missing | | |
 | Folded rooms remembered | #150 | missing | | |
 | Pick the open room again to fold its threads | #145 | missing | | |
-| Private section with faces of who it's with | #123 | missing | | Private rooms show among Rooms with a lock. |
-| Private room named for its members ("Dev, Mira", "You") | #123 | missing | `Kit/ServerSession.swift` (`title`) | An untitled room shows its `room_id`. |
+| Private section with faces of who it's with | #123 | has | `Kit/PrivateRooms.swift` (`privateRoomTree`, `faces(of:)`), `Rooms/RoomListView.swift`, `Design/People.swift` (`Faces`) | Shown empty for its + where you may start one. |
+| Private room named for its members ("Dev, Mira", "You") | #123 | has | `Kit/PrivateRooms.swift` (`PeopleTitle`), `Kit/ServerSession.swift` (`title`) | "Private room" while its members are unknown. |
 | Other Rooms section with member count and Join | #74 | partial | `Rooms/RoomListView.swift` (`BrowseRoomsView`) | A Browse sheet, not a section. No member count or description. A tap on a row does not open it to read. |
 | News from other rooms on the phone's back button | #84 | partial | `Servers/ServerListView.swift` | The server list shows unread per server. The room's back button has no tag. |
 | Room row context menu | | has | `Rooms/RoomListView.swift` (`roomActions`), `Kit/RoomHeader.swift` (`markAllRead`, `link(to:)`) | Mark as Read, Copy Link, Mute or Unmute, New Thread, Join, Leave; Mark as Read on the leading swipe, Mute and Unmute on the trailing one. Mark as Read reads through the newest loaded message, else the room's `latest_log_id`. apron-web marks a room read as you read it and has no row menu; this is Ladle's own. |
@@ -147,12 +147,12 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Thread card in the room feed, with description and latest message | #87, #103 | has | `Timeline/TimelineView.swift` (`ThreadCard`) | |
 | Thread card shows unread and private | #103 | has | `Timeline/TimelineView.swift` (`ThreadCard`) | |
 | Start thread dialog: title and CommonMark Description | #71 | has | `Rooms/RoomFormSheet.swift` | A sheet; "Enter a thread title." without one; titles stop at 120 characters, as the web's field. New Room and Edit take a description too. |
-| Start thread from a message, with quote as Description, first reply links back | bh | has | `Kit/Threads.swift` (`ThreadStart`, `startThread`, `thread(startedFrom:in:)`), `Kit/MessageMenu.swift` (`startsThread`), `Timeline/TimelineView.swift` | Title from the first line (60 code points), the text quoted (500, fences closed, plain text escaped). The thread opens with its composer replying to the message. A thread already started from it opens instead. A private room's members are not added to a thread started in it (gap 10). |
+| Start thread from a message, with quote as Description, first reply links back | bh | has | `Kit/Threads.swift` (`ThreadStart`, `startThread`, `thread(startedFrom:in:)`), `Kit/MessageMenu.swift` (`startsThread`), `Timeline/TimelineView.swift` | Title from the first line (60 code points), the text quoted (500, fences closed, plain text escaped). The thread opens with its composer replying to the message. A thread already started from it opens instead. A private room's other listed members are added to a thread started in it (`includeMembers(of:in:)`), from Start Thread and New Thread; refusals show in the banner. |
 | Thread opens at its latest reply, pages older on scroll | #91, shazow/apron#33 | has | `Kit/ServerSession.swift` (`loadOlder`) | |
 | "N+ replies" on threads with older replies | bh | has | `Kit/Threads.swift` (`replyWords`), `Timeline/TimelineView.swift` (`banner`) | The open thread's subtitle line under the bar; typing takes its place on iPhone. |
 | A thread without a title is "Untitled" | bh | has | `Kit/Threads.swift` (`isUntitled`), `Kit/ServerSession.swift` (`title`) | A top-level room without one stays its `room_id`. |
 | Thread header: crumb back to its room | bh | partial | `Timeline/TimelineView.swift` toolbar | Back pops the stack. No crumb with the room name. |
-| Private room's thread must come back private | bh | missing | | |
+| Private room's thread must come back private | bh | has | `Kit/ServerSession.swift` (`createRoom`), `Kit/PrivateRooms.swift` (`PrivateRoomError.threadNotPrivate`) | Refused with the web's words and not opened. |
 
 ## 8. Room header and description
 
@@ -168,21 +168,21 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | ⋯ menu: Leave, after asking | bh | has | `Timeline/TimelineView.swift` | |
 | Join button in the header of an unjoined room or thread | bh | has | `Timeline/TimelineView.swift` (`Join Room`) | Inside the ⋯ menu. |
 | Members toggle | bh | has | `Timeline/TimelineView.swift` (`Members`, ⇧⌘M) | |
-| Untitled private room header: faces, "only you and Bob can see this room" | #124 | missing | | |
-| Plum wash on private room headers | #124 | missing | | |
+| Untitled private room header: faces, "only you and Bob can see this room" | #124 | has | `Kit/RoomHeader.swift` (`.privateRoom`), `Kit/PrivateRooms.swift` (`privateLine`), `Timeline/TimelineView.swift` | The line is under the bar, as the other header lines. |
+| Plum wash on private room headers | #124 | has | `Timeline/TimelineView.swift` (`toolbarBackground`), `Design/Apron.swift` (`privateWash`) | |
 
 ## 9. Private rooms and direct messages
 
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
-| Create a room with Private | #123 | missing | `Rooms/RoomListView.swift` | New Room asks for a title only. |
-| Private room that comes back public is refused | bh | missing | | |
-| New private conversation: people picker with chips, Name for groups | #123, #129 | missing | | UX.md 4.8 lists it as left out. |
-| Message on a profile card opens or starts the DM | #123 | missing | | |
-| "Already talking · Open" | #123 | missing | | |
-| Private room limit "2 of 5" with Leave list (`ext.settings.private_rooms`) | #123 | missing | | |
-| Private room intro card at the start of history | #124 | missing | | |
-| "You were added to this private room." banner with Mute, Leave | #128, #165 | missing | | |
+| Create a room with Private | #123 | has | `Rooms/RoomFormSheet.swift` (`privateChoice`), `Kit/ServerSession.swift` (`createRoom(…isPrivate:)`) | |
+| Private room that comes back public is refused | bh | has | `Kit/PrivateRooms.swift` (`PrivateRoomError.notPrivate`) | Nobody is added; the room stays joined to leave. |
+| New private conversation: people picker with chips, Name for groups | #123, #129 | has | `Rooms/NewPrivateSheet.swift`, `Rooms/PeoplePickerView.swift`, `Kit/PeoplePicker.swift`, `Kit/PrivateRooms.swift` (`startPrivateRoom`) | The button says Message or Start (the chips say who), short for the bar. |
+| Message on a profile card opens or starts the DM | #123 | has | `Profile/ProfileCardView.swift`, `Kit/PrivateRooms.swift` (`message(_:)`, `directRoom(with:)`) | The web skips a room whose listing is truncated (`member_count`); Ladle doesn't track `member_count` (section 10), so it trusts the members it holds. |
+| "Already talking · Open" | #123 | has | `Kit/PeoplePicker.swift` (`privatePeople`), `Rooms/PeoplePickerView.swift` | |
+| Private room limit "2 of 5" with Leave list (`ext.settings.private_rooms`) | #123 | has | `Kit/PrivateRooms.swift` (`privateRoomLimit`, `privateRoomQuota`, `privateRoomsQuietestFirst`), `Rooms/NewPrivateSheet.swift` (`QuotaLine`) | |
+| Private room intro card at the start of history | #124 | has | `Kit/PrivateRooms.swift` (`reachesStart`, `privateIntro`), `Timeline/PrivateRoomViews.swift` (`PrivateIntroCard`) | |
+| "You were added to this private room." banner with Mute, Leave | #128, #165 | has | `Kit/PrivateRooms.swift` (`ArrivalWatch`, `wasAdded`), `Kit/AddedRooms.swift`, `Timeline/PrivateRoomViews.swift` (`AddedBanner`) | #165's layout: × in the corner, Mute, Leave and Dismiss in a row under it. |
 | Leave a private room warns it can't be rejoined | bh | has | `Rooms/RoomListView.swift` (confirmation text) | |
 | Lock beside private names | bh | has | `Design/Components.swift` (`Lock`) | |
 
@@ -201,7 +201,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | One entry per user after a `user_id` change, aliases | #81, #83 | has | `Kit/UserDirectory.swift` (`rename`) | |
 | Initials on a hue hashed from `user_id` | bh | has | `Design/People.swift` (`Avatar`) | |
 | Profile card: avatar, name, `@user_id` with copy, roles, "(you)", same-name warning, bio, in-room | #47, #115, #116 | has | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` | A sheet. "Not among the recently active members" waits for `member_count` (gap 33). |
-| Profile card: Message, Mention, Add to room | #123 | partial | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` (`addMember`), `Kit/DraftField.swift` (`mention`) | Mention and Add to room. Message waits for private conversations (gap 10). |
+| Profile card: Message, Mention, Add to room | #123 | has | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` (`addMember`, `mayMessage`), `Kit/DraftField.swift` (`mention`) | |
 | Tap a mention chip, name, avatar, or member to open the profile | #149, #153, #161 | has | `Timeline/MessageRow.swift`, `Timeline/MemberList.swift`, `Timeline/TimelineView.swift`, `Kit/MessageText.swift` | A chip links `apron:?user=`; a link's `user` opens the card too. |
 | Member row menu: Profile, Direct message, Remove from room | #152, #161 | missing | | |
 | Add member (+ in the header, people picker) | #129 | missing | `Kit/Permissions.swift` reads `add_members` | No `room_join` with a `user_id`. |
@@ -244,7 +244,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Show QR code for a sign-in link in a `~private` notice (fork) | fork "Show a sign-in link from a ~private notice as a QR code" | missing | | Ladle scans QR codes but cannot show one. Useful to sign in a second device. |
 | Typing indicator, others' | bh, `TypingIndicator.svelte`, `RoomHeader.svelte` | has | `Kit/ServerSession+Typing.swift`, `Timeline/TypingIndicator.swift` | On iPhone a centered denim line under the navigation bar ("Ada is typing…", "2 people are typing…"), the words of the web's header subtitle under 720 px, kept out of the bar so its centered title never moves; on iPad a line with three bobbing dots above the composer ("Ada and Bram are typing…", "Several people are typing…"), its row kept so nothing moves. Reduce Motion stills and dims the dots. Held at most 300 s; a message from them or `typing: 0` ends it. |
 | Send typing (`activity typing: 15`, refresh 12 s) | bh, `client.ts` `sendTyping` | has | `Kit/ServerSession+Typing.swift` (`composerChanged`) | 15 s, again no sooner than 12 s, `typing: 0` after 5 s untouched, nothing after a message. Only with `activity`; `ext:settings` does not govern typing (the web reads only `read_cursors` and `private_rooms` from it). |
-| Start-of-history card for private rooms | #124 | missing | | |
+| Start-of-history card for private rooms | #124 | has | `Timeline/PrivateRoomViews.swift` (`PrivateIntroCard`) | Same card as section 9's intro. |
 | Placeholder while a room loads its first page | #173 | missing | `Timeline/TimelineView.swift` | No placeholder rows. |
 | iOS overscroll jitter, keyboard fit | #97, #165 | N/A-iOS | | Native scrolling and keyboard avoidance. |
 
@@ -461,7 +461,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 |---|---|---|---|---|
 | `ext:permissions`: write, add_members, move_any | #111, #121 | has | `Kit/Permissions.swift` | `add_members` is read but nothing uses it. |
 | `ext:settings`: read_cursors | #111 | has | `Kit/ServerInfo.swift` | |
-| `ext:settings`: private_rooms limit | #123 | missing | | |
+| `ext:settings`: private_rooms limit | #123 | has | `Kit/PrivateRooms.swift` (`ServerInfo.privateRoomLimit`) | A non-negative integer, else no limit. |
 | `ext:limits` write and upload pauses | #109 | has | `Kit/RateLimits.swift` (`LimitScope`), `Kit/ServerSession+Limits.swift` | As apron-web's `limitScope` and `limitHolds`; the category counts only with the capability. |
 | `retry_after` holds `history` and `message` | #109 | has | `Kit/ServerSession.swift` | |
 | Reaction, join, leave refused during a pause with a toast | #109 | has | `Kit/ServerSession+Limits.swift` (`heldBack`), `Kit/RateLimits.swift` (`userFacing`), `App/ErrorText.swift` | Refused without sending; the banner gives the server's words and "Try again in 18s". |
@@ -526,15 +526,15 @@ These have no apron-web counterpart. They stay.
 Sizes are rough. S is a day or less. M is a few days. L is a week or more, or needs outside work such as a relay or associated domains. Items lower down often depend on items above them.
 
 1. **Code highlighting.** Every markdown block renders since deac4e3; fenced code still has no syntax highlighting. S.
-2. ~~**Profile card.**~~ Done (`Profile/ProfileCardView.swift`), but for Message, which comes with item 10.
+2. ~~**Profile card.**~~ Done (`Profile/ProfileCardView.swift`), Message included since item 10.
 3. ~~**Your profile and status.**~~ Done: You (`Profile/YouView.swift`) edits the name, bio and avatar and picks a status, with the server's answer.
 4. ~~**Drafts per room.**~~ Done (`Kit/Drafts.swift`): text, mentions, reply target and ready files per room and thread, kept across a relaunch.
 5. ~~**Typing.**~~ Done (`Kit/ServerSession+Typing.swift`, `Timeline/TypingIndicator.swift`): sends `activity typing` as the web does, and shows others typing in the header on iPhone and above the composer on iPad.
 6. **Notifications and push.** Local alerts for other rooms while open, then APNs push through a §4.9.2 relay. Add Notify me about scopes, the per-device switch, the first-mention offer, the app badge, tap to open, closing notifications once read, and a test notification. Push, never polling. L.
 7. ~~**Mute and pause.**~~ Done (`Kit/ServerSession+Mutes.swift`, `Rooms/MuteMenu.swift`, Preferences > Notifications' Pause, `Profile/PauseSection.swift`). Muted rooms not notifying waits for item 6, since Ladle does not notify yet.
-8. ~~**Threads.**~~ Done (`Kit/Threads.swift`, `Rooms/RoomFormSheet.swift`): Start Thread from a message, Description on New Thread, Other Threads with last active times, joined threads by activity under the open room and those with news elsewhere, "Untitled", "N+ replies". Adding a private room's members to its new thread waits for item 10.
+8. ~~**Threads.**~~ Done (`Kit/Threads.swift`, `Rooms/RoomFormSheet.swift`): Start Thread from a message, Description on New Thread, Other Threads with last active times, joined threads by activity under the open room and those with news elsewhere, "Untitled", "N+ replies". A private room's members are added to its new threads since item 10.
 9. ~~**Room header.**~~ Done (`Kit/RoomHeader.swift`, `Kit/HiddenDescriptions.swift`): the pinned Description with expand and dismiss, Show Description, Edit room or thread, Copy Link in the ⋯ menu, and Copy Link and Mark as Read on a row. Search local history waits for item 16.
-10. **Private rooms and direct messages.** Create a room with Private. Add New private conversation with a people picker. Add Message on the profile card. Add a Private section with faces. Name untitled private rooms for their members. Add the intro card, the "You were added" banner, and the private room limit. L.
+10. ~~**Private rooms and direct messages.**~~ Done (`Kit/PrivateRooms.swift`, `Rooms/NewPrivateSheet.swift`): New Room with Private, New private conversation with a people picker, Message on the profile card, the Private section with faces, rooms named for their members, the header line and plum wash, the intro card, the "You were added" banner, the private room limit, and a private room's members added to its new threads. A room someone added you to counting unread from your join (section 19) is not built.
 11. **Kept view and local history.** Cache rooms and recent messages on disk so a relaunch shows them at once. Keep history with Retention, delete it on sign-out, and page older messages from the device first. L.
 12. ~~**Join, leave, and rename lines.**~~ Done (`Kit/MembershipLines.swift`): netted per run, baselines of 21 joins skipped, adds as joins and renames in rooms and threads (#170).
 13. **Open at the New divider.** Land on the divider instead of the latest message. Needs a device to verify the scroll. S.

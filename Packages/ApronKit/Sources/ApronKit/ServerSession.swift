@@ -180,6 +180,10 @@ public final class ServerSession {
     @ObservationIgnored var gatedEmojiCatalog: (url: URL, gate: MediaGate, shown: EmojiCatalog)?
     /// The viewer's media choices, shared with every other server's session.
     public let mediaSettings: MediaSettings
+    /// The private rooms whose "You were added" banner shows, shared with every other server's session.
+    public let addedRooms: AddedRooms
+    /// Rooms that arrive joined without this device asking (`noteArrivals`).
+    @ObservationIgnored var arrivals = ArrivalWatch()
 
     /// What to call this server: the name the user gave it, else the server's `title` (§3.1),
     /// else its host. Shown with the host where the user picks a server, so a server can't pass
@@ -221,9 +225,10 @@ public final class ServerSession {
     private var runTask: Task<Void, Never>?
 
     public init(record: ServerRecord, tokens: any TokenStore, positions: any ReadPositionStore = InMemoryReadPositionStore(),
-                mediaSettings: MediaSettings = MediaSettings(), environment: Environment = .live) {
+                mediaSettings: MediaSettings = MediaSettings(), addedRooms: AddedRooms = AddedRooms(), environment: Environment = .live) {
         self.record = record
         self.mediaSettings = mediaSettings
+        self.addedRooms = addedRooms
         self.tokens = tokens
         self.positions = positions
         self.environment = environment
@@ -431,6 +436,7 @@ public final class ServerSession {
             return .codeSent(to: address)
         }
         if let previous = you, previous.userID != identity.userID { resetChatState() }
+        arrivals.listed = false
         readPositions = positions.positions(server: record.id, user: identity.userID)
         var bearer = result["token"]?.stringValue
         if bearer == nil, case .token(let presented) = method { bearer = presented }
@@ -562,6 +568,7 @@ public final class ServerSession {
         }
         guard let records = Records(notification: notification) else { return }
         install(records)
+        if notification.method == "room_update" { noteArrivals() }
         advanceLiveCheckpoints(records)
         for message in records.messages where message.logID == message.messageID { endTyping(message.from.userID, in: message.roomID) }
     }
@@ -579,6 +586,8 @@ public final class ServerSession {
         install(Records(roomListResult: result))
         joinedRoomIDs = Set((result["joined"]?.arrayValue ?? []).compactMap { $0["room_id"]?.stringValue })
         mergeUsers(result["users"])
+        arrivals.listed = true
+        noteArrivals()
     }
 
     private func mergeUsers(_ value: JSONValue?) {
@@ -940,6 +949,7 @@ public final class ServerSession {
 
     public func join(_ roomID: String) async throws {
         try require("rooms")
+        arrivals.mine(roomID)
         _ = try await request("room_join", ["room_id": .string(roomID)])
     }
 
@@ -949,15 +959,29 @@ public final class ServerSession {
     }
 
     /// Creates a room, or a thread when `parentRoomID` is set (§4.2.4), its description left out
-    /// when blank. A thread is never sent `private`: it takes its room's. Returns its `room_id`.
+    /// when blank. A thread is never sent `private`: it takes its room's. A room asked for as
+    /// private, or a thread of a private room, is checked once its record arrives: one the server
+    /// made visible to others throws, and stays joined to leave. Returns its `room_id`.
     @discardableResult
-    public func createRoom(title: String, description: String = "", parentRoomID: String? = nil) async throws -> String? {
-        try require("rooms")
+    public func createRoom(title: String, description: String = "", parentRoomID: String? = nil, isPrivate: Bool = false) async throws -> String? {
         var params: [String: JSONValue] = ["title": .string(title)]
         let description = description.trimmingCharacters(in: .whitespacesAndNewlines)
         if !description.isEmpty { params["description"] = .string(description) }
         if let parentRoomID { params["parent_room_id"] = .string(parentRoomID) }
-        return try await request("room_set", .object(params))["room_id"]?.stringValue
+        if isPrivate, parentRoomID == nil { params["private"] = true }
+        let roomID: String
+        do {
+            roomID = try await createRoom(params)
+        } catch let error as RPCError where error.code == RPCError.Code.unsupported && isPrivate && parentRoomID == nil {
+            throw PrivateRoomError.noPrivateRoomsUncheck
+        }
+        let checks = parentRoomID.map(self.isPrivate) ?? isPrivate
+        guard checks else { return roomID }
+        guard let room = await record(of: roomID) else { throw PrivateRoomError.neverArrived }
+        if room.isPrivate != true {
+            throw parentRoomID == nil ? PrivateRoomError.notPrivate(title: title.nilIfEmpty) : PrivateRoomError.threadNotPrivate
+        }
+        return roomID
     }
 
     /// The visible rooms this user has not joined (§4.2.1), installed as records.
@@ -1075,9 +1099,11 @@ public final class ServerSession {
         }
     }
 
-    /// A room's title; a thread without one is "Untitled", and another room its `room_id`.
+    /// A room's title; a thread without one is "Untitled", an untitled private room is named for
+    /// its members (`PeopleTitle`), and another room is its `room_id`.
     public func title(of roomID: String) -> String {
         if isUntitled(roomID) { return "Untitled" }
+        if isNamedForMembers(roomID) { return membersTitle(roomID) }
         return TextDirection.withoutOverrides(store.room(roomID)?.title?.stringValue.flatMap { $0.isEmpty ? nil : $0 } ?? roomID)
     }
 
@@ -1089,6 +1115,17 @@ public final class ServerSession {
         let topLevel = known.filter { room in
             joinedRoomIDs.contains(room.roomID) && room.parentRoomID.map { !joinedRoomIDs.contains($0) } ?? true
         }
+        return tree(of: topLevel)
+    }
+
+    /// The rooms list's Rooms: `roomTree` without the top-level private rooms, which Private lists.
+    public var publicRoomTree: [RoomNode] { roomTree.filter { !isPrivateRoom($0.roomID) } }
+
+    /// The rooms list's Private: the joined top-level private rooms (§4.2.4), with their threads.
+    public var privateRoomTree: [RoomNode] { roomTree.filter { isPrivateRoom($0.roomID) } }
+
+    private func tree(of topLevel: [RoomRecord]) -> [RoomNode] {
+        let known = store.roomIDs.compactMap { store.room($0) }
         return topLevel.sorted { codePointLess(title(of: $0.roomID), title(of: $1.roomID)) }.map { room in
             let threads = known.filter { $0.parentRoomID == room.roomID }
                 .map { ThreadList.Entry(id: $0.roomID, joined: false, activity: activity(of: $0.roomID), hasNews: false) }

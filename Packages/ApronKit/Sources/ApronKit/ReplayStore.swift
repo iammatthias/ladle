@@ -158,6 +158,9 @@ public struct ReplayStore: Sendable, Equatable {
     /// The newest `log_id` the server has said the room's log holds, if it said.
     public func latestLogID(of roomID: String) -> LogID? { latest[roomID] }
 
+    /// The least `log_id` of the room's records seen, superseded or not: how far back its known history goes.
+    public func firstRecordLogID(of roomID: String) -> LogID? { roomTitles[roomID]?.keys.min() }
+
     /// The room's membership records, by `log_id`.
     public func membershipLog(of roomID: String) -> [MembershipRecord] { membershipLogs[roomID] ?? [] }
 

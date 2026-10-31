@@ -84,6 +84,7 @@ struct TimelineView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
+                    if let intro = session.privateIntro(roomID) { PrivateIntroCard(session: session, intro: intro) }
                     if session.canLoadOlder(roomID) {
                         ProgressView()
                             .frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget)
@@ -171,6 +172,9 @@ struct TimelineView: View {
         .navigationTitle(session.title(of: roomID))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { toolbar }
+        // A private room's header takes the plum wash, as the web's.
+        .toolbarBackground(session.isPrivate(roomID) ? Palette.privateWash(0.6) : Palette.timeline, for: .navigationBar)
+        .toolbarBackgroundVisibility(session.isPrivate(roomID) ? .visible : .automatic, for: .navigationBar)
         .sheet(item: $selecting) { selected in
             SelectTextSheet(text: selected.text) { selecting = nil }
         }
@@ -192,6 +196,8 @@ struct TimelineView: View {
                 // The link back is its first reply: the thread opens replying to the message.
                 drafts[DraftKey(server: session.record.id, roomID: thread)].field.mode = .reply(request.message.messageID)
                 startedThread = thread
+                // A thread of a private room is private too: the room's other members are added, so they see it.
+                Task { if let note = await session.includeMembers(of: roomID, in: thread) { problem = note } }
             }
         }
         .sheet(isPresented: $editingRoom) {
@@ -316,7 +322,9 @@ struct TimelineView: View {
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .principal) {
             HStack(spacing: Tokens.Space.s1) {
-                if session.isPrivate(roomID) { Lock() }
+                // An untitled private room says who it is with before its name, as the web's RoomHeader.
+                if session.isNamedForMembers(roomID) { Faces(session: session, people: session.faces(of: roomID)) }
+                if session.isPrivate(roomID) { Lock(tint: Palette.private) }
                 Text(session.title(of: roomID)).font(.headline).foregroundStyle(Palette.ink).lineLimit(1)
             }
             .accessibilityElement(children: .combine)
@@ -386,6 +394,9 @@ struct TimelineView: View {
                     .padding(.vertical, Tokens.Space.s1)
                     .background(Palette.timeline)
                     .accessibilityAddTraits(typing != nil ? .updatesFrequently : [])
+            }
+            if session.wasAdded(to: roomID) {
+                AddedBanner(session: session, roomID: roomID, leave: { leaving = true }, problem: { problem = $0 })
             }
             if let description = pinnedDescription {
                 PinnedDescription(text: description, thread: session.store.room(roomID)?.parentRoomID != nil, session: session,

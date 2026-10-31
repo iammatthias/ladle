@@ -2,17 +2,19 @@ import Foundation
 
 /// The room header's line under the title, as apron-web's RoomHeader subtitle: "Link copied" for a
 /// moment after Copy Link, who is typing (on a phone, where it stands for the subtitle), an open
-/// thread's replies, or, once a room's pinned description is put away, its first line.
+/// thread's replies, once a room's pinned description is put away, its first line, or for an
+/// untitled private room who can see it ("Online · only you and Bob can see this room").
 public enum HeaderLine: Hashable, Sendable {
     case copied
     case typing(String)
     case replies(String)
     case topic(String)
+    case privateRoom(String)
 
     public var text: String {
         switch self {
         case .copied: "Link copied"
-        case .typing(let text), .replies(let text), .topic(let text): text
+        case .typing(let text), .replies(let text), .topic(let text), .privateRoom(let text): text
         }
     }
 }
@@ -66,9 +68,11 @@ extension ServerSession {
         if copied { return .copied }
         if let typing { return .typing(typing) }
         if let replies = replyWords(in: roomID) { return .replies(replies) }
-        guard descriptionPutAway, store.room(roomID)?.parentRoomID == nil, let description = roomDescription(roomID) else { return nil }
-        let line = MessageText.plain(["text": .string(description), "format": "markdown"])
-            .split(separator: "\n").first.map(String.init) ?? ""
-        return line.isEmpty ? nil : .topic(line)
+        if descriptionPutAway, store.room(roomID)?.parentRoomID == nil, let description = roomDescription(roomID) {
+            let line = MessageText.plain(["text": .string(description), "format": "markdown"])
+                .split(separator: "\n").first.map(String.init) ?? ""
+            if !line.isEmpty { return .topic(line) }
+        }
+        return privateLine(roomID).map(HeaderLine.privateRoom)
     }
 }

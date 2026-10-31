@@ -323,7 +323,7 @@ The HIG has no Live Text or scanning page. The `live-text` page returned 404, so
 
 **States.** Loading shows placeholder rows. An empty list shows "You're in every room on this server." with **New Room**. Without the `rooms` capability, Browse does not appear (§4 fallback).
 
-**New Room.** A sheet with **Title**, **Description**, and a **Private** toggle, and **Create** at the trailing edge. A private room must come back with `private: true` in its `joined` record. If it does not, show "This server made the room public." and do not open it (§4.2.4). An `unsupported` reply shows "This server has no private rooms."
+**New Room.** A sheet with **Title**, **Description**, and a **Private** toggle (a plum lock, "Only members see it, and members add others."), and **Create** at the trailing edge. A private room must come back with `private: true` in its record. If it does not, the form says "The server made “Launch” an ordinary room that others can see and join, not a private one. Leave it, or use it knowing that." and the room is not opened (§4.2.4). An `unsupported` reply says "This server doesn’t keep private rooms. Uncheck Private to create an ordinary room."
 
 **Accessibility.** The Join button label includes the room title ("Join Deploy").
 
@@ -521,7 +521,7 @@ Items that do not apply are hidden, not dimmed ([context-menus]: "Hide unavailab
 - **Bio** (`ext:bio`), selectable, in its own direction.
 - **Membership.** "Member of general" or "Not in general", once the room's members are known.
 - **Actions.** **Mention** (prominent: puts `@Name ` at the end of the composer and closes the card; also closes the member sheet on iPhone) where the composer takes text and the user is not a `~` system identity, and **Add to Room** (`room_join` with `user_id`, §4.2.2) where you may add them: `add_members` or a private room you are in, the members known and they not among them. A line under the actions says "Copied @ada", "Added to ops", or the server's refusal.
-- **Message** is not offered: Ladle has no private conversations yet (PARITY gap 10).
+- **Message** (prominent, before Mention, which then takes the ghost style) for anyone but you and the `~` identities, on an account (not a guest) that may write, with `rooms`: it opens the private conversation you already have with them, or starts one (3.16), and closes the card. One started that couldn't add them stays under Private, and the card says "Couldn’t add Ada: …. The room is kept under Private."
 
 | Shown status | Dot | Text |
 |---|---|---|
@@ -630,6 +630,19 @@ Connection state is not a screen. It is one model, rendered in the Rooms section
 **What a theme can set on iOS.** Any token Ladle reads from tokens.css: every color (any CSS color syntax people write by hand: hex, `rgb()`, `hsl()`, `oklch()`, `oklab()`, named colors, `light-dark()`, `color-mix(in srgb, …)`, `var()`), the four base colors, the three faces (`--font-sans` for the interface, `--font-chat` for message text, `--font-mono` for code; a family the device lacks is skipped, as in the browser), text sizes and line heights (at the Large Dynamic Type setting, scaled from there), spacing, radii, avatar and control sizes, durations, the slide easing, opacities, the count shade and shadows. An alias follows what the theme sets: `--focus` is its accent, the hover grounds its grounds, `--selected` its ink at 8%.
 
 **Increase Contrast** still swaps the theme's `line` for its `line-strong` and its `ink-muted` for its `ink`.
+
+### 3.16 Private rooms and direct messages
+
+**Purpose.** Talk with chosen people where no one else can read, as apron-web's private rooms (#123, #124, #128, #129, #165). Everything goes by a record's `private: true` and `parent_room_id`, never a `room_id` (§2.4, §4.2.4).
+
+- **Private section.** The rooms list keeps the joined top-level private rooms in a **Private** section under Rooms, each row led by its faces (one person's avatar with their dot, or two of a group overlapped, as the web's Faces) in place of the lock; their threads sit under them as in Rooms. The section shows while it has rooms, or empty for its **+** where you may start one.
+- **Names.** An untitled top-level private room is named for its other members, by name, sorted ignoring case and accents, joined with ", " ("Bram, Chiara"), "You" when no one else is in it, and "Private room" while its members are unknown. Rows, the header, the composer's placeholder and pickers all read the one title.
+- **New private conversation.** The **+** beside Private (an account, not a guest, that may write, with `rooms`) opens a sheet: **To**, the people picked as plum chips with ×, a field narrowing everyone the session knows (but you and `~` identities) by name or `@user_id`, 50 at a time, a picked row with a check. While no one is picked, someone you already talk to (an untitled private room of just the two of you) reads "Already talking · Open" and opens it. Two or more picked offer **Name** (optional, 120 characters). **Message** (one) or **Start** (more) sends `room_set {private: true, title?}` and, once the record says it is private, `room_join` with each `user_id` in turn; one refused doesn't stop the rest, and the room opens with "Couldn’t add Carol: …" over the list. Picking only someone you already talk to opens that room instead.
+- **The limit.** With `ext.settings.private_rooms` (`ext:settings`), the sheet's foot says "4 of 5" with a pip per room (up to ten). At the limit the people give way to "You’re in 5 private rooms, the most this server allows at once. Leave one to start another." and your private rooms, quietest first ("Last active 3d ago"), five of them and "and N more", each with **Leave**; nothing can start.
+- **Header.** An untitled private room's title leads with its faces and a plum lock, and the line under the bar says "Online · only you and Ada can see this room" (one other, with their status), "Only you and Ada can see this room", "Only members can see this room" or "Only you can see this room". A private room's bar takes the plum wash (the web's `private-soft` at 60% over `bg-100`).
+- **Intro card.** Once a top-level private room's loaded history reaches back to its creation (nothing older to load, and the retention floor at or before its first record seen), the timeline opens with a plum card: its faces, its name, one person's `@user_id` and the first line of their bio (or "3 members"), and "Private room. Only members and the server host can read messages here. Only members can add others."
+- **You were added.** A top-level private room that arrives joined without this device asking (not one it created or joined; the first listing for an account is the baseline, and later listings count, so one added while away shows) gets "You were added to this private room." under the header, with × in its corner and **Mute** (or **Unmute**), **Leave** (asking first) and **Dismiss** in a row under it, on a plum wash. Each is kept on the device (`added-rooms.json`) until dismissed. A room joined on another of your devices arrives the same way, as membership records don't say who made a change (§4.2.2).
+- **Threads.** A thread started in a private room (New Thread or Start Thread) must come back private: one that doesn't says "The server made the new thread visible to people outside this private room, so nothing was posted into it." and isn't opened. Once it opens, the room's other listed members are added to it (`room_join` with each `user_id`), so they see it and its replies; refusals show in the room's banner.
 
 ## 4. Cross-cutting
 
@@ -766,7 +779,6 @@ Ladle overrides no standard shortcut ([keyboards]: "Respect standard keyboard sh
 | Passkeys and external sign-in | AGENTS.md records the open questions about Apple's documentation. Token, email, and guest cover v1. |
 | Message search | The protocol has no search request. Ladle could only search what it holds, which would look complete and not be. |
 | Moving messages and select mode | Rare on a phone, and the web client covers it. Ladle shows moves correctly. |
-| Direct messages from a profile (private rooms named for members) | Needs member pickers and private-room naming rules. Private rooms you are in already show up. |
 | Edit history (`prev_log_id`) | Rarely needed. "Edited" is enough. |
 | A browsable emoji picker | The system emoji keyboard covers any emoji (3.9). |
 | An app-wide settings screen | Nothing app-wide needs a setting. Appearance and text size follow the system ([settings]: "Respect people's systemwide settings"). |

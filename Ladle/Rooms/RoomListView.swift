@@ -19,6 +19,10 @@ struct RoomListView: View {
     var showsServerHead = false
     @State private var browsing = false
     @State private var naming: NewRoom?
+    /// New Room's Private.
+    @State private var namingPrivate = false
+    /// New private conversation, from the + beside Private.
+    @State private var startingPrivate = false
     /// Other Threads is open until folded, and stays as it was left, as the web's.
     @AppStorage("otherThreadsOpen") private var othersOpen = true
     /// Inactive is folded until opened, as it is there to put quiet threads away, and stays as it
@@ -63,7 +67,7 @@ struct RoomListView: View {
             }
             if let banner = bannerView { banner.listRowBackground(Color.clear).listRowSeparator(.hidden) }
             Section {
-                ForEach(session.roomTree) { node in
+                ForEach(session.publicRoomTree) { node in
                     roomRow(node.roomID, isThread: false)
                     threads(of: node)
                 }
@@ -74,7 +78,10 @@ struct RoomListView: View {
                     if session.status == .signedIn, session.server?.has("rooms") == true {
                         Menu {
                             if session.mayCreateRooms {
-                                Button("New Room", systemImage: "plus") { naming = NewRoom(parent: nil) }
+                                Button("New Room", systemImage: "plus") {
+                                    namingPrivate = false
+                                    naming = NewRoom(parent: nil)
+                                }
                             }
                             Button("Browse Rooms", systemImage: "magnifyingglass") { browsing = true }
                         } label: {
@@ -84,6 +91,27 @@ struct RoomListView: View {
                     }
                 }
                 .textCase(nil)
+            }
+            // Shown with private rooms in it, or empty, for its +, where you could start one.
+            if !session.privateRoomTree.isEmpty || session.mayStartPrivate {
+                Section {
+                    ForEach(session.privateRoomTree) { node in
+                        roomRow(node.roomID, isThread: false)
+                        threads(of: node)
+                    }
+                } header: {
+                    HStack {
+                        SectionHead(title: "Private")
+                        Spacer()
+                        if session.mayStartPrivate {
+                            Button("New Private Conversation", systemImage: "plus") { startingPrivate = true }
+                                .labelStyle(.iconOnly)
+                                .foregroundStyle(Palette.inkMuted)
+                                .touchTarget()
+                        }
+                    }
+                    .textCase(nil)
+                }
             }
         }
         .listStyle(.plain)
@@ -115,9 +143,22 @@ struct RoomListView: View {
         .sheet(item: $naming) { new in
             RoomFormSheet(kind: new.parent == nil ? .room : .thread, mode: .create,
                           subtitle: new.parent.map { "In \(session.title(of: $0))" }, isPrivate: new.parent.map(session.isPrivate) ?? false,
+                          privateChoice: new.parent == nil ? $namingPrivate : nil,
                           title: "", description: "") { title, description in
-                let created = try await session.createRoom(title: title, description: description, parentRoomID: new.parent)
-                if let created { open(created) }
+                let created = try await session.createRoom(title: title, description: description, parentRoomID: new.parent,
+                                                           isPrivate: new.parent == nil && namingPrivate)
+                guard let created else { return }
+                open(created)
+                // A thread of a private room is private too: the room's other members are added, so they see it.
+                if let parent = new.parent {
+                    Task { if let note = await session.includeMembers(of: parent, in: created) { problem = note } }
+                }
+            }
+        }
+        .sheet(isPresented: $startingPrivate) {
+            NewPrivateSheet(session: session) { roomID, note in
+                open(roomID)
+                problem = note
             }
         }
         .confirmationDialog(leaving.map { "Leave \(session.title(of: $0))?" } ?? "", isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } }),
@@ -365,14 +406,17 @@ struct RoomRow: View {
         let muted = session.mute(of: roomID) != nil
         // A muted room's news stays quiet: no bold name, a quiet count (the web's RoomItem).
         let strong = isSelected || (unread > 0 && !muted)
+        // A private room's row leads with who it is with; the Private heading says it is private.
+        let faced = !isThread && session.isPrivateRoom(roomID)
         HStack(alignment: isThread ? .top : .center, spacing: Tokens.Space.s2) {
+            if faced { Faces(session: session, people: session.faces(of: roomID)) }
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: Tokens.Space.s1) {
                     Text(session.title(of: roomID))
                         .apText(.body, strong ? .semibold : (isThread ? .medium : .regular))
                         .foregroundStyle(strong || isThread ? Palette.ink : Palette.inkMuted)
                         .lineLimit(1)
-                    if session.isPrivate(roomID) { Lock() }
+                    if session.isPrivate(roomID), !faced { Lock() }
                 }
                 if !isThread, let topic = session.roomDescription(roomID) {
                     EmojiText(text: descriptionText(topic, session.emojiCatalog), catalog: session.emojiCatalog, role: .sm)

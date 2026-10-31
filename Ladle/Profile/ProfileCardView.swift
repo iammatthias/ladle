@@ -12,8 +12,8 @@ struct ProfileRequest: Identifiable {
 
 /// The web's ProfileCard, as a sheet at medium height: their face and dot, name, "(you)",
 /// `@user_id` with copy, status in words, when they were last seen, roles, the same-name warning,
-/// their bio, whether they are in the room, and Mention and Add to room. Message waits for
-/// private rooms (PARITY gap 10).
+/// their bio, whether they are in the room, and Message, Mention and Add to room. Message opens
+/// the private conversation you have with them, or starts one.
 struct ProfileCardView: View {
     let session: ServerSession
     let request: ProfileRequest
@@ -21,7 +21,9 @@ struct ProfileCardView: View {
     var onMention: (String, String) -> Void = { _, _ in }
     @State private var note: (text: String, error: Bool)?
     @State private var adding = false
+    @State private var messaging = false
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openRoom) private var openRoom
 
     var body: some View {
         let card = session.profile(of: request.user, in: request.roomID)
@@ -91,14 +93,19 @@ struct ProfileCardView: View {
 
     @ViewBuilder
     private func actions(_ card: UserProfile) -> some View {
-        if card.mayMention || card.mayAddToRoom {
+        if card.mayMessage || card.mayMention || card.mayAddToRoom {
             HStack(spacing: Tokens.Space.s2) {
+                if card.mayMessage {
+                    Button(messaging ? "Opening…" : "Message", systemImage: "bubble.left") { message(card.userID) }
+                        .buttonStyle(PrimaryButtonStyle())
+                        .disabled(messaging)
+                }
                 if card.mayMention {
-                    Button("Mention") {
+                    let mention = Button("Mention") {
                         dismiss()
                         onMention(card.userID, card.name)
                     }
-                    .buttonStyle(PrimaryButtonStyle())
+                    if card.mayMessage { mention.buttonStyle(GhostButtonStyle(tone: Palette.accent)) } else { mention.buttonStyle(PrimaryButtonStyle()) }
                 }
                 if card.mayAddToRoom, let roomID = request.roomID {
                     Button(adding ? "Adding…" : "Add to Room") { add(card.userID, to: roomID) }
@@ -106,6 +113,27 @@ struct ProfileCardView: View {
                         .disabled(adding)
                 }
             }
+        }
+    }
+
+    /// The conversation you have with them, else one started and opened. One started that couldn't
+    /// add them is kept under Private, and the card says so.
+    private func message(_ userID: String) {
+        messaging = true
+        note = nil
+        Task {
+            do {
+                let started = try await session.message(userID)
+                if started.refused.isEmpty {
+                    dismiss()
+                    openRoom(started.roomID)
+                } else {
+                    note = (Refusal.words(started.refused, name: session.pickedName) + " The room is kept under Private.", true)
+                }
+            } catch {
+                note = (errorText(error), true)
+            }
+            messaging = false
         }
     }
 

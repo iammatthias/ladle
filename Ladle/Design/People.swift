@@ -225,3 +225,42 @@ struct RoleBadges: View {
             .fixedSize()
     }
 }
+
+/// The web's Faces: who a private room is with. One person's avatar with their dot, or the first
+/// two of a group, the second stacked behind the first, without dots. Decorative: the room's name
+/// beside it says who.
+struct Faces: View {
+    let session: ServerSession
+    let people: [UserObject]
+    var size = Avatar.Size.sm
+
+    var body: some View {
+        let shown = Array(people.prefix(2))
+        Group {
+            if shown.count == 1, let one = shown.first {
+                face(one, presence: session.presence(of: one.userID))
+            } else if shown.count > 1 {
+                // apron.css: the second overlaps the first by 6, 10 or 18 px, cut out of it with a 2 or 3 px gap.
+                let overlap: CGFloat = size == .lg ? 18 : size == .md ? 10 : 6
+                let gap: CGFloat = size == .lg ? 3 : 2
+                HStack(spacing: -overlap) {
+                    face(shown[0], presence: nil)
+                        .mask {
+                            Rectangle().overlay(alignment: .trailing) {
+                                Circle().frame(width: size.diameter + gap * 2, height: size.diameter + gap * 2)
+                                    .offset(x: size.diameter - overlap + gap)
+                                    .blendMode(.destinationOut)
+                            }
+                            .compositingGroup()
+                        }
+                    face(shown[1], presence: nil)
+                }
+            }
+        }
+        .accessibilityHidden(true)
+    }
+
+    private func face(_ user: UserObject, presence: Presence?) -> some View {
+        Avatar(name: session.displayName(for: user), userID: user.userID, presence: presence, size: size, image: session.avatarURL(of: user.userID))
+    }
+}
