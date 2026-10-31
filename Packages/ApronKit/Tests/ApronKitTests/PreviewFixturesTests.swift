@@ -11,8 +11,29 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.status, .signedIn)
         XCTAssertEqual(demo.status, .signedIn)
 
-        XCTAssertEqual(home.roomTree.map { home.title(of: $0.roomID) }, ["design", "general", "kitchen", "ops", "random"])
-        XCTAssertEqual(home.roomTree.map { $0.threadIDs.map(home.title(of:)) }, [["Icon sketches"], ["Release 0.2"], [], [], []])
+        XCTAssertEqual(home.roomTree.map { home.title(of: $0.roomID) }, ["design", "general", "kitchen", "markdown", "ops", "random", "remote"])
+        XCTAssertEqual(home.roomTree.map { $0.threadIDs.map(home.title(of:)) }, [["Icon sketches"], ["Release 0.2"], [], [], [], [], []])
+
+        let blocks = home.timeline(PreviewFixtures.markdownRoomID).flatMap { MessageText.blocks($0.body) }
+        XCTAssertEqual(Set(blocks.map { block -> String in
+            switch block {
+            case .paragraph: "paragraph"
+            case .heading: "heading"
+            case .quote: "quote"
+            case .list: "list"
+            case .code: "code"
+            case .rule: "rule"
+            case .table: "table"
+            case .image: "image"
+            }
+        }), ["paragraph", "heading", "quote", "list", "code", "rule", "table"], "every block but an image, which the remote room has")
+        let gate = home.mediaGate
+        let images = home.timeline(PreviewFixtures.elsewhereRoomID).flatMap { MessageText.blocks($0.body) }.compactMap { block -> MediaDecision? in
+            if case .image(let image) = block { gate.decide(image.url) } else { nil }
+        }
+        XCTAssertEqual(images.compactMap { if case .ask(let ask) = $0 { ask.host } else { nil } }, ["shazow.net", "evildomain.example.com"])
+        let card = try XCTUnwrap(home.timeline(PreviewFixtures.elsewhereRoomID).first?.embedList.first?.og)
+        XCTAssertEqual(card.ask(gate: gate)?.kind, .video, "the video waits though the image is the server's own")
 
         let kitchen = home.timeline(PreviewFixtures.emojiRoomID)
         XCTAssertEqual(home.emojiCatalog?.offered.map(\.key), [":apron:", ":shipit:", ":partyparrot:"], "the hidden one is not offered")

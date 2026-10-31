@@ -204,6 +204,45 @@ public enum PreviewFixtures {
     /// The room whose link cards play `og` video and audio.
     public static let linkRoomID = "design"
 
+    /// The room with a message of every markdown block (§3.5).
+    public static let markdownRoomID = "markdown"
+
+    /// The room whose media is on sites nobody trusts, for the media gate: the demo server's two
+    /// markdown images (one on a host that resolves nowhere) and a link card whose image is the
+    /// server's own but whose video is elsewhere.
+    public static let elsewhereRoomID = "remote"
+    public static let externalImageURL = "https://shazow.net/images/icon.png"
+    public static let unreachableImageURL = "https://evildomain.example.com/image.png"
+
+    private static let everyInline = """
+    # Release 0.2 notes
+    Shipping **Friday**, *after* the ~~Thursday~~ freeze. Ask @Sam, or see [the wiki](https://home.example/wiki).
+
+    > The backoff starts over when the app returns.
+    > Bram, on the reconnect bug
+
+    ## Checklist
+    1. Version bump
+    2. Origin check
+       - home
+       - demo
+    3. Release notes
+    """
+
+    private static let everyBlock = """
+    ```swift
+    let backoff = min(60, 1 << min(6, attempt - 1)) // seconds, before jitter and any retry_after floor
+    ```
+
+    | Server | Origin | Passkeys | Status |
+    | :-- | :-- | :-: | --: |
+    | home | `https://home.example` | yes | **ready** |
+    | demo | `https://web.apron.chat` | no | 2 left |
+
+    ---
+    Raw <b>HTML</b> stays text.
+    """
+
     private static func room(_ id: String, _ title: String, parent: String? = nil, members: [String],
                              description: String? = nil, isPrivate: Bool = false) -> JSONValue {
         var room: [String: JSONValue] = [
@@ -266,6 +305,8 @@ public enum PreviewFixtures {
                 room("random", "random", members: ["sam", "ada", "bram", "chiara"]),
                 room("ops", "ops", members: ["sam", "dev"], isPrivate: true),
                 room("kitchen", "kitchen", members: ["sam", "ada", "bram", "eunji"], description: "Pots, pans and :apron:"),
+                room("markdown", "markdown", members: ["sam", "ada"]),
+                room("remote", "remote", members: ["sam", "bram"]),
             ],
             "users": .array(people.keys.sorted().map { people[$0]! }),
         ],
@@ -314,6 +355,18 @@ public enum PreviewFixtures {
                 line(-127, "bram", "Keys in code stay text: `:shipit:`. Out of it, two at once :shipit::shipit:"),
                 line(-126, "sam", "Lunch at 12:30:partyparrot:"),
             ]),
+            "markdown": history("markdown", [
+                line(-401, "ada", everyInline, mentions: ["sam"]),
+                line(-400, "ada", everyBlock),
+            ]),
+            "remote": history("remote", [
+                line(-410, "bram", "The walkthrough, hosted elsewhere.",
+                     embeds: [["kind": "link", "url": "https://video.example/glyph", "og": [
+                         "title": "Ladle glyph at 20 pt", "site_name": "video.example",
+                         "image": media(7, "image/jpeg", 1200, 630), "video": ["url": "https://video.example/glyph.mp4", "type": "video/mp4", "width": 1280, "height": 720]]]]),
+                line(-409, "bram", "![embedded image from an external host](\(externalImageURL))"),
+                line(-408, "bram", "![](\(unreachableImageURL))"),
+            ]),
             "ops": history("ops", [
                 line(-300, "dev", "Rotated the TLS cert on home. Next renewal in 60 days."),
                 line(-290, "sam", "Thanks!"),
@@ -322,6 +375,7 @@ public enum PreviewFixtures {
         readCursors: [
             "general": message(9), releaseThread: message(17), "design": message(-30),
             iconThread: message(-18), "random": message(-90), "ops": message(-290), "kitchen": message(-126),
+            "markdown": message(-400), "remote": message(-408),
         ],
         notices: [[
             "room_id": "general", "from": ["user_id": "~room", "name": "general"],

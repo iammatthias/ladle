@@ -152,10 +152,10 @@ struct EmojiTile: View {
     }
 }
 
-/// A room's, a thread's or the server's description (CommonMark) inside a control: its custom
-/// emoji drawn, its links left out so a tap goes to the control.
+/// A room's, a thread's or the server's description (CommonMark) inside a control, its blocks
+/// a line each: its custom emoji drawn, its links left out so a tap goes to the control.
 func descriptionText(_ text: String, _ catalog: EmojiCatalog?) -> AttributedString {
-    var out = MessageText.markdown(text, emoji: catalog)
+    var out = MessageBlock.flattened(MessageText.markdown(text, emoji: catalog))
     out.link = nil
     return out
 }

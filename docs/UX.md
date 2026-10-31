@@ -411,7 +411,8 @@ The reply drag mirrors in right-to-left layouts ([right-to-left]).
 | Media from an untrusted site | A dashed tile in its place, sized from the media's aspect (120 to 200 pt tall, 320 pt wide at most): its alt text or kind, its host, and "Tap to Load". See 3.14. |
 | `stream` | While live, a "Live output" card. When finished, `text` in a monospaced block that you can expand. |
 | `iframe`, `html` | A fallback card with **Open in Browser** for `url`. Not rendered inline in v1 (5.8). |
-| `format: "markdown"` | CommonMark with raw HTML disabled (§3.5.2) |
+| `format: "markdown"` | CommonMark with GitHub tables and strikethrough, as apron-web's markdown-it (`html: false`, `breaks: true`): headings, paragraphs, quotes with a rule at their edge, ordered and bulleted lists, code blocks, rules, and tables. Raw HTML shows as text. A typed line break is kept. Code blocks and tables scroll sideways inside the message, so a wide one never widens the row. Text follows Dynamic Type. Links, mentions, room chips and custom emoji are never drawn inside code. Each image (`![alt](url)`) is a block of its own under the media gate (3.14): the image at its shape, a Load tile naming its alt text and host, or, on a scheme that cannot load, its alt text. A linked image shows as its link. The same rendering covers notices, the server description and the welcome. Room and thread descriptions in rows read as one line per block. |
+| `format: "plain"` | The text as written, one paragraph, with bare links, mentions and custom emoji |
 | Membership records | Not shown in the timeline in v1. Room info shows members. |
 
 ### 3.6 Thread

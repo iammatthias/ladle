@@ -184,11 +184,16 @@ clone), which is only a worked example.
     deleted message, presence). The design screenshots render from it; `PreviewFixturesTests`
     pins what it holds. Message ids are server-wide, so no two rooms share a minute in the
     script.
-  - `MessageText`: a body as apron-web renders it (§3.5.2): `markdown` as inline CommonMark, then
+  - `MessageText`: a body as apron-web renders it (§3.5, §3.5.2): `blocks` gives `MessageBlock`s
+    (`MessageBlocks.swift`). `markdown` is Foundation's full CommonMark and GFM parse (no
+    package), its soft breaks made hard (markdown-it's `breaks: true`), read into paragraphs,
+    headings, quotes, lists, code blocks, rules, tables (`MessageTable`, rows padded) and each
+    markdown image as `MessageImage` (a linked image stays its link; an image on another scheme
+    stays its alt text); raw HTML stays text. `plain` is one paragraph. Each block's text then gets
     bare `http(s)` URLs and `apron:?` links linked in either format outside code and existing
     links, with apron-web's trimming of trailing punctuation; links on schemes apron-web's
     sanitizer refuses are dropped. Web links open in the default browser (`OpenURLAction`'s
-    system action); Apron links open in the app (`ApronLink`). Neither reference server describes links:
+    system action); Apron links open in the app (`ApronLink`). `attributed` is the blocks flattened, a line each, for reading links and code; the app draws blocks with `MessageBlocksView`. Neither reference server describes links:
     both drop a sender's `og`, so a `link` embed arrives as its kind and URL and shows the
     fallback card, as on the web. With `rooms`, a `#room_id` (Appendix A.3: not after a letter
     or digit, apron-web's `TEXT_ID`) outside code and links that names a room the session holds
@@ -400,11 +405,11 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, and Remind Me's Custom… sheet; the busy room at AX3; and the iPad
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), and media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room); the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with
-generated pictures; a video has no frame to draw, so its tile stays black), writes `contrast.json` (WCAG ratios of the text tokens on their
+generated pictures, and fails the remote room's unreachable host; a video has no frame to draw, so its tile stays black), writes `contrast.json` (WCAG ratios of the text tokens on their
 grounds), and quits. `TZ=UTC` keeps the times reproducible.
 
 Limits of the Mac render, each checked on this machine:

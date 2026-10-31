@@ -23,6 +23,7 @@ enum Screen: String, CaseIterable {
     case emoji, emojiPicker = "emoji-picker", emojiShortcode = "emoji-shortcode", commands
     case linkCards = "link-cards", roomMention = "room-mention", selectText = "select-text"
     case reminder, reminderCustom = "reminder-custom"
+    case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded"
 }
 
 @MainActor
@@ -143,6 +144,18 @@ enum Renderer {
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders) })
         case .reminderCustom:
             AnyView(ReminderDateSheet(date: .constant(Date(timeIntervalSince1970: 1_793_440_800)), set: {}, cancel: {}))
+        case .markdown:
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.markdownRoomID, reminders: store.reminders) })
+        case .mediaGate:
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.elsewhereRoomID, reminders: store.reminders) })
+        case .mediaGateLoaded:
+            // Load, tapped on both images and the video.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.elsewhereRoomID, reminders: store.reminders) }
+                .onAppear {
+                    for url in [PreviewFixtures.externalImageURL, PreviewFixtures.unreachableImageURL, "https://video.example/glyph.mp4"] {
+                        home.mediaSettings.loadOnce(URL(string: url)!)
+                    }
+                })
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))
@@ -200,12 +213,18 @@ enum Renderer {
 /// Answers the fixtures' hosted files (`PreviewFixtures.fileURL`) with generated media, and
 /// stages the composer's attachments, so the media screens render without a network.
 final class FixtureMedia: URLProtocol {
-    override class func canInit(with request: URLRequest) -> Bool { ["home.example", "demo.apron.example"].contains(request.url?.host()) }
+    override class func canInit(with request: URLRequest) -> Bool {
+        ["home.example", "demo.apron.example", "shazow.net", "evildomain.example.com", "video.example"].contains(request.url?.host())
+    }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
+        if request.url?.absoluteString == PreviewFixtures.unreachableImageURL {
+            client?.urlProtocol(self, didFailWithError: URLError(.cannotFindHost))
+            return
+        }
         let path = request.url?.path() ?? ""
-        let photo: Data? = if request.url?.absoluteString == PreviewFixtures.demoAvatarURL || path == "/emoji/apron" {
+        let photo: Data? = if [PreviewFixtures.demoAvatarURL, PreviewFixtures.externalImageURL].contains(request.url?.absoluteString) || path == "/emoji/apron" {
             Self.icon()
         } else if path.hasPrefix("/emoji/") {
             Self.emoji(path.dropFirst("/emoji/".count))

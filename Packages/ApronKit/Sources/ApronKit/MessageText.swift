@@ -1,28 +1,50 @@
 import Foundation
 
-/// A message body's text as styled runs with its links, as apron-web renders it (§3.5.2):
-/// `markdown` as inline CommonMark with raw HTML left as text, and in either format each bare
-/// `http(s)` URL and §A.4 `apron:?` link linked, except inside code and existing links. A link
-/// whose scheme apron-web would not link (`javascript:`, another app's) is dropped. Bidirectional
-/// overrides are dropped too (§3.5.2). With a custom emoji catalog, each key it has outside code
-/// and links carries `CustomEmojiKey`, for the app to show as the emoji's image. With `rooms`,
-/// each `#room_id` outside code and links (Appendix A.3) that it gives a title for shows as
-/// `#title`, carries `RoomReferenceKey`, and links to the room, as apron-web's room chips; any
-/// other `#word` stays text.
+/// A message body as apron-web renders it (§3.5, §3.5.2): `markdown` as CommonMark with GitHub
+/// tables and strikethrough, raw HTML left as text, and a typed line break kept (markdown-it's
+/// `breaks: true`), in blocks (`MessageBlock`); `plain` as one paragraph. In either format each
+/// bare `http(s)` URL and §A.4 `apron:?` link is linked, except inside code and existing links.
+/// A link whose scheme apron-web would not link (`javascript:`, another app's) is dropped.
+/// Bidirectional overrides are dropped too (§3.5.2). With a custom emoji catalog, each key it
+/// has outside code and links carries `CustomEmojiKey`, for the app to show as the emoji's
+/// image. With `rooms`, each `#room_id` outside code and links (Appendix A.3) that it gives a
+/// title for shows as `#title`, carries `RoomReferenceKey`, and links to the room, as
+/// apron-web's room chips; any other `#word` stays text. Mentions are marked outside code and
+/// links.
 public enum MessageText {
     /// CommonMark that isn't a message, such as a room's `description` or `server.welcome`.
-    public static func markdown(_ text: String, emoji: EmojiCatalog? = nil) -> AttributedString {
-        attributed(["text": .string(text), "format": "markdown"], emoji: emoji)
+    public static func markdown(_ text: String, emoji: EmojiCatalog? = nil) -> [MessageBlock] {
+        blocks(["text": .string(text), "format": "markdown"], emoji: emoji)
     }
 
+    public static func blocks(_ body: JSONValue?, emoji: EmojiCatalog? = nil, rooms: ((String) -> String?)? = nil,
+                              mentions: [String: String] = [:], you: String? = nil) -> [MessageBlock] {
+        let text = TextDirection.withoutOverrides(body?["text"]?.stringValue ?? "")
+        guard body?["format"]?.stringValue == "markdown" else {
+            return text.isEmpty ? [] : [.paragraph(decorated(AttributedString(text), emoji: emoji, rooms: rooms, mentions: mentions, you: you))]
+        }
+        let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full, failurePolicy: .returnPartiallyParsedIfPossible)
+        guard var parsed = try? AttributedString(markdown: text, options: options) else {
+            return [.paragraph(decorated(AttributedString(text), emoji: emoji, rooms: rooms, mentions: mentions, you: you))]
+        }
+        for run in parsed.runs.reversed() where run.inlinePresentationIntent?.contains(.softBreak) == true {
+            var hard = AttributedString("\n", attributes: run.attributes)
+            hard.inlinePresentationIntent = nil
+            parsed.replaceSubrange(run.range, with: hard)
+        }
+        return BlockReader.blocks(parsed).map { $0.mapText { decorated($0, emoji: emoji, rooms: rooms, mentions: mentions, you: you) } }
+    }
+
+    /// The body's blocks as one string (`MessageBlock.flattened`), for its runs.
     public static func attributed(_ body: JSONValue?, emoji: EmojiCatalog? = nil, rooms: ((String) -> String?)? = nil,
                                   mentions: [String: String] = [:], you: String? = nil) -> AttributedString {
-        let text = TextDirection.withoutOverrides(body?["text"]?.stringValue ?? "")
-        var out = AttributedString(text)
-        if body?["format"]?.stringValue == "markdown" {
-            let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .inlineOnlyPreservingWhitespace)
-            out = (try? AttributedString(markdown: text, options: options)) ?? out
-        }
+        MessageBlock.flattened(blocks(body, emoji: emoji, rooms: rooms, mentions: mentions, you: you))
+    }
+
+    /// One block's text with its links checked, bare links linked and its chips marked.
+    private static func decorated(_ text: AttributedString, emoji: EmojiCatalog?, rooms: ((String) -> String?)?,
+                                  mentions: [String: String], you: String?) -> AttributedString {
+        var out = text
         var bare: [(offset: Int, length: Int, url: URL)] = []
         var unsafe: [Range<AttributedString.Index>] = []
         for run in out.runs {
@@ -50,14 +72,14 @@ public enum MessageText {
     }
 
     /// Each `@name` or `@user_id` of a mentioned user (`mentions`: `user_id` to name), outside
-    /// links, as a chip (`MentionKey`).
+    /// code and links, as a chip (`MentionKey`).
     private static func markMentions(in out: inout AttributedString, _ mentions: [String: String], you: String?) {
         for (id, name) in mentions {
             for token in Set(["@" + name, "@" + id]) {
                 var search = out.startIndex ..< out.endIndex
                 while let range = out[search].range(of: token) {
                     search = range.upperBound ..< out.endIndex
-                    if out[range].runs.contains(where: { $0.link != nil }) { continue }
+                    if out[range].runs.contains(where: { $0.link != nil || $0.inlinePresentationIntent?.contains(.code) == true }) { continue }
                     out[range][MentionKey.self] = MentionChip(userID: id, isYou: id == you)
                 }
             }

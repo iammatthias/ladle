@@ -32,7 +32,8 @@ struct ConnectView: View {
                         Text(record == nil ? "Connect to a server" : "Sign in again, or change this server")
                             .apText(.field).foregroundStyle(Palette.inkMuted)
                         if let description = existing?.server?.description {
-                            EmojiText(text: MessageText.markdown(description, emoji: existing?.emojiCatalog), catalog: existing?.emojiCatalog, role: .ui)
+                            MessageBlocksView(blocks: MessageText.markdown(description, emoji: existing?.emojiCatalog), catalog: existing?.emojiCatalog, role: .ui,
+                                              gate: existing?.mediaGate, settings: existing?.mediaSettings)
                                 .apText(.ui).foregroundStyle(Palette.inkMuted).tint(Palette.denim)
                                 .written(in: TextDirection(of: description))
                                 .task(id: existing?.server?.emojiCatalogURL) { await existing?.loadEmojiCatalog(for: description) }
@@ -40,7 +41,8 @@ struct ConnectView: View {
                     }
                     if let greeter = session ?? existing, let welcome = greeter.server?.welcome {
                         Callout {
-                            EmojiText(text: MessageText.markdown(welcome, emoji: greeter.emojiCatalog), catalog: greeter.emojiCatalog, role: .ui)
+                            MessageBlocksView(blocks: MessageText.markdown(welcome, emoji: greeter.emojiCatalog), catalog: greeter.emojiCatalog, role: .ui,
+                                              gate: greeter.mediaGate, settings: greeter.mediaSettings)
                                 .tint(Palette.denim)
                                 .written(in: TextDirection(of: welcome))
                         }

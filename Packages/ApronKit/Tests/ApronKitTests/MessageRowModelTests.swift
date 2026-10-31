@@ -18,7 +18,8 @@ final class MessageRowModelTests: XCTestCase {
         let store = await PreviewFixtures.makeStore()
         let mention = try row("general", "1793092500000", in: store)
         XCTAssertTrue(mention.mentionsYou)
-        let chips = mention.text.runs.compactMap { run in run[MentionKey.self].map { "\(String(mention.text[run.range].characters)) \($0.userID) \($0.isYou)" } }
+        let text = MessageBlock.flattened(mention.blocks)
+        let chips = text.runs.compactMap { run in run[MentionKey.self].map { "\(String(text[run.range].characters)) \($0.userID) \($0.isYou)" } }
         XCTAssertEqual(chips, ["@Sam sam true"])
         XCTAssertEqual(spoken(mention), "Eun-ji, announce, mentions you, @Sam can you review the icon PR before then? It's small, mostly the ladle glyph at 20 pt., Link, The ladle glyph at 20 pt, TIME")
         XCTAssertFalse(try row("general", "1793091600000", in: store).mentionsYou)

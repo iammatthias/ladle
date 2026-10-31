@@ -227,10 +227,15 @@ struct VideoTile: View {
             Color.black
             if let player { VideoPlayer(player: player) }
             if player == nil, let poster {
-                switch poster {
-                case .remote(let url): RemoteImage(url: url).accessibilityHidden(true)
-                case .fetched(let image): Image(uiImage: image).resizable().scaledToFill().accessibilityHidden(true)
+                // The tile takes the video's shape; a poster of another shape fills it, never widens it.
+                Color.clear.overlay {
+                    switch poster {
+                    case .remote(let url): RemoteImage(url: url)
+                    case .fetched(let image): Image(uiImage: image).resizable().scaledToFill()
+                    }
                 }
+                .clipped()
+                .accessibilityHidden(true)
                 Button("Play", systemImage: "play.fill", action: play)
                     .labelStyle(.iconOnly)
                     .foregroundStyle(Palette.onAccent)

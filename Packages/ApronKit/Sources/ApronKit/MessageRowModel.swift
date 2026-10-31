@@ -10,8 +10,8 @@ public struct MessageRowModel {
     public let roles: [String]
     /// The message lists you in `body.mentions` and someone else sent it.
     public let mentionsYou: Bool
-    /// The body as `MessageText` renders it, mentions marked with `MentionKey`.
-    public let text: AttributedString
+    /// The body as `MessageText` renders it, in blocks, mentions marked with `MentionKey`.
+    public let blocks: [MessageBlock]
     public let cards: [PlaceCard]
     /// The embeds to draw with their index in the message, which names their media; a sender's
     /// preview of a place a card shows is left out (`PlaceCard.previews`).
@@ -35,7 +35,7 @@ public struct MessageRowModel {
         let names = Dictionary(message.mentionIDs.map { id in
             (id, session.users.user(id).flatMap(UserObject.init).map(session.displayName(for:)) ?? id)
         }, uniquingKeysWith: { first, _ in first })
-        text = MessageText.attributed(message.body, emoji: session.emojiCatalog, rooms: session.referencedTitle, mentions: names,
+        blocks = MessageText.blocks(message.body, emoji: session.emojiCatalog, rooms: session.referencedTitle, mentions: names,
                                       you: session.you?.userID)
         cards = session.placeCards(in: message, sessions: sessions)
         embeds = message.embedList.enumerated()

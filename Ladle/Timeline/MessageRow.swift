@@ -96,7 +96,7 @@ struct MessageRow: View {
     @ViewBuilder
     private func content(_ row: MessageRowModel) -> some View {
         if !message.plainText.isEmpty {
-            EmojiText(text: styled(row.text), catalog: session.emojiCatalog)
+            MessageBlocksView(blocks: row.blocks, catalog: session.emojiCatalog, gate: session.mediaGate, settings: session.mediaSettings)
                 .apText(.body)
                 .foregroundStyle(Palette.ink)
                 .tint(Palette.denim)
@@ -139,7 +139,7 @@ struct MessageRow: View {
     }
 }
 
-/// Rendered text (`MessageText.attributed`) with its chips drawn as the web's: a room
+/// Rendered text (`MessageText.blocks`) with its chips drawn as the web's: a room
 /// (`RoomReferenceKey`) and a mention (`MentionKey`) in denim on denim-soft, a mention of you in
 /// on-accent on accent.
 func styled(_ text: AttributedString) -> AttributedString {

@@ -104,7 +104,7 @@ final class CustomEmojiTests: XCTestCase {
         let marked = text.runs.compactMap { run in run[CustomEmojiKey.self].map { _ in String(text[run.range].characters) } }
         XCTAssertEqual(marked, [":apron:"])
         XCTAssertNil(MessageText.attributed(["text": ":apron:"]).runs.first?[CustomEmojiKey.self], "nothing without a catalog")
-        XCTAssertEqual(MessageText.markdown("Welcome :apron:", emoji: catalog).runs.compactMap { $0[CustomEmojiKey.self] }, [":apron:"])
+        XCTAssertEqual(MessageBlock.flattened(MessageText.markdown("Welcome :apron:", emoji: catalog)).runs.compactMap { $0[CustomEmojiKey.self] }, [":apron:"])
     }
 
     @MainActor
