@@ -145,8 +145,14 @@ struct TimelineView: View {
         } message: {
             Text(session.isPrivate(roomID) ? "It is private, so you need an invitation to come back." : "You can join it again from Browse Rooms.")
         }
-        .onAppear { visible = true }
-        .onDisappear { visible = false }
+        .onAppear {
+            visible = true
+            session.show(roomID, true)
+        }
+        .onDisappear {
+            visible = false
+            session.show(roomID, false)
+        }
         .onChange(of: ReadMark(reading: isReading, through: session.timeline(roomID).last?.messageID), initial: true) { _, mark in
             guard mark.reading, let through = mark.through else { return }
             Task { await session.markRead(roomID, through: through) }

@@ -117,6 +117,8 @@ public final class ServerSession {
     public private(set) var histories: [String: RoomHistory] = [:]
     /// Each room's first page while it loads, so a second `open` waits for it.
     @ObservationIgnored private var openings: [String: Task<Void, Error>] = [:]
+    /// The rooms on screen, which a catch-up pages before the others.
+    @ObservationIgnored private var onScreen: Set<String> = []
     /// This user's read cursor per room (§4.6): the server's, or the one this device sent.
     public private(set) var readCursors: [String: LogID] = [:]
     /// How far this user has read each room on this device.
@@ -528,6 +530,11 @@ public final class ServerSession {
 
     // MARK: History
 
+    /// Marks a room as on screen or not, so a catch-up after a reconnect pages it first.
+    public func show(_ roomID: String, _ shown: Bool) {
+        if shown { onScreen.insert(roomID) } else { onScreen.remove(roomID) }
+    }
+
     /// Loads the newest page of a room once (§4.3.5 step 3, without a checkpoint). A call while
     /// that page loads returns once it has.
     public func open(_ roomID: String) async throws {
@@ -591,7 +598,8 @@ public final class ServerSession {
 
     /// After a sign-in, pages each opened room forward from its checkpoint until `more` is false.
     private func catchUp(on connection: Connection) async {
-        for roomID in histories.keys.sorted(by: codePointLess) {
+        let rooms = histories.keys.sorted(by: codePointLess)
+        for roomID in rooms.filter(onScreen.contains) + rooms.filter({ !onScreen.contains($0) }) {
             guard var after = histories[roomID]?.checkpoint?.successor else { continue }
             while true {
                 let params: JSONValue = ["room_id": .string(roomID), "after": after.json, "limit": 200]
