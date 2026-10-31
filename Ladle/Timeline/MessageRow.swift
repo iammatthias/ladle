@@ -113,6 +113,7 @@ struct MessageRow: View {
         if !message.plainText.isEmpty {
             MessageBlocksView(blocks: row.blocks, catalog: session.emojiCatalog, gate: session.mediaGate, settings: session.mediaSettings)
                 .apText(.body)
+                .environment(\.textFace, .chat)
                 .foregroundStyle(Palette.ink)
                 .tint(Palette.denim)
                 .fixedSize(horizontal: false, vertical: true)

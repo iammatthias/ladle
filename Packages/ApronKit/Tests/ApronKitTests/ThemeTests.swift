@@ -216,6 +216,26 @@ final class ResolvedThemeTests: XCTestCase {
         XCTAssertEqual(custom.notShown.map(\.name), ["--accent", "--denim", "--ink"])
     }
 
+    func testFontsAreEachThemesStacks() {
+        let systemSans: [FontFamily] = [.system, .system, .named("Segoe UI"), .named("Roboto"), .named("Helvetica Neue"), .named("Arial"), .system]
+        let systemMono: [FontFamily] = [.systemMono, .systemMono, .systemMono, .named("Consolas"), .named("Liberation Mono"), .systemMono]
+        XCTAssertEqual(ResolvedTheme.apron.fonts, ThemeFonts(sans: systemSans, chat: systemSans, mono: systemMono))
+        XCTAssertEqual(theme("apron").fonts, ResolvedTheme.apron.fonts)
+        XCTAssertEqual(theme("linocut").fonts, ResolvedTheme.apron.fonts)
+        let ferrous = theme("ferrous").fonts
+        XCTAssertEqual(ferrous.sans, [.named("Recursive Sans Casual Static"), .named("Apron Recursive Casual")] + systemSans)
+        XCTAssertEqual(ferrous.chat, ferrous.sans)
+        XCTAssertEqual(ferrous.mono, [.named("RecMonoCasual Nerd Font"), .named("Rec Mono Casual"), .named("Apron Rec Mono Casual")] + systemMono)
+        let gumball = theme("gumball").fonts
+        XCTAssertEqual(gumball.sans, [.named("Nunito"), .named("Apron Nunito")] + systemSans)
+        XCTAssertEqual(gumball.mono, systemMono)
+        let custom = ResolvedTheme(css: "--font-chat: ui-rounded, serif; --font-mono: 'Fira Code', monospace; --font-emoji: x;").fonts
+        XCTAssertEqual(custom.sans, systemSans)
+        XCTAssertEqual(custom.chat, [.rounded, .serif])
+        XCTAssertEqual(custom.mono, [.named("Fira Code"), .systemMono])
+        XCTAssertEqual(ResolvedTheme(css: "--font-emoji: x; --font-sans: Inter;").notShown.map(\.name), ["--font-emoji"])
+    }
+
     func testNamedColorsAreCSSs() {
         XCTAssertEqual(CSSValue.namedColors.count, 148)
         XCTAssertEqual(CSSValue.color("CornflowerBlue", mode: .dark), RGBA(0x6495ed))

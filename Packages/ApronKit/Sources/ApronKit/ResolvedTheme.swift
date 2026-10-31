@@ -40,6 +40,8 @@ public struct ResolvedTheme: Sendable, Equatable {
     /// theme's text round-trips, and listed in Preferences as not used on iOS.
     public let notShown: [ThemeVar]
     let values: [String: Themed<Value>]
+    /// The interface, message and code faces.
+    public let fonts: ThemeFonts
 
     public init(vars: [ThemeVar]) {
         self.init(vars: vars, fallback: .apron)
@@ -65,6 +67,7 @@ public struct ResolvedTheme: Sendable, Equatable {
             }
         }
         self.values = values
+        fonts = ThemeFonts(own: own)
         notShown = vars.filter { v in
             if ThemeCSS.bases.contains(v.name) { return false }
             guard WebTokens.applied.contains(v.name) else { return true }

@@ -17,3 +17,8 @@ APRON_REQUIRE_SERVER=1 swift test --package-path Packages/ApronKit              
 ```
 
 `AGENTS.md` has the layout, the rules, and the sign-in design.
+
+The Ferrous and Gumball themes use the faces apron-web carries for them, bundled in
+`Ladle/Fonts`: Recursive (The Recursive Project Authors, https://github.com/arrowtype/recursive) and Nunito (The
+Nunito Project Authors, https://github.com/googlefonts/nunito), each under the SIL Open Font
+License 1.1, whose text is beside them (`OFL-Recursive.txt`, `OFL-Nunito.txt`).

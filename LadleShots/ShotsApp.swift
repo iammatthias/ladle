@@ -74,7 +74,11 @@ enum Renderer {
         shots.append((.limited, .dark, false, nil))
         shots.append((.limited, .light, false, nil))
 
+        let only = ProcessInfo.processInfo.environment["LADLE_SHOTS_ONLY"]
         for shot in shots {
+            let theme = shot.theme.map { "-\($0.id)" } ?? ""
+            let name = "ladle-\(shot.screen.rawValue)\(theme)-\(shot.large ? "ax3" : shot.style == .dark ? "dark" : "light").png"
+            if let only, !name.contains(only) { continue }
             let size = shot.screen.isPad ? pad : phone
             scene.sizeRestrictions?.minimumSize = .zero
             scene.sizeRestrictions?.maximumSize = size
@@ -92,8 +96,6 @@ enum Renderer {
                 .apronStyle()
                 .id(UUID())))
             try? await Task.sleep(for: .milliseconds(shot.screen.isPad ? 2500 : 1500))
-            let theme = shot.theme.map { "-\($0.id)" } ?? ""
-            let name = "ladle-\(shot.screen.rawValue)\(theme)-\(shot.large ? "ax3" : shot.style == .dark ? "dark" : "light").png"
             capture(scene, to: directory.appending(path: name))
         }
         writeContrast(to: directory.appending(path: "contrast.json"))

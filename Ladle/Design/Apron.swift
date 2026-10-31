@@ -59,7 +59,9 @@ enum Palette {
 }
 
 /// apron-web's text roles. Each role's web size is its size at the Large Dynamic Type setting,
-/// and it scales with the text style named here. System faces only (SF and SF Mono), as the web.
+/// and it scales with the text style named here, whatever the face. The face is the theme's
+/// (`TextFace`): `--font-sans` for the interface, `--font-chat` for message text, `--font-mono`
+/// for code; SF and SF Mono under Apron and Linocut.
 enum TextRole {
     /// Uppercase labels with letter spacing: role badges.
     case caps
@@ -128,13 +130,15 @@ private struct RoleText: ViewModifier {
     let mono: Bool
     @Environment(\.fixedTypeSize) private var fixed
     @Environment(\.dynamicTypeSize) private var dynamic
+    @Environment(\.textFace) private var environmentFace
 
     func body(content: Content) -> some View {
         let scale = TypeTable.scale(role.style, at: fixed ?? dynamic)
         let size = role.size * scale
-        let font = UIFont.systemFont(ofSize: size, weight: weight.ui)
+        let face = mono ? .mono : environmentFace
+        let font = BundledFonts.font(ActiveTheme.shared.theme.fonts.list(face), size: size, weight: weight, mono: face == .mono)
         content
-            .font(.system(size: size, weight: weight, design: mono ? .monospaced : .default))
+            .font(font.font)
             .lineSpacing(max(0, role.leading * scale - font.lineHeight))
             .tracking(role == .caps ? 0.6 : 0)
             .textCase(role == .caps ? .uppercase : nil)
@@ -199,17 +203,6 @@ enum TypeTable {
     ]
 }
 
-private extension Font.Weight {
-    var ui: UIFont.Weight {
-        switch self {
-        case .medium: .medium
-        case .semibold: .semibold
-        case .bold: .bold
-        default: .regular
-        }
-    }
-}
-
 /// The web's motion tokens. Reduce Motion turns every one of them off, as
 /// `prefers-reduced-motion` does on the web.
 enum Motion {
@@ -245,6 +238,9 @@ enum Appearance {
         bar.backgroundColor = UIColor(Palette.timeline)
         bar.shadowColor = UIColor(Palette.line)
         bar.titleTextAttributes = [.foregroundColor: UIColor(Palette.ink)]
+        if let face = BundledFonts.themeFont(ActiveTheme.shared.theme.fonts.sans, size: 17, weight: .semibold) {
+            bar.titleTextAttributes[.font] = UIFontMetrics(forTextStyle: .headline).scaledFont(for: face)
+        }
         bar.largeTitleTextAttributes = [.foregroundColor: UIColor(Palette.ink)]
         UINavigationBar.appearance().standardAppearance = bar
         UINavigationBar.appearance().scrollEdgeAppearance = bar

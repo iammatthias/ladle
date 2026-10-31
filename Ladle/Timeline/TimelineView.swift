@@ -715,7 +715,7 @@ struct PendingRow: View {
             }
             VStack(alignment: .leading, spacing: Tokens.Space.s1) {
                 if !pending.text.isEmpty {
-                    Text(pending.text).apText(.body).foregroundStyle(Palette.ink)
+                    Text(pending.text).apText(.body).environment(\.textFace, .chat).foregroundStyle(Palette.ink)
                 }
                 ForEach(pending.attachments) { attachment in
                     Label(attachment.title, systemImage: attachment.isImage ? "photo" : attachment.isVideo ? "film" : attachment.isAudio ? "waveform" : "doc")

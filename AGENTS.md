@@ -498,7 +498,12 @@ layout (960 px and wider) is the iPad split view.
   ink, accent and denim.
 - Text uses the web's roles (`TextRole`: caps, xs, sm, ui, field, body, title). Each role's web
   px value is its size at the Large Dynamic Type setting and scales from there with the HIG's
-  table. System faces only (SF, SF Mono), as the web.
+  table, whatever the face. The face is the theme's (`TextFace`, `ThemeFonts`): `--font-sans`
+  for the interface and the navigation bar's title, `--font-chat` for message text (the
+  `textFace` environment value, set around message bodies, as the web's `.ap-msg-text`), and
+  `--font-mono` for code (`apText(_:mono:)`). Each is the first family in the theme's list the
+  device has: SF, SF Mono, SF Rounded or New York for the generic and system names, a bundled
+  face, or an installed one. Apron and Linocut are SF and SF Mono, as on the web.
 - Anything tappable takes 44 pt (`touchTarget()`, the web's `--touch-target`). Native controls
   where the HIG expects them (navigation stacks, sheets, swipe actions, context menus,
   confirmation dialogs, the segmented control, the emoji keyboard), styled with the tokens.
@@ -585,8 +590,16 @@ pinned commit. Run it before `swift test` (the gate line above does), and `./bui
   notes) have theirs in `project.yml`; the camera's names scanning too. Nothing in them is a required-reason API: files go only to the server the user sends them to.
   LinkPresentation fetches link previews; it is not a required-reason API either, and a
   preview goes nowhere but the screen and the cache. The Show Link Previews setting is read
-  from `UserDefaults`, which is, so `PrivacyInfo.xcprivacy` declares it with reason `CA92.1`. A third-party package needs a justified entry here. None so far. No bundled fonts:
-  the web ships none either.
+  from `UserDefaults`, which is, so `PrivacyInfo.xcprivacy` declares it with reason `CA92.1`. A third-party package needs a justified entry here. None so far.
+- Bundled fonts: only the faces apron-web carries for its themes (#174), Recursive's casual
+  sans and mono and Nunito, under the SIL Open Font License 1.1. `tools/design/fonts.py` (run
+  with `uv`, which brings fontTools) converts apron-web's WOFF2 files at the pin into
+  `Ladle/Fonts` (TrueType, one renamed font per file, the licences beside them); `--check` runs
+  in `./build.sh test`. `BundledFonts` registers them for the process with CoreText the first
+  time a theme names one, so neither target needs `UIAppFonts`, and puts each Latin Extended
+  cut behind its Latin one as a cascade, as fonts.css's `unicode-range` does. Weight is the
+  `wght` axis. Registering fonts is not a required-reason API. No other font is bundled; a
+  theme that names another gets it only if the device has it installed, as on the web.
 - Replay rule: a record replaces only on a numerically greater `log_id`, or a tombstone at an
   equal one; a room record without `log_id` always replaces; replacement is whole. Compare
   `log_id`s with `LogID`, never as strings.
