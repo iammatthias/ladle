@@ -4,25 +4,9 @@ import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
-/// A file on the draft: being fitted to the server, then ready to send.
-struct DraftAttachment: Identifiable {
-    enum Phase {
-        case preparing
-        case ready(Attachment)
-    }
-
-    let id = UUID()
-    var name: String
-    var phase: Phase
-
-    var attachment: Attachment? {
-        if case .ready(let attachment) = phase { return attachment }
-        return nil
-    }
-}
-
-/// Where picked files wait before they are sent: an app-private folder in the temporary
-/// directory. The outbox lives in memory, so nothing outlives a launch; `clear()` runs at start.
+/// Where picked files land before they are fitted to the server: an app-private folder in the
+/// temporary directory, cleared at launch. A fitted file goes into the drafts' staging folder
+/// (`Drafts.staging`), which keeps it while its draft does, across launches.
 enum AttachmentStaging {
     static let directory = URL.temporaryDirectory.appending(path: "Attachments", directoryHint: .isDirectory)
     static let imports = directory.appending(path: "Imports", directoryHint: .isDirectory)
@@ -40,8 +24,10 @@ enum AttachmentStaging {
 
     /// Fits a picked file to the server off the main thread, as its `UploadPlan` says: a sound
     /// or video is re-encoded here first (`MediaCompression`), and `AttachmentPreparer` does the
-    /// rest. A security-scoped URL from the document picker stays open while it is read.
-    static func prepare(_ source: URL, name: String, contentType: String?, limits: MediaLimits.Category?) async throws -> Attachment {
+    /// rest, into `staging`. A security-scoped URL from the document picker stays open while it
+    /// is read.
+    static func prepare(_ source: URL, name: String, contentType: String?, limits: MediaLimits.Category?,
+                        into staging: URL) async throws -> Attachment {
         try await Task.detached(priority: .userInitiated) {
             let scoped = source.startAccessingSecurityScopedResource()
             defer { if scoped { source.stopAccessingSecurityScopedResource() } }
@@ -54,9 +40,9 @@ enum AttachmentStaging {
                 let name = base + (type == "video/mp4" ? ".mp4" : ".mov")
                 reencoded = try await MediaCompression.video(source, type: type, maxBytes: maxBytes, named: name, into: importFolder())
             default:
-                return try AttachmentPreparer.prepare(source, title: name, contentType: contentType, limits: limits, into: directory)
+                return try AttachmentPreparer.prepare(source, title: name, contentType: contentType, limits: limits, into: staging)
             }
-            return try AttachmentPreparer.prepare(reencoded, title: reencoded.lastPathComponent, limits: limits, into: directory)
+            return try AttachmentPreparer.prepare(reencoded, title: reencoded.lastPathComponent, limits: limits, into: staging)
         }.value
     }
 }
@@ -84,7 +70,7 @@ struct ImportedFile: Transferable {
 
 /// The web's Attachments: the draft's files above the composer, each removable.
 struct AttachmentTray: View {
-    let attachments: [DraftAttachment]
+    let attachments: [StagedFile]
     let remove: (UUID) -> Void
 
     var body: some View {
@@ -105,7 +91,7 @@ struct AttachmentTray: View {
 /// The web's AttachmentTile: a 96 pt picture for an image, a file card for anything else, with
 /// the name and the size it goes out at ("Preparing…" while an image shrinks), and an (x).
 struct AttachmentTile: View {
-    let item: DraftAttachment
+    let item: StagedFile
     let remove: () -> Void
 
     var body: some View {

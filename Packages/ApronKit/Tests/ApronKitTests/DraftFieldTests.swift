@@ -72,7 +72,7 @@ final class DraftFieldTests: XCTestCase {
         let field = DraftField(editing: mention, in: home)
         XCTAssertEqual(field.text, "@Sam can you review the icon PR before then? It's small, mostly the ladle glyph at 20 pt.")
         XCTAssertEqual(field.mentions, ["sam": "Sam"])
-        XCTAssertEqual(field.target?.messageID, mention.messageID)
+        XCTAssertEqual(field.editing?.messageID, mention.messageID)
         XCTAssertTrue(field.isEdit)
         let plain = try XCTUnwrap(home.timeline("general").first { $0.mentionIDs.isEmpty })
         XCTAssertEqual(DraftField(editing: plain, in: home).mentions, [:])

@@ -9,7 +9,7 @@ struct LadleApp: App {
     @State private var loadError: String?
 
     init() {
-        // The outbox lives in memory, so no staged attachment outlives a launch.
+        // Picked files wait here only until they are fitted; a draft's fitted files are kept by `Drafts`.
         AttachmentStaging.clear()
     }
 

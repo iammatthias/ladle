@@ -18,7 +18,9 @@ import SwiftUI
 struct ComposerView: View {
     let session: ServerSession
     let roomID: String
-    @Binding var draft: Draft
+    @Binding var draft: ComposerDraft
+    /// Where fitted files are kept while the draft holds them (`Drafts.staging`).
+    let staging: URL
     let onSend: (DraftField, [Attachment]) -> Void
     var onProblem: (String) -> Void = { _ in }
     @FocusState private var focused: Bool
@@ -50,15 +52,16 @@ struct ComposerView: View {
             }
             .padding(.horizontal, Tokens.Space.s4)
             .padding(.bottom, Tokens.Space.s1)
-            if let target = draft.field.target {
+            if draft.field.mode != .new {
                 HStack(spacing: Tokens.Space.s2) {
-                    let who = Text(TextDirection.isolated(session.displayName(for: target.from))).fontWeight(.semibold).foregroundStyle(Palette.ink)
-                    (draft.field.isEdit ? Text("Editing your message") : Text("Replying to \(who)"))
+                    targetLine
                         .apText(.ui)
                         .foregroundStyle(Palette.inkMuted)
                         .lineLimit(1)
                     Spacer(minLength: 0)
-                    Button("Cancel", systemImage: "xmark") { draft = Draft() }
+                    Button("Cancel", systemImage: "xmark") {
+                        if draft.field.isEdit { draft = ComposerDraft() } else { draft.field.mode = .new }
+                    }
                         .labelStyle(.iconOnly)
                         .foregroundStyle(Palette.inkMuted)
                         .touchTarget()
@@ -74,8 +77,8 @@ struct ComposerView: View {
                     .foregroundStyle(Palette.danger)
                     .padding(.horizontal, Tokens.Space.s4)
             }
-            if !draft.attachments.isEmpty, !draft.field.isEdit {
-                AttachmentTray(attachments: draft.attachments) { id in draft.attachments.removeAll { $0.id == id } }
+            if !draft.files.isEmpty, !draft.field.isEdit {
+                AttachmentTray(attachments: draft.files) { id in draft.files.removeAll { $0.id == id } }
             }
             HStack(alignment: .bottom, spacing: Tokens.Space.s2) {
                 if case .recording(let since) = recorder.state {
@@ -101,7 +104,7 @@ struct ComposerView: View {
             if typingCommand { await session.loadCommands(in: roomID) }
         }
         .task(id: typingEmoji) { if typingEmoji { await session.loadEmojiCatalog() } }
-        .onChange(of: draft.field.target != nil, initial: true) { if draft.field.target != nil { focused = true } }
+        .onChange(of: draft.field.mode, initial: true) { if draft.field.mode != .new { focused = true } }
         .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, maxSelectionCount: 10,
                       matching: .any(of: (offer.images ? [.images] : []) + (offer.videos ? [.videos] : [])), preferredItemEncoding: .compatible)
         .onChange(of: photoItems) {
@@ -193,6 +196,15 @@ struct ComposerView: View {
         .disabled(!canWrite)
     }
 
+    /// "Editing your message", or who the reply answers; a kept reply to a message not loaded
+    /// yet says only that it is a reply.
+    private var targetLine: Text {
+        if draft.field.isEdit { return Text("Editing your message") }
+        guard let id = draft.field.replyTo, let message = session.store.message(id) else { return Text("Replying to a message") }
+        let who = Text(TextDirection.isolated(session.displayName(for: message.from))).fontWeight(.semibold).foregroundStyle(Palette.ink)
+        return Text("Replying to \(who)")
+    }
+
     private var canAttach: Bool { session.canAttach && !draft.field.isEdit }
 
     private var offer: UploadOffer { UploadOffer(session.mediaLimits?.upload) }
@@ -212,26 +224,26 @@ struct ComposerView: View {
     /// Adds a tile at once, then fits the file to the server. One that can't be sent comes off
     /// again with the reason.
     private func attach(contentType: String?, _ source: @escaping () async throws -> URL) {
-        let item = DraftAttachment(name: "Preparing", phase: .preparing)
-        draft.attachments.append(item)
+        let item = StagedFile(name: "Preparing", phase: .preparing)
+        draft.files.append(item)
         let limits = session.mediaLimits?.upload
         Task {
             do {
                 let url = try await source()
                 rename(item.id, to: url.lastPathComponent)
-                let attachment = try await AttachmentStaging.prepare(url, name: url.lastPathComponent, contentType: contentType, limits: limits)
-                guard let index = draft.attachments.firstIndex(where: { $0.id == item.id }) else { return }
-                draft.attachments[index].phase = .ready(attachment)
+                let attachment = try await AttachmentStaging.prepare(url, name: url.lastPathComponent, contentType: contentType, limits: limits, into: staging)
+                guard let index = draft.files.firstIndex(where: { $0.id == item.id }) else { return }
+                draft.files[index].phase = .ready(attachment)
             } catch {
-                let name = draft.attachments.first { $0.id == item.id }?.name
-                draft.attachments.removeAll { $0.id == item.id }
+                let name = draft.files.first { $0.id == item.id }?.name
+                draft.files.removeAll { $0.id == item.id }
                 onProblem([name, errorText(error)].compactMap { $0 }.joined(separator: ": "))
             }
         }
     }
 
     private func rename(_ id: UUID, to name: String) {
-        if let index = draft.attachments.firstIndex(where: { $0.id == id }) { draft.attachments[index].name = name }
+        if let index = draft.files.firstIndex(where: { $0.id == id }) { draft.files[index].name = name }
     }
 
     /// Pasted images, as PNG; the preparer turns a large one into JPEG.
@@ -261,8 +273,8 @@ struct ComposerView: View {
     }
 
     private var canSend: Bool {
-        canWrite && draft.field.canSend(readyFiles: draft.attachments.compactMap(\.attachment).count,
-                                        preparing: draft.attachments.contains { $0.attachment == nil })
+        canWrite && draft.field.canSend(readyFiles: draft.files.compactMap(\.attachment).count,
+                                        preparing: draft.files.contains { $0.attachment == nil })
     }
 
     private var typingCommand: Bool {
@@ -277,7 +289,7 @@ struct ComposerView: View {
 
     private func send() {
         guard canSend else { return }
-        onSend(draft.field, draft.field.isEdit ? [] : draft.attachments.compactMap(\.attachment))
+        onSend(draft.field, draft.field.isEdit ? [] : draft.files.compactMap(\.attachment))
     }
 }
 

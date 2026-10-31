@@ -14,13 +14,16 @@ public final class SessionStore {
     public let reminders: Reminders
     /// Where media loads from, on every server, kept beside `servers.json`.
     public let mediaSettings: MediaSettings
+    /// Every room's composer draft, kept beside `servers.json`, its files in `Staged`.
+    public let drafts: Drafts
 
     private let serverStore: ServerStore?
     private let tokens: any TokenStore
     private let positions: any ReadPositionStore
     private let environment: ServerSession.Environment
 
-    /// `serverStore` nil keeps the list, the read positions and the reminders in memory only.
+    /// `serverStore` nil keeps the list, the read positions, the reminders and the drafts in memory
+    /// only. A kept store sweeps staged files no draft holds.
     public init(serverStore: ServerStore?, tokens: any TokenStore, environment: ServerSession.Environment = .live,
                 notifier: any ReminderNotifier = SilentReminderNotifier()) {
         self.serverStore = serverStore
@@ -29,6 +32,12 @@ public final class SessionStore {
         reminders = Reminders(store: serverStore.map { FileReminderStore(directory: $0.directory) } ?? InMemoryReminderStore(),
                               notifier: notifier)
         mediaSettings = MediaSettings(directory: serverStore?.directory)
+        if let directory = serverStore?.directory {
+            drafts = Drafts(store: FileDraftStore(directory: directory), staging: directory.appending(path: "Staged", directoryHint: .isDirectory))
+            drafts.pruneStaging()
+        } else {
+            drafts = Drafts()
+        }
         self.environment = environment
     }
 
@@ -59,10 +68,11 @@ public final class SessionStore {
         await sessions[record.id]?.update(record)
     }
 
-    /// Stops the session and forgets the server, its token and its reminders.
+    /// Stops the session and forgets the server, its token, its reminders and its drafts.
     public func remove(_ id: UUID) async {
         await sessions.removeValue(forKey: id)?.stop()
         await reminders.removeAll(server: id)
+        drafts.removeAll(server: id)
         records.removeAll { $0.id == id }
         try? tokens.setToken(nil, for: id)
         save()

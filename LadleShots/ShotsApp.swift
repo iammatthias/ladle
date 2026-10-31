@@ -25,6 +25,7 @@ enum Screen: String, CaseIterable {
     case reminder, reminderCustom = "reminder-custom"
     case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded"
     case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline", serverPane = "server-pane", serverPaneDemo = "server-pane-demo", mentionChip = "mention-chip"
+    case draftKept = "draft-kept"
 }
 
 @MainActor
@@ -81,7 +82,7 @@ enum Renderer {
         exit(0)
     }
 
-    static func view(_ screen: Screen, store: SessionStore, home: ServerSession, staged: [DraftAttachment]) -> AnyView {
+    static func view(_ screen: Screen, store: SessionStore, home: ServerSession, staged: [StagedFile]) -> AnyView {
         switch screen {
         case .firstRun:
             AnyView(NavigationStack {
@@ -97,10 +98,10 @@ enum Renderer {
         case .rooms:
             AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
         case .timeline:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, drafts: Drafts()) })
         case .mention:
             AnyView(NavigationStack {
-                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, draft: Draft(field: DraftField(text: "Thanks @")))
+                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, drafts: kept(home, PreviewFixtures.busyRoomID, ComposerDraft(field: DraftField(text: "Thanks @"))))
             })
         case .members:
             AnyView(NavigationStack { MemberList(session: home, roomID: PreviewFixtures.busyRoomID) })
@@ -108,50 +109,50 @@ enum Renderer {
             AnyView(ReactionPicker { _ in })
         case .attachments:
             AnyView(NavigationStack {
-                TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, reminders: store.reminders, draft: Draft(field: DraftField(text: "Both sides of mine"), attachments: staged))
+                TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, reminders: store.reminders, drafts: kept(home, PreviewFixtures.mediaRoomID, ComposerDraft(field: DraftField(text: "Both sides of mine"), files: staged)))
             })
         case .media:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, reminders: store.reminders) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, reminders: store.reminders, drafts: Drafts()) })
         case .links:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkRoomID, reminders: store.reminders) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkRoomID, reminders: store.reminders, drafts: Drafts()) })
         case .viewer:
             AnyView(MediaViewer(items: home.mediaItems(in: PreviewFixtures.mediaRoomID),
                                 selection: home.mediaItems(in: PreviewFixtures.mediaRoomID).first?.id ?? ""))
         case .textLimit:
             AnyView(NavigationStack {
                 TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders,
-                             draft: Draft(field: DraftField(text: String(repeating: "Release notes for 0.2, every change since August. ", count: 82) + "🎉")))
+                             drafts: kept(home, PreviewFixtures.busyRoomID, ComposerDraft(field: DraftField(text: String(repeating: "Release notes for 0.2, every change since August. ", count: 82) + "🎉"))))
             })
         case .guestComposer:
             AnyView(NavigationStack {
-                if let demo = store.session(for: PreviewFixtures.demoID) { TimelineView(session: demo, roomID: "lobby", reminders: store.reminders) }
+                if let demo = store.session(for: PreviewFixtures.demoID) { TimelineView(session: demo, roomID: "lobby", reminders: store.reminders, drafts: Drafts()) }
             })
         case .emoji:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, reminders: store.reminders) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, reminders: store.reminders, drafts: Drafts()) })
         case .emojiPicker:
             AnyView(ReactionPicker(session: home) { _ in })
         case .emojiShortcode:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, reminders: store.reminders, draft: Draft(field: DraftField(text: "Lunch :pa"))) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, reminders: store.reminders, drafts: kept(home, PreviewFixtures.emojiRoomID, ComposerDraft(field: DraftField(text: "Lunch :pa")))) })
         case .commands:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, draft: Draft(field: DraftField(text: "/inv"))) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, drafts: kept(home, PreviewFixtures.busyRoomID, ComposerDraft(field: DraftField(text: "/inv")))) })
         case .linkCards:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, reminders: store.reminders) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, reminders: store.reminders, drafts: Drafts()) })
         case .roomMention:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, reminders: store.reminders, draft: Draft(field: DraftField(text: "Moving this to #s"))) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, reminders: store.reminders, drafts: kept(home, PreviewFixtures.linkCardRoomID, ComposerDraft(field: DraftField(text: "Moving this to #s")))) })
         case .selectText:
             AnyView(SelectTextSheet(text: home.timeline(PreviewFixtures.busyRoomID).first { $0.plainText.hasPrefix("Notes from the sync") }
                 .map { MessageText.plain($0.body) } ?? "") {})
         case .reminder:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, drafts: Drafts()) })
         case .reminderCustom:
             AnyView(ReminderDateSheet(date: .constant(Date(timeIntervalSince1970: 1_793_440_800)), set: {}, cancel: {}))
         case .markdown:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.markdownRoomID, reminders: store.reminders) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.markdownRoomID, reminders: store.reminders, drafts: Drafts()) })
         case .mediaGate:
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.elsewhereRoomID, reminders: store.reminders) })
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.elsewhereRoomID, reminders: store.reminders, drafts: Drafts()) })
         case .mediaGateLoaded:
             // Load, tapped on both images and the video.
-            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.elsewhereRoomID, reminders: store.reminders) }
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.elsewhereRoomID, reminders: store.reminders, drafts: Drafts()) }
                 .onAppear {
                     for url in [PreviewFixtures.externalImageURL, PreviewFixtures.unreachableImageURL, "https://video.example/glyph.mp4"] {
                         home.mediaSettings.loadOnce(URL(string: url)!)
@@ -166,17 +167,30 @@ enum Renderer {
         case .mentionChip:
             // Eun-ji's "@Sam", revealed and highlighted as a link to it opens it.
             AnyView(NavigationStack {
-                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders,
+                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, drafts: Drafts(),
                              place: .constant(ApronLink(room: PreviewFixtures.busyRoomID, message: LogID("1793092500000"))))
             })
         case .serverPane:
             AnyView(ServerPaneView(session: home))
         case .serverPaneDemo:
             AnyView(Group { if let demo = store.session(for: PreviewFixtures.demoID) { ServerPaneView(session: demo) } })
+        case .draftKept:
+            // The busy room's kept draft as a relaunch brings it back: a reply to Eun-ji, text and a photo.
+            AnyView(NavigationStack {
+                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders,
+                             drafts: kept(home, PreviewFixtures.busyRoomID, ComposerDraft(
+                                 field: DraftField(mode: .reply(LogID("1793092500000")!), text: "On it. Here's the 20 pt one at 3x"),
+                                 files: Array(staged.prefix(1)))))
+            })
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))
         }
+    }
+
+    /// Drafts holding one room's draft, for a shot of its composer.
+    static func kept(_ session: ServerSession, _ roomID: String, _ draft: ComposerDraft) -> Drafts {
+        Drafts([DraftKey(server: session.record.id, roomID: roomID): draft])
     }
 
     /// A reminder an hour off on the busy room's last message from Bram, for its shot alone.
@@ -333,21 +347,21 @@ final class FixtureMedia: URLProtocol {
 
     /// The draft's files: two photos, a PDF, and one still being prepared.
     @MainActor
-    static func stagedAttachments() -> [DraftAttachment] {
+    static func stagedAttachments() -> [StagedFile] {
         let folder = URL.temporaryDirectory.appending(path: "ladle-shots-staged", directoryHint: .isDirectory)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        func file(_ name: String, _ data: Data, _ type: String, _ size: CGSize? = nil) -> DraftAttachment {
+        func file(_ name: String, _ data: Data, _ type: String, _ size: CGSize? = nil) -> StagedFile {
             let url = folder.appending(path: name)
             try? data.write(to: url)
             let attachment = Attachment(fileURL: url, title: name, contentType: type, byteCount: data.count,
                                         pixelWidth: size.map { Int($0.width) }, pixelHeight: size.map { Int($0.height) })
-            return DraftAttachment(name: name, phase: .ready(attachment))
+            return StagedFile(name: name, phase: .ready(attachment))
         }
         return [
             file("IMG_4021.jpg", photo(CGSize(width: 1200, height: 1600), hue: 0.58), "image/jpeg", CGSize(width: 1200, height: 1600)),
             file("IMG_4022.jpg", photo(CGSize(width: 1600, height: 1200), hue: 0.58), "image/jpeg", CGSize(width: 1600, height: 1200)),
             file("receipt-flea-market.pdf", Data(count: 48_213), "application/pdf"),
-            DraftAttachment(name: "IMG_4023.HEIC", phase: .preparing),
+            StagedFile(name: "IMG_4023.HEIC", phase: .preparing),
         ]
     }
 }

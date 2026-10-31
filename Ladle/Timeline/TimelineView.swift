@@ -11,7 +11,10 @@ struct TimelineView: View {
     @Binding var place: ApronLink?
     @State private var focus: ApronLink?
     @State private var highlighted: LogID?
-    @State private var draft: Draft
+    /// Every room's kept draft; this room's is the composer's unless an edit is open.
+    let drafts: Drafts
+    /// An open edit, which sits beside the kept draft and is never kept, as apron-web's editor.
+    @State private var editing: ComposerDraft?
     @State private var problem: String?
     @State private var reacting: MessageSnapshot?
     @State private var deleting: MessageSnapshot?
@@ -34,14 +37,24 @@ struct TimelineView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
 
-    init(session: ServerSession, roomID: String, reminders: Reminders, place: Binding<ApronLink?> = .constant(nil), draft: Draft = Draft(),
+    init(session: ServerSession, roomID: String, reminders: Reminders, drafts: Drafts, place: Binding<ApronLink?> = .constant(nil),
          showingMembers: Bool = false) {
         self.session = session
         self.roomID = roomID
+        self.drafts = drafts
         _place = place
         _reminding = State(initialValue: MessageReminders(session: session, reminders: reminders))
-        _draft = State(initialValue: draft)
         _showingMembers = State(initialValue: showingMembers)
+    }
+
+    private var draftKey: DraftKey { DraftKey(server: session.record.id, roomID: roomID) }
+
+    /// What the composer writes: the open edit, else this room's kept draft. Ending the edit (a
+    /// draft that is no longer one) brings the kept draft back.
+    private var draft: Binding<ComposerDraft> {
+        Binding(get: { editing ?? drafts[draftKey] }, set: { value in
+            if editing != nil { editing = value.field.isEdit ? value : nil } else { drafts[draftKey] = value }
+        })
     }
 
     var body: some View {
@@ -101,7 +114,7 @@ struct TimelineView: View {
                     if !session.mayWrite {
                         ReadOnlyPrompt(session: session) { requestSignIn(session.record) }
                     } else {
-                        ComposerView(session: session, roomID: roomID, draft: $draft, onSend: send, onProblem: { problem = $0 })
+                        ComposerView(session: session, roomID: roomID, draft: draft, staging: drafts.staging, onSend: send, onProblem: { problem = $0 })
                     }
                 }
                 .background(Palette.timeline)
@@ -121,7 +134,7 @@ struct TimelineView: View {
             MediaViewer(items: session.mediaItems(in: roomID), selection: request.id)
         }
         .dropDestination(for: ImportedFile.self) { files, _ in
-            guard session.canAttach, !draft.field.isEdit else { return false }
+            guard session.canAttach, editing == nil else { return false }
             dropped(files)
             return true
         }
@@ -141,7 +154,7 @@ struct TimelineView: View {
                               cancel: { remindingAt = nil })
         }
         .sheet(item: $profile) { request in
-            ProfileCardView(session: session, request: request) { id, name in draft.field.mention(id, named: name) }
+            ProfileCardView(session: session, request: request) { id, name in draft.wrappedValue.field.mention(id, named: name) }
         }
         .sheet(item: $reacting) { message in
             ReactionPicker(session: session) { emoji in
@@ -151,7 +164,7 @@ struct TimelineView: View {
         }
         .modifier(MembersPresentation(session: session, roomID: roomID, showing: $showingMembers, compact: sizeClass == .compact) { id, name in
             if sizeClass == .compact { showingMembers = false }
-            draft.field.mention(id, named: name)
+            draft.wrappedValue.field.mention(id, named: name)
         })
         .confirmationDialog("Delete this message?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                             titleVisibility: .visible, presenting: deleting) { message in
@@ -357,7 +370,10 @@ struct TimelineView: View {
                 }
                 .controlGroupStyle(.compactMenu)
             }
-            Button("Reply", systemImage: "arrowshape.turn.up.left") { draft = Draft(field: DraftField(mode: .reply(message)), attachments: draft.attachments) }
+            Button("Reply", systemImage: "arrowshape.turn.up.left") {
+                editing = nil
+                drafts[draftKey].field.mode = .reply(message.messageID)
+            }
         } header: {
             if !menu.mayWrite { Text(ReadOnlyPrompt.reason(session)) }
         }
@@ -379,7 +395,7 @@ struct TimelineView: View {
         remindMenu(message)
         linkActions(menu.links)
         if menu.editable {
-            Button("Edit", systemImage: "pencil") { draft = Draft(field: DraftField(editing: message, in: session)) }
+            Button("Edit", systemImage: "pencil") { editing = ComposerDraft(field: DraftField(editing: message, in: session)) }
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
         }
     }
@@ -425,26 +441,30 @@ struct TimelineView: View {
         linkActions(menu.links)
     }
 
-    /// Files dropped on the conversation join the draft, as the web's DropZone does.
+    /// Files dropped on the conversation join the room's kept draft, as the web's DropZone does;
+    /// one still being fitted when the room is left lands in that draft.
     private func dropped(_ files: [ImportedFile]) {
         let limits = session.mediaLimits?.upload
+        let key = draftKey, drafts = drafts
         for file in files {
-            let item = DraftAttachment(name: file.url.lastPathComponent, phase: .preparing)
-            draft.attachments.append(item)
+            let item = StagedFile(name: file.url.lastPathComponent, phase: .preparing)
+            drafts[key].files.append(item)
             Task {
                 do {
-                    let attachment = try await AttachmentStaging.prepare(file.url, name: item.name, contentType: nil, limits: limits)
-                    if let index = draft.attachments.firstIndex(where: { $0.id == item.id }) { draft.attachments[index].phase = .ready(attachment) }
+                    let attachment = try await AttachmentStaging.prepare(file.url, name: item.name, contentType: nil, limits: limits, into: drafts.staging)
+                    drafts[key].ready(item.id, as: attachment)
                 } catch {
-                    draft.attachments.removeAll { $0.id == item.id }
+                    drafts[key].files.removeAll { $0.id == item.id }
                     problem = "\(item.name): \(errorText(error))"
                 }
             }
         }
     }
 
+    /// An edit's save closes the editor and brings the kept draft back; anything else empties
+    /// the kept draft, as apron-web's `drafts.clear`.
     private func send(_ field: DraftField, attachments: [Attachment]) {
-        draft = Draft()
+        if field.isEdit { editing = nil } else { drafts[draftKey] = ComposerDraft() }
         sentCount += 1
         perform { try await session.submit(field, in: roomID, attachments: attachments) }
     }
@@ -463,11 +483,6 @@ struct TimelineView: View {
     }
 }
 
-/// What the composer is writing (`DraftField`), and the files staged to go with it (§4.8.4).
-struct Draft {
-    var field = DraftField()
-    var attachments: [DraftAttachment] = []
-}
 
 /// One look at a room, as the web's `newDivider`: where you had read when it opened fixes the New
 /// line for the visit.

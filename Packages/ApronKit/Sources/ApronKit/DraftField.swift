@@ -6,10 +6,12 @@ import Foundation
 ///
 /// A mention is written as `@` and the name picked, and kept in `mentions` (§3.5.5): the text
 /// still showing `@name` is what keeps it when the message goes.
-public struct DraftField: Sendable {
-    public enum Mode: Sendable {
+public struct DraftField: Hashable, Sendable {
+    /// A reply names its message by id alone, as apron-web's kept `reply`: the composer shows
+    /// whatever the session holds of it, so a reply kept across a relaunch still goes.
+    public enum Mode: Hashable, Sendable {
         case new
-        case reply(MessageSnapshot)
+        case reply(LogID)
         case edit(MessageSnapshot)
     }
 
@@ -50,18 +52,19 @@ public struct DraftField: Sendable {
         self.init(mode: .edit(message), text: text, mentions: mentions)
     }
 
-    /// The message a reply or an edit is about.
-    public var target: MessageSnapshot? {
-        switch mode {
-        case .new: nil
-        case .reply(let message), .edit(let message): message
-        }
+    /// The message a reply answers.
+    public var replyTo: LogID? {
+        if case .reply(let messageID) = mode { return messageID }
+        return nil
     }
 
-    public var isEdit: Bool {
-        if case .edit = mode { return true }
-        return false
+    /// The message an edit changes.
+    public var editing: MessageSnapshot? {
+        if case .edit(let message) = mode { return message }
+        return nil
     }
+
+    public var isEdit: Bool { editing != nil }
 
     /// The query being typed, if any. Each kind needs its own first character, so at most one is.
     public var query: Query? {
@@ -161,7 +164,7 @@ extension ServerSession {
         let mentions = field.sentMentions
         switch field.mode {
         case .new, .reply:
-            let replyTo = field.target?.messageID
+            let replyTo = field.replyTo
             if Draft(text: text).isCommand {
                 try await send(text, in: roomID, replyTo: replyTo, mentions: mentions, attachments: attachments)
             } else {

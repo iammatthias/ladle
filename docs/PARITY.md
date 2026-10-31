@@ -46,8 +46,8 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Older pages from the device first, then the server | #137 | missing | | |
 | Preferences says how much is kept, and why it stopped | #137 | missing | | |
 | History deleted on sign-out, kept apart per account and server | #137 | missing | | Nothing kept yet. |
-| Drafts kept per room and thread | bh | missing | `Timeline/TimelineView.swift` (`@State draft`) | The draft lives in the view. Leaving the room drops it (inferred from code; no per-room store). |
-| Warn before reload that unsent text is lost | #7 | N/A-iOS | | No reload. Drafts should persist instead (row above). |
+| Drafts kept per room and thread | bh, `pane-drafts.svelte.ts` | has | `Kit/Drafts.swift`, `Timeline/TimelineView.swift` | Text, mentions, reply target and ready files, by server and `room_id`, in `drafts.json`. Ladle keeps them across a relaunch, where the web keeps them for the page only. An edit is not kept, as on the web. |
+| Warn before reload that unsent text is lost | #7 | N/A-iOS | | No reload. Drafts persist instead (row above). |
 | Room address in the URL fragment; paste a link into an open tab | #86, #114 | N/A-iOS | | iOS uses `@SceneStorage` and `onOpenURL`. Deep links are in section 15. |
 | Back and Forward between rooms visited | #85, "Back and Forward move between rooms and threads" | N/A-iOS | | The navigation stack and the back swipe cover this. |
 
@@ -295,7 +295,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | `/nick`, `/join`, `/leave`, `/topic`, `/kick`, `/invite` handled by the client | bh | missing | | All go to the server. UX.md 3.7 chose that. |
 | `//` posts a message starting with `/` | bh | has | `Kit/DraftField.swift` | |
 | Failed command gives the draft back | bh | partial | `Kit/ServerSession.swift` outbox | Not verified in code: the draft returns. |
-| Drafts per room | bh | missing | | See section 2. |
+| Drafts per room | bh | has | `Kit/Drafts.swift` | See section 2. Reply keeps the text; an edit sits beside the draft and gives it back. |
 | Link previews above the composer with × to drop | #11, #19 | missing | | |
 | Rate limit: Send counts down under "Sending is paused" | #109 | missing | | Kit waits. No countdown shows. |
 | Uploads are paused notice (`ext:limits` upload) | #109 | partial | `Kit/ServerSession.swift` | Kit pauses uploads. No notice. |
@@ -508,7 +508,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 1. **Code highlighting.** Every markdown block renders since deac4e3; fenced code still has no syntax highlighting. S.
 2. ~~**Profile card.**~~ Done (`Profile/ProfileCardView.swift`), but for Message, which comes with item 10.
 3. ~~**Your profile and status.**~~ Done: You (`Profile/YouView.swift`) edits the name, bio and avatar and picks a status, with the server's answer.
-4. **Drafts per room.** Keep text, reply target, and attachments per room and thread, and persist them. Leaving a room drops the draft today. S.
+4. ~~**Drafts per room.**~~ Done (`Kit/Drafts.swift`): text, mentions, reply target and ready files per room and thread, kept across a relaunch.
 5. **Typing.** Send `activity typing` (15 s, refresh at most every 12 s) and show others typing above the composer. S.
 6. **Notifications and push.** Local alerts for other rooms while open, then APNs push through a §4.9.2 relay. Add Notify me about scopes, the per-device switch, the first-mention offer, the app badge, tap to open, closing notifications once read, and a test notification. Push, never polling. L.
 7. **Mute and pause.** Mute a room or thread from its header and row (`status {mute, room_id}`), show the bell-off state, and add Pause notifications. These matter on other devices even before Ladle notifies. M.

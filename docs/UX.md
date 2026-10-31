@@ -98,7 +98,7 @@ Ladle writes the `https` form when you copy or share a link (§A.4), using `Shar
 | Selected server and room or thread, and the stack path | `@SceneStorage` | The same screen |
 | Scroll anchor (the `message_id` at the top edge) | `@SceneStorage` | Same position, or the New divider if new messages arrived |
 | Collapsed server sections | `@AppStorage` | Same |
-| Draft text, reply target, and edit target per room | A file in Application Support, written on change | Same; a reply target that was deleted shows "Message deleted" in the banner |
+| Draft text, mentions, reply target, and ready files per room and thread | `drafts.json` beside `servers.json`, written on change; the files in `Staged` in Application Support, excluded from backup | Same. A reply whose message is not loaded reads "Replying to a message". An open edit is not kept, as apron-web closes its editor when the pane changes; the draft waits beside it. A file still being fitted when the app ends is not kept. |
 | Room list and the last 150 messages of each opened room | A file per server, file protection `completeUntilFirstUserAuthentication` | Shown at once as cached, then replaced by the live session (4.1) |
 | Local read position per room | A file per server | Unread counts (4.3) |
 
@@ -453,7 +453,7 @@ A thread is a room with `parent_room_id`, so it uses 3.5 with these differences.
 - Picking a suggestion inserts `@user_id ` and adds the user to `body.mentions` (§3.5.5). A typed `@user_id` that names exactly one known member counts too. Text alone never mentions anyone. **Judgment call.** Ladle inserts the literal `@user_id` that is sent, rather than a name chip, because a plain `TextField` cannot hold chips. The sent text is then exactly what you see.
 - Commands send everything after `/` as a `command` request. Replies arrive as `~private` notices in the timeline (3.5). A failed command shows its error in the same style. Ladle handles no command locally in v1. **Judgment call**, because §4.1 makes local handling optional.
 - An edit sends again every client field it keeps (`ServerSession.edit` already does this, §4.4). Edit is offered only for your own messages on `edit` servers.
-- Drafts, reply targets, and edit targets are kept per room (2.5). Switching rooms never loses text.
+- Each room and thread keeps its own draft: the text, its mentions, the reply target and the staged files, as apron-web's `PaneDrafts` does, and across a relaunch (2.5), where apron-web instead warns that reloading clears an unsent message. Switching rooms never loses text. Reply keeps the text and files; canceling a reply keeps the text. An edit opens beside the draft and gives it back on save or cancel. A file dropped or picked while you leave the room lands in that room's draft once it is fitted. Sending empties the room's draft. Removing a server removes its drafts and their files; files no draft holds are swept at launch.
 - Typing (the `activity` capability) sends `typing: 15` at most once every 12 s while you type and `typing: 0` when you clear the field. Sending a message sends no `typing: 0` (the web client's rule).
 
 **Return key.** The on-screen keyboard's Return inserts a new line, as in Messages, and Send is the button. On a hardware keyboard, Return sends, ⇧Return and ⌥Return insert a new line, and ⌘Return always sends. **Judgment call** that follows Messages on iPad. The HIG has no guidance on multi-line composers.
