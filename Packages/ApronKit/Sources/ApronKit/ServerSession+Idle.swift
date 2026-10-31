@@ -77,6 +77,7 @@ extension ServerSession {
     /// the app does as it goes to the background, so the server can push what comes after.
     public func suspend(deadline: Duration = .seconds(3)) async {
         setIdle(true, inputAt: idleInputAt)
+        await flushKept()
         if let sending = idleSending {
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await sending.value }

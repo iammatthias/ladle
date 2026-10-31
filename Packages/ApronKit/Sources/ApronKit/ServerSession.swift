@@ -187,6 +187,18 @@ public final class ServerSession {
     /// The server answered a `room_join` or `room_leave` with another's `user_id` as `unsupported`
     /// (§4.2.2): adding and removing others is no longer offered.
     public internal(set) var memberChangesUnsupported = false
+    /// Where this server's history is kept on the device, and for how long; nil keeps nothing.
+    public let keeping: HistoryKeeping?
+    /// Everything this session holds or has kept of the server's history: `store` and what the
+    /// device holds below what `store` shows. What a kept log and an export are written from.
+    public internal(set) var kept = ReplayStore()
+    /// Each restored room's kept sync, while its kept log reaches below what `store` shows:
+    /// older pages come from the device until it runs out (`page`).
+    @ObservationIgnored var keptCoverage: [String: KeptSync] = [:]
+    /// When each room was last caught up, as kept.
+    @ObservationIgnored var caughtUp: [String: Date] = [:]
+    @ObservationIgnored var restoring: Task<Void, Never>?
+    @ObservationIgnored var keptSave: Task<Void, Never>?
 
     /// What to call this server: the name the user gave it, else the server's `title` (§3.1),
     /// else its host. Shown with the host where the user picks a server, so a server can't pass
@@ -202,6 +214,9 @@ public final class ServerSession {
     public var serverAvatarURL: URL? {
         server?.avatar.flatMap { URL(string: $0) }.flatMap { mediaGate.decide($0, for: .avatar).url }
     }
+
+    /// Whether a token is saved for this server, which the next connection resumes with.
+    var hasSavedToken: Bool { ((try? tokens.token(for: record.id)) ?? nil) != nil }
 
     /// Whether this account signed in with scheme `guest`.
     public var isGuest: Bool { record.account?.scheme == "guest" }
@@ -228,10 +243,12 @@ public final class ServerSession {
     private var runTask: Task<Void, Never>?
 
     public init(record: ServerRecord, tokens: any TokenStore, positions: any ReadPositionStore = InMemoryReadPositionStore(),
-                mediaSettings: MediaSettings = MediaSettings(), addedRooms: AddedRooms = AddedRooms(), environment: Environment = .live) {
+                mediaSettings: MediaSettings = MediaSettings(), addedRooms: AddedRooms = AddedRooms(), keeping: HistoryKeeping? = nil,
+                environment: Environment = .live) {
         self.record = record
         self.mediaSettings = mediaSettings
         self.addedRooms = addedRooms
+        self.keeping = keeping
         self.tokens = tokens
         self.positions = positions
         self.environment = environment
@@ -243,6 +260,7 @@ public final class ServerSession {
     public func start() {
         guard runTask == nil else { return }
         status = .connecting
+        restoreKept()
         runTask = Task { await run() }
     }
 
@@ -293,6 +311,7 @@ public final class ServerSession {
                 let reader = Task { for await notification in connection.notifications { handle(notification) } }
                 let resumes = resumesSavedToken
                 resumesSavedToken = true
+                await restoring?.value
                 if resumes, let token = try? tokens.token(for: record.id) {
                     await resume(with: token, on: connection)
                 } else {
@@ -344,6 +363,7 @@ public final class ServerSession {
                     try? tokens.setToken(nil, for: record.id)
                     resumable = false
                     setAccount(nil)
+                    forgetKept()
                     signInNeeded = reason
                     status = .stopped(.signedOut)
                 }
@@ -409,6 +429,7 @@ public final class ServerSession {
             try? tokens.setToken(nil, for: record.id)
             resumable = false
             setAccount(nil)
+            forgetKept()
             signInNeeded = error.message
             status = .signedOut
         } catch {
@@ -515,6 +536,7 @@ public final class ServerSession {
         resetMutes()
         limits = [:]
         memberChangesUnsupported = false
+        forgetKept()
     }
 
     // MARK: Frames
@@ -581,9 +603,17 @@ public final class ServerSession {
     /// snapshots the server has expired.
     private func install(_ records: Records) {
         store.apply(records)
+        kept.apply(records)
         for (room, delivery) in records.rooms {
-            if let floor = delivery.floor { store.raiseFloor(of: room.roomID, to: floor) }
+            if let floor = delivery.floor { raiseFloor(of: room.roomID, to: floor) }
         }
+        keptChanged()
+    }
+
+    /// The server has expired a room's history below `floor`: what is kept goes too.
+    private func raiseFloor(of roomID: String, to floor: LogID) {
+        store.raiseFloor(of: roomID, to: floor)
+        kept.raiseFloor(of: roomID, to: floor)
     }
 
     private func applyRoomList(_ result: JSONValue) {
@@ -680,7 +710,23 @@ public final class ServerSession {
         return shown()
     }
 
+    /// The page before `before`, from what the device keeps while its kept log reaches there,
+    /// then from the server (apron-web's `olderPage`).
     private func page(_ roomID: String, before: LogID, limit: Int) async throws {
+        if let cover = keptCoverage[roomID] {
+            let log = kept.logEntries(of: roomID).filter { entry in cover.start.map { entry.logID >= $0 } ?? true }
+            let (slice, more) = LogEntry.slice(log, before: before, limit: limit)
+            if !more { keptCoverage[roomID] = nil }
+            if let first = slice.first {
+                store.apply(Records(entries: slice))
+                histories[roomID]?.receivedBackward(HistoryPage(firstLogID: first.logID, more: more || cover.older))
+                return
+            }
+            guard cover.older else {
+                histories[roomID]?.more = false
+                return
+            }
+        }
         let page = try await history(["room_id": .string(roomID), "before": before.json, "limit": .number(String(limit))])
         histories[roomID]?.receivedBackward(page)
     }
@@ -707,8 +753,11 @@ public final class ServerSession {
         let result = try await connection.request("history", params: params)
         install(Records(historyResult: result))
         let page = HistoryPage(result)
-        if let roomID = params["room_id"]?.stringValue, let floor = page.floor { store.raiseFloor(of: roomID, to: floor) }
-        if let roomID = params["room_id"]?.stringValue, let latest = page.latestLogID { store.noteLatest(of: roomID, latest) }
+        if let roomID = params["room_id"]?.stringValue, let floor = page.floor { raiseFloor(of: roomID, to: floor) }
+        if let roomID = params["room_id"]?.stringValue, let latest = page.latestLogID {
+            store.noteLatest(of: roomID, latest)
+            kept.noteLatest(of: roomID, latest)
+        }
         return page
     }
 
@@ -717,6 +766,31 @@ public final class ServerSession {
     public func canLoadOlder(_ roomID: String) -> Bool {
         guard let state = histories[roomID], state.more, let before = state.olderBefore else { return false }
         return store.floor(of: roomID).map { before >= $0 } ?? true
+    }
+
+    /// Shows what the device kept of this account's history before the connection signs in, as
+    /// apron-web's `ChatClient.restore`: the rooms, users and joined set, each restored room's
+    /// newest entries, and its checkpoint, so the sign-in's catch-up goes on from there. False,
+    /// changing nothing, once the session holds anything of its own.
+    @discardableResult
+    func adopt(_ restore: KeptRestore) -> Bool {
+        guard you == nil, histories.isEmpty, store == ReplayStore(), record.account?.userID == restore.you.userID else { return false }
+        you = restore.you
+        for user in restore.users { users.merge(user) }
+        joinedRoomIDs = restore.joined
+        kept = restore.kept
+        store.apply(restore.listing)
+        for (room, delivery) in restore.listing.rooms {
+            if let floor = delivery.floor { store.raiseFloor(of: room.roomID, to: floor) }
+        }
+        for (roomID, room) in restore.rooms {
+            store.apply(Records(entries: room.window))
+            histories[roomID] = room.history
+            keptCoverage[roomID] = room.sync
+            caughtUp[roomID] = room.sync.caughtUpAt
+        }
+        readPositions = positions.positions(server: record.id, user: restore.you.userID)
+        return true
     }
 
     // MARK: Operations
@@ -1180,6 +1254,11 @@ struct HistoryPage {
     var more: Bool
     var latestLogID: LogID?
     var floor: LogID?
+
+    init(firstLogID: LogID?, more: Bool) {
+        self.firstLogID = firstLogID
+        self.more = more
+    }
 
     init(_ result: JSONValue) {
         firstLogID = LogID(result["first_log_id"])

@@ -100,10 +100,10 @@ Ladle writes the `https` form when you copy or share a link (§A.4), using `Shar
 | Scroll anchor (the `message_id` at the top edge) | `@SceneStorage` | Same position, or the New divider if new messages arrived |
 | Collapsed server sections | `@AppStorage` | Same |
 | Draft text, mentions, reply target, and ready files per room and thread | `drafts.json` beside `servers.json`, written on change; the files in `Staged` in Application Support, excluded from backup | Same. A reply whose message is not loaded reads "Replying to a message". An open edit is not kept, as apron-web closes its editor when the pane changes; the draft waits beside it. A file still being fitted when the app ends is not kept. |
-| Room list and the last 150 messages of each opened room | A file per server, file protection `completeUntilFirstUserAuthentication` | Shown at once as cached, then replaced by the live session (4.1) |
+| Rooms, users and each opened room's history within the Retention (Preferences > History) | `History/<server id>.jsonl` beside `servers.json`, in ARCHIVE.md's form; excluded from backup, file protection `completeUntilFirstUserAuthentication` | Shown at once, before the connection signs in; each room then catches up from its kept checkpoint (4.1) |
 | Local read position per room | A file per server | Unread counts (4.3) |
 
-The cache is for display only. It never sends a read cursor and never counts as unread (the web client's rule). Ladle drops it on sign-out, on server removal, and when the server signs in as a different `user_id`. Tokens never go in these files.
+Kept history is apron-web's history cache and kept view (#56, #137) in one file per server, for the one account signed in there, and only for an account Ladle signs back in to (a saved token), never a passing guest's. It holds what was loaded, from where each opened room's unbroken run of records starts, clamped at the Retention by `log_id` where the server's positions are times: 30 days by default; a day, a week, a year or forever; or Don't Keep, which still keeps the last day of each room, up to 150 messages, as apron-web's kept view does. A room not caught up since before the cutoff starts over from its newest page, as apron-web's `plannedRoom`. A relaunch shows each room's newest 50 entries; scrolling back pages from the device until its kept run ends, then from the server. It is written two seconds after a change and at once as the app goes to the background. Signing out, a token the server refuses, signing in as a different `user_id`, and removing the server delete it. It is left out of backups: the server holds the history, and a backup would carry a signed-out account's chats past the sign-out. Tokens never go in these files.
 
 ## 3. Screens
 
@@ -592,7 +592,7 @@ Connection state is not a screen. It is one model, rendered in the Rooms section
 - **Notifications.** Whether iOS lets Ladle notify (On, Off in Settings with **Open Settings**, or asked with your first reminder): Ladle notifies for Remind Me; alerts for messages need push (§4.9), not built. Then **Pause Notifications** for each server with `status` (3.11's former section, as apron-web's PauseNotifications), headed with the server's name when several show.
 - **Appearance.** 3.15.
 - **Media.** Below.
-- **History.** Ladle keeps no messages on this device, so there is no retention to choose; it keeps read positions, drafts and reminders until the server goes. Export Chats and Open an Export read "Not yet" (PARITY section 22).
+- **History.** **Retention**, apron-web's six choices in its words (Don't keep, A day, A week, 30 days, A year, Forever; 30 days by default), for every server, with "Signing out deletes stored history." Under it, "Using about 12 MB." (every server's kept history as last written), or in red why keeping stopped ("There isn't enough space on this device to keep more history."). A new choice rewrites what each server keeps at once (2.5). Export Chats and Open an Export read "Not yet" (PARITY section 22).
 
 **Media layout.**
 
@@ -719,7 +719,7 @@ The session is live by default. The UI says something only when it is not live, 
 ### 4.4 Privacy
 
 - Tokens live only in the Keychain, as one generic password per server id with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` (`KeychainStore`). [privacy] says "Store sensitive information in a keychain." They are never in `servers.json`, the message cache, logs, or state restoration.
-- Cached messages are display-only files with complete-until-first-auth protection (2.5). Sign-out and server removal delete them.
+- Kept history is one file per server with complete-until-first-auth protection, excluded from backup (2.5). Sign-out, a refused token, another account and server removal delete it.
 - The camera purpose string is "Ladle uses the camera to scan sign-in QR codes, and to take photos and videos you attach to messages." It is a full sentence in sentence case, active voice, ending with a period ([privacy]: "Aim for a brief, complete sentence that's straightforward, specific, and easy to understand."). Ladle asks only when you tap Scan QR Code or take a photo or video.
 - Ladle loads media where Preferences says (3.14): by default from the server's own origin, the origins it names with `ext:media`, and your trusted sites (§4.8.1, §5.5). Media in the timeline from anywhere else waits for a tap. Avatars and custom emoji from anywhere else don't load, so initials and keys show instead. `MediaGate.decide` is the one place this is decided.
 - Ladle connects to a new server only after you tap Connect (§A.4).
@@ -826,7 +826,7 @@ The web-parity pass (2026-10-28) closed most of the list. "Partial" names what i
 |---|---|
 | 1. Outbox | Closed in memory: `ServerSession.post` queues with one request `id` per message, resends it across reconnects and timeouts, and shows "Sending…" or "Not sent" with Retry and Delete. Partial: the outbox is not saved across launches, and `too_large` marks the message "Not sent" instead of returning the text to the composer. |
 | 2. Modal errors and sign-in | Closed. Failures are inline banners; sign-in is a banner with **Sign In**, never a sheet that opens itself. |
-| 3. iPad, rotation, restoration, links | Partial. iPad split view, landscape, `@SceneStorage` for the open server and room, and `apron:` and link.apron.chat links are in. The on-disk cache is not, so a relaunch still waits for the socket. |
+| 3. iPad, rotation, restoration, links | Partial. iPad split view, landscape, `@SceneStorage` for the open server and room, and `apron:` and link.apron.chat links are in, and kept history shows a relaunch's rooms at once (2.5). |
 | 4. Unread and mentions | Closed. Counts, `@` counts, the New line, and the jump bar. |
 | 5. Notices and commands | Closed. Notices show as callouts; `/` sends a `command`, `//` a message. |
 | 6. Rendering bugs | Closed. |

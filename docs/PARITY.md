@@ -38,14 +38,14 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
-| Restore the last view on relaunch | #56 | partial | `App/RootView.swift` (`@SceneStorage` server and room) | Server and room come back. Messages wait for the socket. |
-| Kept view: rooms, last day of messages (150 per room), members, shown at once | #56, #102 | missing | | No on-disk cache. UX.md 2.5 plans one. |
+| Restore the last view on relaunch | #56 | has | `App/RootView.swift` (`@SceneStorage` server and room), `Kit/ServerSession+History.swift` | Server and room come back, and their messages show from what was kept before the socket opens. |
+| Kept view: rooms, last day of messages (150 per room), members, shown at once | #56, #102 | has | `Kit/KeptHistory.swift` (`KeptRestore`), `Kit/ServerSession+History.swift` | One file with the history below, not a second cache: under Don't Keep it holds the last day, 150 per room, as the web's view. The server's title and capabilities come with the connection, where the web keeps its `server` frame too. |
 | Placeholder rooms and messages on a first visit, "Connecting…" then "Loading messages…" | bh | missing | | |
-| History kept on device with Retention (a day, a week, 30 days, a year, forever, none) | #137 | missing | | |
-| Catch up from the kept checkpoint (`latest_log_id`, §4.3.5) | #137 | partial | `Kit/ServerSession.swift` checkpoints | In memory only. Lost on relaunch. |
-| Older pages from the device first, then the server | #137 | missing | | |
-| Preferences says how much is kept, and why it stopped | #137 | missing | | |
-| History deleted on sign-out, kept apart per account and server | #137 | missing | | Nothing kept yet. |
+| History kept on device with Retention (a day, a week, 30 days, a year, forever, none) | #137 | has | `Kit/KeptHistory.swift` (`HistoryRetention`, `HistorySettings`), `Kit/Archive.swift`, `Servers/PreferencesView.swift` (`HistoryPreferences`) | `History/<server id>.jsonl` in ARCHIVE.md's form, excluded from backup. 30 days by default; cut by `log_id` where positions are times, as the web. A room not caught up since the cutoff starts over (`plannedRoom`). |
+| Catch up from the kept checkpoint (`latest_log_id`, §4.3.5) | #137 | has | `Kit/ServerSession.swift` (`adopt`, `catchUp`) | Each kept room's checkpoint comes back, and the sign-in's catch-up pages forward from it. |
+| Older pages from the device first, then the server | #137 | has | `Kit/ServerSession.swift` (`page`), `Kit/LogEntry.swift` (`slice`) | A relaunch shows the newest 50 entries (`RESTORE_WINDOW`); older pages come from the kept log, then the server once it runs out. |
+| Preferences says how much is kept, and why it stopped | #137 | has | `Servers/PreferencesView.swift` (`HistoryPreferences`) | "Using about 12 MB." from the bytes last written, every server's together, where the web asks the browser's estimate; a full disk or a failed write says so in red. |
+| History deleted on sign-out, kept apart per account and server | #137 | has | `Kit/ServerSession+History.swift` (`forgetKept`), `Kit/SessionStore.swift` (`remove`) | One account per server. Sign-out, a refused token, signing in as someone else and removing the server delete it. |
 | Drafts kept per room and thread | bh, `pane-drafts.svelte.ts` | has | `Kit/Drafts.swift`, `Timeline/TimelineView.swift` | Text, mentions, reply target and ready files, by server and `room_id`, in `drafts.json`. Ladle keeps them across a relaunch, where the web keeps them for the page only. An edit is not kept, as on the web. |
 | Warn before reload that unsent text is lost | #7 | N/A-iOS | | No reload. Drafts persist instead (row above). |
 | Room address in the URL fragment; paste a link into an open tab | #86, #114 | N/A-iOS | | iOS uses `@SceneStorage` and `onOpenURL`. Deep links are in section 15. |
@@ -390,7 +390,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Send `read_message_id`, throttled | #132 | has | `Kit/ServerSession.swift` (`markRead`, 5 s) | Web throttles at 10 s. |
 | Read cursors from other devices | bh | has | `Kit/ServerSession.swift` (`activity`) | |
 | `read_cursors: false` sends none | #130 | has | `Kit/ServerInfo.swift` (`keepsReadCursors`) | |
-| Unread kept through a reload | #128 | partial | `Kit/ReadPositions.swift` | Positions persist. Messages don't, so counts rebuild only after loading. |
+| Unread kept through a reload | #128 | has | `Kit/ReadPositions.swift`, `Kit/ServerSession+History.swift` | Positions persist, and so do the kept messages, so counts show before the connection signs in. |
 | Count only where the server keeps cursors | #130 | has | `Kit/ServerSession.swift` (`unreadCount`) | |
 | A room someone added you to counts from your join | bh | missing | | |
 | Unread in the tab title | bh | N/A-iOS | | The app icon badge is the iOS form (section 20). |
@@ -438,7 +438,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
-| Preferences with Profile, Notifications, Appearance, Media, History, in the web's order | #23, #171, #177, #184 | has | `Kit/PreferencesSection.swift`, `Servers/PreferencesView.swift` | A list of the five, each a screen. Profile and Notifications are per server: for the server it was opened for, else a list of those signed in. Notifications has what Ladle notifies (Remind Me's permission) and each server's Pause; History says Ladle keeps no messages and export is not built (section 22). Show Link Previews stays in the Settings app. |
+| Preferences with Profile, Notifications, Appearance, Media, History, in the web's order | #23, #171, #177, #184 | has | `Kit/PreferencesSection.swift`, `Servers/PreferencesView.swift` | A list of the five, each a screen. Profile and Notifications are per server: for the server it was opened for, else a list of those signed in. Notifications has what Ladle notifies (Remind Me's permission) and each server's Pause; History has Retention and how much is kept (section 2); export is not built (section 22). Show Link Previews stays in the Settings app. |
 | Open Preferences at a section from elsewhere (`preferencesOpener`), Back through the sections opened | #184 | has | `Servers/PreferencesView.swift` (`openPreferences`, `PreferencesRequest`), `App/RootView.swift` | The profile bar opens Profile for its server; Back goes to the list. |
 | The open section in the page address (`#room=…&preferences=media`) | #184 | N/A-iOS | `Kit/PreferencesSection.swift`, `Kit/ApronLink.swift` | apron-web's own page address, not a link.apron.chat key, and no client writes it in a link. `ApronLink` refuses a link that names only `preferences` and keeps the key unread beside a place (`PreferencesSectionTests`). |
 | Pause notifications in Preferences > Notifications | #184 | has | `Profile/PauseSection.swift` | Moved out of Profile, as the web's. |
@@ -535,7 +535,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 8. ~~**Threads.**~~ Done (`Kit/Threads.swift`, `Rooms/RoomFormSheet.swift`): Start Thread from a message, Description on New Thread, Other Threads with last active times, joined threads by activity under the open room and those with news elsewhere, "Untitled", "N+ replies". A private room's members are added to its new threads since item 10.
 9. ~~**Room header.**~~ Done (`Kit/RoomHeader.swift`, `Kit/HiddenDescriptions.swift`): the pinned Description with expand and dismiss, Show Description, Edit room or thread, Copy Link in the ⋯ menu, and Copy Link and Mark as Read on a row. Search local history waits for item 16.
 10. ~~**Private rooms and direct messages.**~~ Done (`Kit/PrivateRooms.swift`, `Rooms/NewPrivateSheet.swift`): New Room with Private, New private conversation with a people picker, Message on the profile card, the Private section with faces, rooms named for their members, the header line and plum wash, the intro card, the "You were added" banner, the private room limit, and a private room's members added to its new threads. A room someone added you to counting unread from your join (section 19) is not built.
-11. **Kept view and local history.** Cache rooms and recent messages on disk so a relaunch shows them at once. Keep history with Retention, delete it on sign-out, and page older messages from the device first. L.
+11. ~~**Kept view and local history.**~~ Done (`Kit/KeptHistory.swift`, `Kit/ServerSession+History.swift`, `Kit/Archive.swift`). Cache rooms and recent messages on disk so a relaunch shows them at once. Keep history with Retention, delete it on sign-out, and page older messages from the device first. L.
 12. ~~**Join, leave, and rename lines.**~~ Done (`Kit/MembershipLines.swift`): netted per run, baselines of 21 joins skipped, adds as joins and renames in rooms and threads (#170).
 13. **Open at the New divider.** Land on the divider instead of the latest message. Needs a device to verify the scroll. S.
 14. ~~**Member management.**~~ Done (`Kit/Members.swift`, `Timeline/AddMembersSheet.swift`, `Timeline/MemberList.swift`): Add People with the people picker, Remove from Room after a confirmation, and the member menu (Profile, Direct Message, Remove) on a long press, a tap opening the card. A server that answers `unsupported` stops the offers.

@@ -24,6 +24,10 @@ public final class SessionStore {
     public let addedRooms: AddedRooms
     /// Whether anyone attends the app, which every session tells its server (§4.5 `idle`).
     public let attention: Attention
+    /// How long history is kept on this device, for every server, kept beside `servers.json`.
+    public let historySettings: HistorySettings
+    /// Where each server's history is kept (`History`, beside `servers.json`); nil keeps none.
+    private let historyFiles: (any HistoryFiles)?
 
     private let serverStore: ServerStore?
     private let tokens: any TokenStore
@@ -33,9 +37,11 @@ public final class SessionStore {
     /// `serverStore` nil keeps the list, the read positions, the reminders and the drafts in memory
     /// only. A kept store sweeps staged files no draft holds.
     public init(serverStore: ServerStore?, tokens: any TokenStore, environment: ServerSession.Environment = .live,
-                notifier: any ReminderNotifier = SilentReminderNotifier()) {
+                notifier: any ReminderNotifier = SilentReminderNotifier(), historyFiles: (any HistoryFiles)? = nil) {
         self.serverStore = serverStore
         self.tokens = tokens
+        historySettings = HistorySettings(directory: serverStore?.directory)
+        self.historyFiles = historyFiles ?? serverStore.map { FileHistoryFiles(directory: $0.directory) }
         positions = serverStore.map { FileReadPositionStore(directory: $0.directory) } ?? InMemoryReadPositionStore()
         reminders = Reminders(store: serverStore.map { FileReminderStore(directory: $0.directory) } ?? InMemoryReminderStore(),
                               notifier: notifier)
@@ -68,6 +74,13 @@ public final class SessionStore {
 
     public func session(for id: UUID) -> ServerSession? { sessions[id] }
 
+    /// Keeps history this long from now on: what each server keeps is written again at once,
+    /// within it, as apron-web's `setRetention` prunes.
+    public func setRetention(_ retention: HistoryRetention) async {
+        historySettings.update(retention)
+        for session in sessions.values { await session.flushKept() }
+    }
+
     @discardableResult
     public func add(_ record: ServerRecord) -> ServerSession {
         if let existing = sessions[record.id] { return existing }
@@ -87,7 +100,11 @@ public final class SessionStore {
     /// Stops the session and forgets the server, its token, its reminders, its drafts and the
     /// descriptions put away there.
     public func remove(_ id: UUID) async {
-        await sessions.removeValue(forKey: id)?.stop()
+        if let session = sessions.removeValue(forKey: id) {
+            await session.stop()
+            session.forgetKept()
+        }
+        historyFiles?.remove(id)
         await reminders.removeAll(server: id)
         drafts.removeAll(server: id)
         hiddenDescriptions.removeAll(server: id)
@@ -99,7 +116,9 @@ public final class SessionStore {
 
     @discardableResult
     private func startSession(for record: ServerRecord) -> ServerSession {
-        let session = ServerSession(record: record, tokens: tokens, positions: positions, mediaSettings: mediaSettings, addedRooms: addedRooms, environment: environment)
+        let keeping = historyFiles.map { HistoryKeeping(files: $0, settings: historySettings) }
+        let session = ServerSession(record: record, tokens: tokens, positions: positions, mediaSettings: mediaSettings, addedRooms: addedRooms,
+                                    keeping: keeping, environment: environment)
         session.onRecordChange = { [weak self] changed in self?.accountChanged(changed) }
         session.onInput = { [weak self] in self?.attention.input() }
         if attention.idle { session.setIdle(true, inputAt: attention.inputAt) }

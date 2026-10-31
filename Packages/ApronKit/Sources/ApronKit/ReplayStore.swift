@@ -19,9 +19,9 @@ public struct ReplayStore: Sendable, Equatable {
     /// Every membership record seen, superseded or not, by room in `log_id` order: what the
     /// timeline's join and leave lines are read from (`MembershipRecord`).
     private var membershipLogs: [String: [MembershipRecord]] = [:]
-    /// Every room record's title seen, superseded or not, by room and `log_id`: what renames are
-    /// read from.
-    private var roomTitles: [String: [LogID: String]] = [:]
+    /// Every logged room record seen, superseded or not, by room and `log_id`: what renames are
+    /// read from, and what a kept log or an export writes back.
+    private var roomLogs: [String: [LogID: RoomRecord]] = [:]
     /// The newest `log_id` the server has said each room's log holds (`latest_log_id`). Never lowered.
     private var latest: [String: LogID] = [:]
 
@@ -47,8 +47,8 @@ public struct ReplayStore: Sendable, Equatable {
     /// under the replay rule, except that a room's member list is seeded with its record.
     public mutating func apply(_ records: Records) {
         for (record, delivery) in records.rooms {
-            if let logID = record.logID, roomTitles[record.roomID]?[logID] == nil {
-                roomTitles[record.roomID, default: [:]][logID] = record.title?.stringValue ?? ""
+            if let logID = record.logID, roomLogs[record.roomID]?[logID] == nil {
+                roomLogs[record.roomID, default: [:]][logID] = record
             }
             put(room: record)
             if let latest = delivery.latestLogID { noteLatest(of: record.roomID, latest) }
@@ -159,7 +159,7 @@ public struct ReplayStore: Sendable, Equatable {
     public func latestLogID(of roomID: String) -> LogID? { latest[roomID] }
 
     /// The least `log_id` of the room's records seen, superseded or not: how far back its known history goes.
-    public func firstRecordLogID(of roomID: String) -> LogID? { roomTitles[roomID]?.keys.min() }
+    public func firstRecordLogID(of roomID: String) -> LogID? { roomLogs[roomID]?.keys.min() }
 
     /// The room's membership records, by `log_id`.
     public func membershipLog(of roomID: String) -> [MembershipRecord] { membershipLogs[roomID] ?? [] }
@@ -168,10 +168,27 @@ public struct ReplayStore: Sendable, Equatable {
     /// the one before it among those seen, as apron-web's `roomRenames`. History compaction may
     /// drop records, so a rename between two unseen ones is missed.
     public func renames(of roomID: String) -> [RoomRename] {
-        let titles = (roomTitles[roomID] ?? [:]).sorted { $0.key < $1.key }
+        let titles = (roomLogs[roomID] ?? [:]).map { (logID: $0.key, title: $0.value.title?.stringValue ?? "") }.sorted { $0.logID < $1.logID }
         return zip(titles, titles.dropFirst()).compactMap { previous, current in
-            current.value == previous.value ? nil : RoomRename(logID: current.key, title: current.value, previous: previous.value)
+            current.title == previous.title ? nil : RoomRename(logID: current.logID, title: current.title, previous: previous.title)
         }
+    }
+
+    /// The room's log as kept here, in `log_id` order: every logged room record seen, the
+    /// messages homed in it, their reaction sets, and its membership records, each at its
+    /// `log_id`. What the device pages older history from, and what a kept log writes.
+    public func logEntries(of roomID: String) -> [LogEntry] {
+        var entries: [LogEntry] = (roomLogs[roomID] ?? [:]).map { .room($0.value) }
+        for snapshot in messages(in: roomID) {
+            entries.append(.message(snapshot))
+            for set in (reactions[snapshot.messageID] ?? [:]).values.sorted(by: { codePointLess($0.from.userID, $1.from.userID) }) {
+                entries.append(.reaction(set))
+            }
+        }
+        for record in membershipLogs[roomID] ?? [] {
+            entries += record.entries.map { .membership(Membership(logID: record.logID, roomID: roomID, user: $0.user, joined: $0.joined)) }
+        }
+        return entries.sorted { $0.logID < $1.logID }
     }
 
     private mutating func unhome(_ messageID: LogID, from roomID: String) {
@@ -184,6 +201,14 @@ public struct ReplayStore: Sendable, Equatable {
     public func room(_ roomID: String) -> RoomRecord? { rooms[roomID] }
 
     public func message(_ messageID: LogID) -> MessageSnapshot? { messages[messageID] }
+
+    /// Every message snapshot held, in any room, in numeric `message_id` order.
+    public var allMessages: [MessageSnapshot] { messages.values.sorted { $0.messageID < $1.messageID } }
+
+    /// Each user's reaction set on a message, by `user_id`.
+    public func reactionSets(on messageID: LogID) -> [ReactionSet] {
+        (reactions[messageID] ?? [:]).values.sorted { codePointLess($0.from.userID, $1.from.userID) }
+    }
 
     /// Every room with a stored record, a message homed in it, or member state, in string order.
     public var roomIDs: [String] {

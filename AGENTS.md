@@ -29,8 +29,9 @@ clone), which is only a worked example.
     snapshots by `message_id`, reaction sets by `(message_id, user_id)`, memberships by
     `(room_id, user_id)`) under the replay rule, member-list seeding as of a position, re-homing
     on moves, and the README's logical projection. `ext` stays a `JSONValue`. It also logs every
-    membership record (`membershipLog(of:)`, dropped below the retention floor) and every room
-    record's title (`renames(of:)`) it sees, superseded or not, for the timeline's lines.
+    membership record (`membershipLog(of:)`, dropped below the retention floor) and every logged
+    room record (`renames(of:)` reads their titles) it sees, superseded or not, for the
+    timeline's lines and for what a kept log writes back.
   - `TextDirection`: what users write takes its direction from its first strong letter (§3.5.2).
     Names, room titles, descriptions, the server's title and message text show without
     U+202A–U+202E (stored and sent as written); a name or preview set among the app's own
@@ -112,6 +113,8 @@ clone), which is only a worked example.
       it. `reveal(_:in:)` pages back 200 changes at a time until the timeline holds a message a
       link names, the loaded history reaches past it, or the floor stops it, so the timeline
       stays one unbroken run. A page arriving after an older one leaves paging where it is.
+      `page` asks the device first while a restored room's kept log reaches below what
+      `store` shows (`keptCoverage`), then the server.
     - Threads: a thread's record is in its own log (§4.3.1), not its room's, so a member of the
       room who has not joined it learns of it from `room_update` `updated` while connected, and
       otherwise only from `room_list {parent_room_id, filter: not_joined}` (§4.2.1). `open` and
@@ -329,6 +332,27 @@ clone), which is only a worked example.
   - `ServerRecord`, `ServerStore`, `TokenStore`, `ReadPositionStore`: the saved servers (JSON, no
     secrets), the seam for the bearer token, and the read positions. The in-memory stores are
     for tests.
+  - Kept history (`KeptHistory.swift`, `ServerSession+History.swift`, `Archive.swift`,
+    `LogEntry.swift`), as apron-web's `history-keeper.ts` and `session-cache.ts` (#56, #137) in
+    one file: `History/<server id>.jsonl` beside `servers.json` (`FileHistoryFiles`, excluded
+    from backup), only while `resumable`, one account per server. The file is an archive
+    (`Archive`, apron-web's ARCHIVE.md: header, listing, one record per line in `log_id` order;
+    keys in code point order, where the web writes them as received) whose header carries
+    `ladle_kept.rooms`, each opened room's `KeptSync` (checkpoint, where its kept run starts,
+    whether the server has older, floor, when it was last caught up). `ServerSession.kept` is a
+    second `ReplayStore` that every `install` also applies, so it holds `store` and what the
+    device keeps below it; it is what is written, two seconds after a change and in `suspend`.
+    `HistoryRetention` is apron-web's `RETENTIONS` (30 days by default; `off` keeps a day, 150 per
+    room, as the web's kept view) and `HistorySettings` keeps the choice in
+    `history-settings.json`; `SessionStore.setRetention` rewrites every server's at once.
+    `KeptRestore` plans a launch as apron-web's `restoredState`: a room not caught up since the
+    cutoff starts over, a kept run starts no lower than the cutoff (by `log_id` where positions
+    are times, `LogID.isTimeLike`), and the newest 50 entries show (`KeptRestore.window`).
+    `start` reads it off the main actor and `adopt`s it before `run` resumes the token, so the
+    sign-in's catch-up goes on from each kept checkpoint. `forgetKept` deletes it on sign-out,
+    a refused token, another account (`resetChatState`) and server removal.
+    `ReplayStore.logEntries(of:)` is a room's log as `LogEntry`s, and `LogEntry.slice` is
+    apron-web's `sliceLog`.
   - `Reminders` (`Reminders.swift`): Remind Me, on this device only. One `Reminder` per
     `ReminderKey` (server id, room, message), kept in `reminders.json` beside `servers.json`
     (`FileReminderStore`) and owned by `SessionStore`, which drops a server's reminders with it.
@@ -474,7 +498,7 @@ clone), which is only a worked example.
   context menu and the room's ⋯ menu; `MutedBell`), a muted row's bell-off and quiet count, the
   header's bell-off button, the profile bar's paused line, and Preferences > Notifications' Pause
   (`Profile/PauseSection.swift`);
-  `Servers/` (the server list and iPad rail, `PreferencesView`: apron-web's Preferences (#184), its five sections (`PreferencesSection`) in a navigation stack, opened from the list's toolbar, the rail's foot and the profile bar (Profile, for that server) through `openPreferences`, which `RootView` presents, at a section when asked: Profile (`YouView`, not `standalone`), Notifications (Remind Me's permission and each server's `PauseSection`), Appearance, Media (the media policy and trusted sites), History (what Ladle keeps); `AppearanceView`: the mode, the themes with swatches, `ThemeCSSView` (the custom CSS) and `BaseColorsView` (the color pickers); `ConnectView`: add a server and sign in in one
+  `Servers/` (the server list and iPad rail, `PreferencesView`: apron-web's Preferences (#184), its five sections (`PreferencesSection`) in a navigation stack, opened from the list's toolbar, the rail's foot and the profile bar (Profile, for that server) through `openPreferences`, which `RootView` presents, at a section when asked: Profile (`YouView`, not `standalone`), Notifications (Remind Me's permission and each server's `PauseSection`), Appearance, Media (the media policy and trusted sites), History (`HistoryPreferences`: Retention, how much is kept, why keeping stopped); `AppearanceView`: the mode, the themes with swatches, `ThemeCSSView` (the custom CSS) and `BaseColorsView` (the color pickers); `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, `RateLimitNotice` and Send's countdown over the composer while a wait holds it back, composer with the
   mention list, the custom emoji `:` list, the `#` room list and the command list (`CommandSuggestions`: usage and
   summary, scrolling past five rows; picking fills `/name ` and keeps the keyboard up), reaction picker (custom emoji by category first),

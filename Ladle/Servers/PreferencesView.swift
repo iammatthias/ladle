@@ -44,7 +44,7 @@ struct PreferencesView: View {
                 case .notifications: NotificationsPreferences(store: store, server: server)
                 case .appearance: AppearanceView(editor: editor)
                 case .media: MediaPreferences(store: store)
-                case .history: HistoryPreferences()
+                case .history: HistoryPreferences(store: store)
                 }
             }
         }
@@ -247,15 +247,27 @@ private struct MediaPreferences: View {
     }
 }
 
-/// History, as apron-web's, as far as Ladle keeps any: it keeps no messages on this device, so
-/// there is no retention to choose, and export is not built yet.
+/// History, as apron-web's (#137): how long messages are kept on this device, how much that
+/// takes, and why keeping stopped.
 private struct HistoryPreferences: View {
+    let store: SessionStore
+
     var body: some View {
+        let settings = store.historySettings
         Form {
             Section {
-                LabeledContent("Messages Kept", value: "None")
+                Picker("Retention", selection: Binding(get: { settings.retention }, set: { retention in Task { await store.setRetention(retention) } })) {
+                    ForEach(HistoryRetention.allCases, id: \.self) { Text($0.label).tag($0) }
+                }
+                if let failure = settings.failure {
+                    Text(failure).apText(.sm).foregroundStyle(Palette.danger)
+                } else if settings.retention != .off, let used = settings.used {
+                    Text("Using about \(used).").apText(.sm).foregroundStyle(Palette.inkMuted)
+                }
             } footer: {
-                Text("Ladle keeps no messages on this device: each room loads from its server when you open it. It keeps how far you have read, your drafts and your reminders, until you remove the server.")
+                Text(settings.retention == .off
+                     ? "Signing out deletes stored history. Ladle still keeps the last day of each room, up to 150 messages, so it opens at once."
+                     : "Signing out deletes stored history.")
             }
             .listRowBackground(Palette.raised)
             Section {
