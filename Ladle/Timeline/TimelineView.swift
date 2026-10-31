@@ -40,6 +40,7 @@ struct TimelineView: View {
     @State private var sentCount = 0
     @State private var viewing: MediaRequest?
     @State private var selecting: SelectableBody?
+    @State private var signInQR: SignInQRRequest?
     @State private var remindingAt: CustomReminder?
     @State private var profile: ProfileRequest?
     /// Start Thread's form, suggested from its message.
@@ -107,6 +108,11 @@ struct TimelineView: View {
                             MessageBlocksView(blocks: MessageText.blocks(notice.body, rooms: session.referencedTitle), catalog: nil, role: .ui,
                                               gate: session.mediaGate, settings: session.mediaSettings)
                                 .tint(Palette.denim)
+                            ForEach(menu.signInLinks, id: \.self) { link in
+                                Button("Show QR Code", systemImage: "qrcode") { signInQR = SignInQRRequest(link: link) }
+                                    .buttonStyle(GhostButtonStyle(tone: Palette.accent))
+                                    .padding(.leading, -Tokens.Space.s3)
+                            }
                         }
                             .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Tokens.Radius.md))
                             .contextMenu { noticeActions(menu) }
@@ -202,6 +208,9 @@ struct TimelineView: View {
         }
         .sheet(item: $selecting) { selected in
             SelectTextSheet(text: selected.text) { selecting = nil }
+        }
+        .sheet(item: $signInQR) { request in
+            SignInQRSheet(link: request.link) { signInQR = nil }
         }
         .sheet(item: $remindingAt) { pending in
             ReminderDateSheet(date: Binding(get: { remindingAt?.date ?? pending.date }, set: { remindingAt?.date = $0 }),
@@ -679,11 +688,14 @@ struct TimelineView: View {
         }
     }
 
-    /// A notice's menu (`NoticeMenu`): its text, each code span on its own, and its links.
+    /// A notice's menu (`NoticeMenu`): its text, each sign-in link's QR code, each code span on its own, and its links.
     @ViewBuilder
     private func noticeActions(_ menu: NoticeMenu) -> some View {
         Button("Copy Text", systemImage: "doc.on.doc") { UIPasteboard.general.string = menu.text }
         Button("Select Text", systemImage: "selection.pin.in.out") { selecting = SelectableBody(text: menu.text) }
+        ForEach(menu.signInLinks, id: \.self) { link in
+            Button("Show QR Code", systemImage: "qrcode") { signInQR = SignInQRRequest(link: link) }
+        }
         ForEach(menu.code, id: \.self) { code in
             Button { UIPasteboard.general.string = code } label: {
                 Label { Text("Copy \(Text(code).monospaced())").lineLimit(1) } icon: { Image(systemName: "chevron.left.forwardslash.chevron.right") }

@@ -26,8 +26,8 @@ final class ServerIntegrationTests: XCTestCase {
         for server in servers { server.stop() }
     }
 
-    private func startServer() async throws -> Aprond {
-        let server = try await Aprond.start()
+    private func startServer(publicURL: String? = nil) async throws -> Aprond {
+        let server = try await Aprond.start(publicURL: publicURL)
         servers.append(server)
         return server
     }
@@ -153,6 +153,32 @@ final class ServerIntegrationTests: XCTestCase {
         try await waitFor("a typed /help shows") { admin.notices.count == shown + 1 }
         XCTAssertEqual(admin.notices.last.flatMap(CommandHelp.init(notice:)), admin.commands)
         XCTAssertEqual(guest.notices.compactMap(CommandHelp.init(notice:)), [])
+    }
+
+    /// The server writes a sign-in link only when it knows its public address.
+    func testInviteDeviceAddsNoticeOffersItsSignInLinkAsAQRCode() async throws {
+        let server = try await startServer(publicURL: "https://chat.example")
+        let admin = makeSession(server)
+        admin.start()
+        try await waitFor("admin connected") { admin.status == .signedOut }
+        try await admin.signIn(.token(server.adminToken))
+        func code(_ prefix: String, in session: ServerSession) -> (Notice, String)? {
+            session.notices.lazy.compactMap { notice in MessageText.code(notice.body).first { $0.hasPrefix(prefix) }.map { (notice, $0) } }.first
+        }
+        _ = try await admin.send("/invite-token @ada", in: "general")
+        try await waitFor("the invite") { code("apron_invite_", in: admin) != nil }
+        let invite = try XCTUnwrap(code("apron_invite_", in: admin)).1
+
+        let ada = makeSession(server)
+        ada.start()
+        try await waitFor("ada connected") { ada.status == .signedOut }
+        try await ada.signIn(.token(invite))
+        _ = try await ada.send("/invite-device add phone", in: "general")
+        try await waitFor("the notice") { code("apron_device_", in: ada) != nil }
+        let (notice, token) = try XCTUnwrap(code("apron_device_", in: ada))
+        let links = NoticeMenu(notice, in: ada).signInLinks
+        XCTAssertEqual(links.map { ApronLink($0)?.token }, [token])
+        XCTAssertEqual(links.map { ApronLink($0)?.server?.absoluteString }, ["wss://chat.example/ws"])
     }
 
     func testSendReplyEditReactAndDeleteLandInTheReplayStore() async throws {

@@ -74,7 +74,7 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(general.compactMap(\.prevRoomID), ["ops"], "one moved message")
         XCTAssertEqual(general.compactMap { $0.body?["embeds"]?.arrayValue?.first?["kind"]?.stringValue }, ["link", "poll"])
         XCTAssertEqual(home.store.room("ops")?.isPrivate, true)
-        XCTAssertEqual(home.notices.map(\.roomID), ["general"])
+        XCTAssertEqual(home.notices.map(\.roomID), ["general", "ops"], "the release freeze, and /invite-device add's sign-in link")
         XCTAssertEqual(home.store.room(PreviewFixtures.releaseThreadID)?.description?.stringValue, "Ship Friday, then freeze")
         XCTAssertEqual(home.unreadCount(in: "random"), 0, "Sam's pending upload is the newest message")
         let uploads = home.timeline(PreviewFixtures.mediaRoomID).flatMap(\.embedList).compactMap(\.upload)

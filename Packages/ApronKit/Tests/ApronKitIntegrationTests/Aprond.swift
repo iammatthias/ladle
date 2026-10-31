@@ -33,7 +33,9 @@ final class Aprond: @unchecked Sendable {
     /// `arguments` go after the defaults, such as `--upload.max-mb 1`. The defaults let guests post
     /// (read-only otherwise) without the five-a-minute limit every test's guests share, as they
     /// share one address, and offer passkeys to the origin Ladle presents for this port.
-    static func start(_ arguments: [String] = [], file: StaticString = #filePath, line: UInt = #line) async throws -> Aprond {
+    /// `publicURL` sets `--public-url`, which signs links with it and, refusing the log sender, turns
+    /// email sign-in off.
+    static func start(_ arguments: [String] = [], publicURL: String? = nil, file: StaticString = #filePath, line: UInt = #line) async throws -> Aprond {
         guard FileManager.default.isExecutableFile(atPath: binary.path()) else {
             let message = "aprond not found at \(binary.path()); build apron-server-rust or set APROND"
             if ProcessInfo.processInfo.environment["APRON_REQUIRE_SERVER"] == "1" {
@@ -41,7 +43,8 @@ final class Aprond: @unchecked Sendable {
             }
             throw XCTSkip(message)
         }
-        let server = try Aprond(arguments: arguments)
+        let email = publicURL.map { ["--public-url", $0] } ?? ["--email.enable", "--email.sender", "log"]
+        let server = try Aprond(arguments: email + arguments)
         try await server.waitForLog("listening")
         return server
     }
@@ -57,7 +60,7 @@ final class Aprond: @unchecked Sendable {
         process = Process()
         process.executableURL = copy
         process.currentDirectoryURL = directory
-        process.arguments = ["--store", "memory", "--addr", "127.0.0.1:\(port)", "--email.enable", "--email.sender", "log",
+        process.arguments = ["--store", "memory", "--addr", "127.0.0.1:\(port)",
                              "--guest.posting", "--limit.guest-posts-per-minute", "0", "--webauthn.origin", "https://127.0.0.1:\(port)",
                              "--admin-token-file", tokenFile.path()] + arguments
         let stderr = Pipe()

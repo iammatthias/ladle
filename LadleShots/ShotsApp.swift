@@ -35,6 +35,7 @@ enum Screen: String, CaseIterable {
     case directMessage = "direct-message", addedBanner = "added-banner", newPrivate = "new-private", newPrivateGroup = "new-private-group"
     case newRoomPrivate = "new-room-private", privateFull = "private-full", roomsPrivate = "rooms-private"
     case addMembers = "add-members", membersPrivate = "members-private"
+    case signInQRNotice = "signin-qr-notice", signInQRWarning = "signin-qr-warning", signInQRCode = "signin-qr-code"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -348,6 +349,13 @@ enum Renderer {
         case .roleChip:
             // Ada's `@&announce` as a role chip, and the same words in code left as written.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
+        case .signInQRNotice:
+            // `/invite-device add phone`'s notice in ops, with Show QR Code under its link.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: "ops", reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
+        case .signInQRWarning:
+            AnyView(SignInQRSheet(link: URL(string: PreviewFixtures.inviteDeviceLink)!) {})
+        case .signInQRCode:
+            AnyView(SignInQRSheet(link: URL(string: PreviewFixtures.inviteDeviceLink)!, revealed: true) {})
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))

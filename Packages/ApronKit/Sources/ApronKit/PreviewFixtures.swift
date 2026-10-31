@@ -463,6 +463,9 @@ public enum PreviewFixtures {
         notices: [[
             "room_id": "general", "from": ["user_id": "~room", "name": "general"],
             "body": ["text": "Release freeze starts Friday at 18:00 UTC. Type /help for the commands here.", "format": "plain"],
+        ], [
+            "room_id": "ops", "from": ["user_id": "~private", "name": "System message to you"],
+            "body": ["text": .string(inviteDeviceNotice), "format": "markdown"],
         ]],
         activities: [
             ["room_id": .string(typingRoomID), "from": people["ada"]!, "typing": 3600],
@@ -473,6 +476,21 @@ public enum PreviewFixtures {
     )
 
     /// The conversation with Ada: private, untitled, so named for her, its history from its start.
+    /// apron-server-rust's `/invite-device add phone` notice, word for word, with a made-up token.
+    public static let inviteDeviceNotice = """
+        This token signs in as you (`sam`) on your device **phone**. It does not expire, and anyone who has it can sign in as you, so keep it secret. `/invite-device add phone` again replaces it, and `/invite-device remove phone` revokes it.
+
+        ```
+        \(previewDeviceToken)
+        ```
+
+        Or open this link on **phone**, which signs you in there with any Apron app: <\(inviteDeviceLink)>
+
+        To sign in, authenticate with the token scheme: `{"method": "auth", "params": {"scheme": "token", "token": "\(previewDeviceToken)"}}`
+        """
+    public static let inviteDeviceLink = "https://link.apron.chat/#server=wss://home.example/ws&token=\(previewDeviceToken)"
+    private static let previewDeviceToken = "apron_device_PREVIEW-not-a-real-token"
+
     public static let directRoomID = "dm_ada"
     private static let directRoomStart = String(start + 30 * 60_000 - 30_000)
     /// A private room with Bram and Chiara, named "Bram, Chiara".

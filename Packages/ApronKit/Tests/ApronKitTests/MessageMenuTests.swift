@@ -49,4 +49,26 @@ final class MessageMenuTests: XCTestCase {
         XCTAssertNil(NoticeMenu(Notice(roomID: "general", from: UserObject(["user_id": "~room"])!, body: ["text": "hi"]), in: home).title)
         XCTAssertEqual(NoticeMenu(Notice(roomID: "general", from: UserObject(["user_id": "ada"])!, body: ["text": "hi"]), in: home).title, "Ada Okafor")
     }
+
+    func testAPrivateNoticeOffersItsSignInLinksAsWrittenAndNothingElse() async throws {
+        let store = await PreviewFixtures.makeStore()
+        let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
+        func links(from userID: String, _ text: String) -> [String] {
+            NoticeMenu(Notice(roomID: "general", from: UserObject(["user_id": .string(userID)])!, body: ["text": .string(text), "format": "markdown"]),
+                       in: home).signInLinks.map(\.absoluteString)
+        }
+        let signIn = "Open this link: <https://link.apron.chat/#server=wss://server.apron.chat/&token=apron_device_a%2Bb>"
+        XCTAssertEqual(links(from: "~private", signIn), ["https://link.apron.chat/#server=wss://server.apron.chat/&token=apron_device_a%2Bb"])
+        XCTAssertEqual(links(from: "~server", signIn), [], "only a notice to you alone")
+        XCTAssertEqual(links(from: "~room", signIn), [])
+        XCTAssertEqual(links(from: "ada", signIn), [], "a person can't write a sign-in link for you")
+        XCTAssertEqual(links(from: "~private", [
+            "<https://link.apron.chat/#server=wss://server.apron.chat/&room=general>",
+            "<https://link.apron.chat/#token=apron_device_x>",
+            "<https://example.com/#server=wss://server.apron.chat/&token=apron_device_x>",
+            "<apron:?server=wss://server.apron.chat/&token=apron_device_x>",
+            "<https://link.apron.chat/?server=wss://server.apron.chat/&token=apron_device_x>",
+        ].joined(separator: "\n\n")), [], "a place, a token without a server, another site, the apron: form, a token in a query")
+        XCTAssertEqual(links(from: "~private", PreviewFixtures.inviteDeviceNotice), [PreviewFixtures.inviteDeviceLink])
+    }
 }

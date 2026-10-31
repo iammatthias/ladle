@@ -54,6 +54,10 @@ public struct NoticeMenu: Sendable {
     public var text: String
     public var code: [String]
     public var links: [MenuLink]
+    /// The sign-in links (Appendix A.4: `server` and `token`, which only servers write) a
+    /// `~private` notice holds, as the server wrote them, each offered as a QR code for another
+    /// device to scan, as apron-web's `offerSignInQr`.
+    public var signInLinks: [URL]
 
     @MainActor
     public init(_ notice: Notice, in session: ServerSession) {
@@ -66,6 +70,7 @@ public struct NoticeMenu: Sendable {
         text = MessageText.plain(notice.body)
         code = Array(MessageText.code(notice.body).prefix(3))
         links = MenuLink.links(in: notice.body, from: session.record.url)
+        signInLinks = notice.from.userID == "~private" ? MessageText.links(notice.body).filter { ApronLink($0)?.token != nil } : []
     }
 }
 

@@ -192,7 +192,8 @@ clone), which is only a worked example.
     (`write`) and any new upload for two hours (`upload`), for the waits shot. A `room_set` without a
     `room_id` creates the room (`new_1`, …) with you its one member. Home's private rooms: Ada's
     untitled conversation from its start (`directRoomID`), Bram and Chiara's (`groupRoomID`), Launch
-    plan (`addedRoomID`) and ops, 4 of a limit of 5. Message ids are server-wide, so no two rooms share a minute in the
+    plan (`addedRoomID`) and ops, 4 of a limit of 5. Ops holds `/invite-device add phone`'s
+    `~private` notice word for word (`inviteDeviceNotice`), with a made-up token. Message ids are server-wide, so no two rooms share a minute in the
     script.
   - `MessageText`: a body as apron-web renders it (§3.5, §3.5.2): `blocks` gives `MessageBlock`s
     (`MessageBlocks.swift`). `markdown` is Foundation's full CommonMark and GFM parse (no
@@ -286,7 +287,8 @@ clone), which is only a worked example.
     whether it mentions you, the place cards, the embeds a card does not already show, the
     link to fetch a preview for and the `link` embed it replaces, and what VoiceOver reads.
   - `MessageMenu` and `NoticeMenu` (`MessageMenu.swift`): what a message's and a notice's
-    menus offer as the session allows it, and the line over a notice.
+    menus offer as the session allows it, and the line over a notice. `signInLinks` are a
+    `~private` notice's links that `ApronLink` reads with a token, as written, for Show QR Code.
   - `MessageText.plain` and `snippet` (`MessageText+Plain.swift`): a body as plain text for where it
     is not rendered, as apron-web's `plainTextOf` and `messageSnippet`: a `markdown` body without
     its syntax (code keeps its text, a link shows its text, each block a line, typed line breaks
@@ -510,6 +512,8 @@ clone), which is only a worked example.
   (`ApronLink.outbound`), except a sign-in link, which stays as written so it keeps its token, and
   opens the saved server's sign-in sheet with the token filled in; a notice's long-press menu
   offers Copy Text, Select Text, each code span on its own (`MessageText.code`) and its links;
+  a `~private` notice's sign-in link also gets Show QR Code under the text and in the menu, which
+  opens `SignInQRSheet` (the warning, then the code, as apron-web's SignInQrDialog);
   Select Text, on a message's menu too, opens `SelectTextSheet`: the text as read
   (`MessageText.plain`) in a read-only `UITextView`, where any part selects with the system's
   Copy, Look Up, Translate and Share, since an iOS `Text` selects only all of itself and its
@@ -566,7 +570,8 @@ clone), which is only a worked example.
 - `Packages/ApronKit/Tests/ApronKitIntegrationTests/`: `ServerSession` against the real Rust
   server. `Aprond` copies the binary to a temporary directory (its build tree may be rebuilding),
   starts it per test with `--store memory --email.enable --email.sender log` on a free loopback
-  port, and reads email codes from stderr. The server's defaults are read-only guests and
+  port, and reads email codes from stderr (`publicURL:` sets `--public-url` instead, which the
+  log sender refuses, for the links the server writes with it). The server's defaults are read-only guests and
   passkeys only for configured origins, so `Aprond` adds `--guest.posting`, `--webauthn.origin`
   for its port, `--limit.guest-posts-per-minute 0` (guests on one address share five writes a
   minute), and an `--admin-token-file` (`adminToken` signs in the admin, which `/avatar`
@@ -661,7 +666,7 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the Release thread's rename line (and Dev's join line in the busy room), the Start Thread form on Bram's message, #general's threads in the room list (five joined, Inactive folded, Other Threads with "4d", "9w", "2y" and "1 more…"), and Inactive unfolded with its untitled thread open, the kitchen's pinned description (the emoji shot), put away (its first line under the title), and Edit Room, the Private section with faces (`ladle-rooms-private`), the conversation with Ada (faces, plum header and its line, the intro card), Launch plan's "You were added" banner, New private conversation empty and with two picked (chips, Name), New Room with Private, and at the limit after starting home's fifth private room (`ladle-private-full`, taken after the others), Add People to ops with Ada picked and "@carol" typed, Launch plan's members with Add People, the room list and Preferences > Notifications while paused (`ladle-notifications-paused`), and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; the busy room in Ferrous, Gumball, Linocut and a custom CSS theme (`ladle-timeline-<theme>-<mode>`), and drawn in Apron then given Linocut in place (`ladle-timeline-switched-linocut-dark`: a new theme redraws open screens); Preferences' sections and History; Search Local History for "icon" across rooms, and started narrowed to the design room with `room:` suggesting rooms at the caret (`ladle-search-filtered`; the renderer opens it unfocused, as a focused Catalyst field selects all of itself), and Search Rooms for "des" with Search Messages under it (`ladle-rooms-search`); the busy room in select mode with its last three messages picked (`ladle-select`), and what Copy puts on the pasteboard for them, shown as text (`ladle-select-log`); home exported and opened: "Load its images?" (`ladle-archive-ask`), its rooms (`ladle-archive-rooms`) and the busy room read-only with the export's line in the composer's place (`ladle-archive-timeline`); Appearance with Ferrous chosen, and the custom theme's CSS with its "not used on iOS" line; and the iPad
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the Release thread's rename line (and Dev's join line in the busy room), the Start Thread form on Bram's message, #general's threads in the room list (five joined, Inactive folded, Other Threads with "4d", "9w", "2y" and "1 more…"), and Inactive unfolded with its untitled thread open, the kitchen's pinned description (the emoji shot), put away (its first line under the title), and Edit Room, the Private section with faces (`ladle-rooms-private`), the conversation with Ada (faces, plum header and its line, the intro card), Launch plan's "You were added" banner, New private conversation empty and with two picked (chips, Name), New Room with Private, and at the limit after starting home's fifth private room (`ladle-private-full`, taken after the others), Add People to ops with Ada picked and "@carol" typed, `/invite-device add phone`'s notice in ops with Show QR Code, and its sheet's warning and code (`ladle-signin-qr-*`), Launch plan's members with Add People, the room list and Preferences > Notifications while paused (`ladle-notifications-paused`), and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; the busy room in Ferrous, Gumball, Linocut and a custom CSS theme (`ladle-timeline-<theme>-<mode>`), and drawn in Apron then given Linocut in place (`ladle-timeline-switched-linocut-dark`: a new theme redraws open screens); Preferences' sections and History; Search Local History for "icon" across rooms, and started narrowed to the design room with `room:` suggesting rooms at the caret (`ladle-search-filtered`; the renderer opens it unfocused, as a focused Catalyst field selects all of itself), and Search Rooms for "des" with Search Messages under it (`ladle-rooms-search`); the busy room in select mode with its last three messages picked (`ladle-select`), and what Copy puts on the pasteboard for them, shown as text (`ladle-select-log`); home exported and opened: "Load its images?" (`ladle-archive-ask`), its rooms (`ladle-archive-rooms`) and the busy room read-only with the export's line in the composer's place (`ladle-archive-timeline`); Appearance with Ferrous chosen, and the custom theme's CSS with its "not used on iOS" line; and the iPad
 split view at 1180x820 pt (regular width) in dark and light, on the busy room and on the random room with its typing line. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with
@@ -717,7 +722,7 @@ pinned commit. Run it before `swift test` (the gate line above does), and `./bui
 - Apple frameworks only: Foundation, URLSession WebSockets, AuthenticationServices,
   Security, SwiftUI, Observation, Network (`NWPathMonitor` reconnects when the network
   returns), VisionKit (the sign-in QR scanner, not on Mac Catalyst), and for attachments PhotosUI, AVFoundation, AVKit, QuickLook, ImageIO,
-  UniformTypeIdentifiers and CryptoKit (cache file names), and UserNotifications (Remind Me's
+  UniformTypeIdentifiers and CryptoKit (cache file names), CoreImage (`CIQRCodeGenerator` draws a sign-in link's QR code; not a required-reason API), and UserNotifications (Remind Me's
   local notifications; no usage string, no required-reason API). PhotosPicker and the document
   picker run out of process and need no usage string; the camera and the microphone (voice
   notes) have theirs in `project.yml`; the camera's names scanning too. Nothing in them is a required-reason API: files go only to the server the user sends them to.
@@ -746,7 +751,8 @@ tokens through `/invite-bot` (a bot identity), and the protocol allows a command
 more tokens. The Rust server's `/invite-device add [<id>]` (after apron-server-cloudflare's) mints a
 device token for the signed-in account that signs in from any origin, or with none; its `auth`
 result carries no `token`, so the device keeps the one it presented. Its notice includes a §A.4
-sign-in link (`https://link.apron.chat/#server=…&token=…`), which apron-web can show as a QR code.
+sign-in link (`https://link.apron.chat/#server=…&token=…`), which apron-web and Ladle show as a QR code.
+The server writes the link only with `--public-url`.
 Adding a server, a scan of that link fills in the server and the token, and you tap Connect; a
 link never signs in by itself (link.apron.chat SPEC §6). `ConnectView.canScan` hides the scan
 entry where `DataScannerViewController` is unavailable; only the renderer sets it.

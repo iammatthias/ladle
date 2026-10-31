@@ -302,6 +302,8 @@ Each section has one action button at its bottom, within reach.
 
 The HIG has no Live Text or scanning page. The `live-text` page returned 404, so the scanner UI here is a judgment call.
 
+**Showing a sign-in QR code**, as the web's SignInQrDialog. A `~private` notice holding a sign-in link (`server` and `token`, which only servers write, such as `/invite-device add`'s) shows **Show QR Code** (`qrcode`) under its text, and its long-press menu offers the same. It opens the sheet "Sign in on another device": first the warning "Anyone who scans this code can sign in as you. Show it only to your own devices." in the danger color with `exclamationmark.triangle`, and a **Show QR Code** button; then the code, black on a white quiet zone in either theme (a scanner reads dark on light), drawn by CoreImage's `CIQRCodeGenerator` at one pixel a module and scaled without smoothing, "Scan it with an Apron app on your other device to sign in there.", and the warning again. A link too long for a code says "This link is too long for a QR code. Open it on your other device instead." **Done** closes it. The web shows the code and the warning together; Ladle holds the code back until the warning has been read, since a phone screen is easily seen by others.
+
 **States.** While a request runs, the form is disabled and the button shows progress. A `denied` error appears under the section that sent it, with the server's message. Success dismisses the sheet and plays one `.success` haptic. The room list fills in behind it.
 
 **Keyboard.** Return in a field runs that section's button. Fields use the matching keyboard types ([text-fields], [virtual-keyboards]).
@@ -490,7 +492,7 @@ Items that do not apply are hidden, not dimmed ([context-menus]: "Hide unavailab
 | Message state | Menu |
 |---|---|
 | Tombstone | Copy Link only |
-| `~private` notice | Copy Text, Dismiss |
+| `~private` notice | Copy Text, Dismiss, Show QR Code for each sign-in link |
 | Your pending message | Cancel Sending |
 | Your failed message | Retry, Edit, Delete (local only, no confirmation) |
 
