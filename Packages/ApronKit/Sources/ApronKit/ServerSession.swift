@@ -146,6 +146,11 @@ public final class ServerSession {
     /// Each room's mute (§4.5 `mute` with its `room_id`) as the server last said; `mute(of:)` reads it.
     public internal(set) var roomMutes: [String: MuteEnd] = [:]
     @ObservationIgnored var muteExpiry: Task<Void, Never>?
+    /// Whether the app is idle (§4.5 `idle`), since when, and what this connection's server was told.
+    @ObservationIgnored var wantsIdle = false
+    @ObservationIgnored var idleInputAt: Date?
+    @ObservationIgnored var idleReport: IdleReport?
+    @ObservationIgnored var idleSending: Task<Void, Never>?
     private var formerUserIDs: Set<String> = []
     /// The fraction written of each of this user's uploads in flight, by `embed_id` (§4.8.3).
     public internal(set) var uploadProgress: [String: Double] = [:]
@@ -159,7 +164,7 @@ public final class ServerSession {
     /// The room whose next `/help` list is the answer to `loadCommands(in:)`, which the timeline never shows.
     @ObservationIgnored private var commandsNoticeAwaited: String?
     /// Counts connections, so a list asked for on one is not taken as asked on the next.
-    @ObservationIgnored private var connectionNumber = 0
+    @ObservationIgnored private(set) var connectionNumber = 0
     /// The catalog URLs asked for, fetched or failed: none is fetched twice.
     @ObservationIgnored var emojiCatalogsAsked: Set<URL> = []
     /// The current catalog as the gate last let it show, which `emojiCatalog` reuses while
@@ -194,6 +199,9 @@ public final class ServerSession {
         let legacyReadOnlyGuests = server.map { $0.has("ext:settings") && $0.ext?["settings"]?["guest_posting"]?.boolValue == false } ?? false
         return !(isGuest && legacyReadOnlyGuests)
     }
+
+    /// Called when the user types in a composer, which is input to `Attention`.
+    public var onInput: (@MainActor () -> Void)?
 
     /// Called when the account on `record` changes, so the owner can persist it.
     public var onRecordChange: (@MainActor (ServerRecord) -> Void)?
@@ -423,6 +431,8 @@ public final class ServerSession {
         signInNeeded = nil
         setAccount(ServerRecord.Account(userID: identity.userID, name: identity.json["name"]?.stringValue, scheme: method.scheme))
         status = .signedIn
+        // A connection starts attended (§4.5): an idle app says so at once.
+        syncIdle()
         if let rooms, let listing = try? await rooms.value { applyRoomList(listing) }
         await catchUp(on: connection)
         Task { await drainOutbox() }

@@ -333,6 +333,15 @@ clone), which is only a worked example.
     thread taking its room's as `RoomMute.withRoom`; a timer drops ended ones, since the server's
     `mute: false` comes up to 15 s later. `profileLine` puts "Paused until …" first. `mayMute`
     is capability `status` while signed in.
+  - Idle (`Attention.swift`, `ServerSession+Idle.swift`, §4.5 `idle`), as apron-web's
+    `PagePresence`, `setIdle` and `syncIdle`: `SessionStore.attention` goes idle after 5 minutes
+    without input (touches through the app's `InputWatcher`, and `composerChanged` via
+    `onInput`; input within a second does not restart the wait) or in the background, and hands
+    each change to every session. `setIdle` sends `status {idle: <seconds since input>}` or
+    `{idle: false}` while signed in with `status`, one at a time per connection (`IdleReport`),
+    after a `retry_after` wait or a 5 s backoff doubling to 5 minutes; a connection starts
+    attended, so an attended app sends nothing. `suspend()` reports idle, waits up to 3 s, and
+    stops: what the app does going to the background.
   - `ServerPane` (`ServerPane.swift`): `ServerSession.pane`, the server pane's facts as
     apron-web's ServerPane: name, host, description, the connection in words with a tone,
     "Signed in as Ada (guest)", the address, and "Apron 9".

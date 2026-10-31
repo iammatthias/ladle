@@ -622,8 +622,8 @@ The session is live by default. The UI says something only when it is not live, 
 
 **Foreground and background.**
 
-- On `scenePhase == .background`, each signed-in session with `status` sends `status {idle: 0}`. A `beginBackgroundTask` covers the request, and then the session stops.
-- On `.active`, every session starts again, shows the cached view, and catches up behind the pill.
+- Idle (§4.5 `idle`), as apron-web's `PagePresence` on a handheld: after 5 minutes without a touch or typing, or on `scenePhase == .background`, each signed-in session with `status` sends `status {idle: <whole seconds since the last input>}`; the next touch or keystroke sends `status {idle: false}`. One request goes at a time, a refusal waits out its `retry_after`, and another failure retries from 5 s, doubling to 5 minutes. In the background a `beginBackgroundTask` covers the report (up to 3 s), and then the session stops.
+- On `.active`, every session starts again, attended (a new connection starts attended, so nothing is sent), shows the cached view, and catches up behind the pill.
 - iOS suspends a backgrounded app's socket anyway. Stopping on purpose makes the return predictable.
 
 **Launch.** Ladle never alerts at launch ([alerts]: "Avoid showing an alert when your app starts."). It opens straight into the restored view with cached content (2.5).
@@ -791,7 +791,7 @@ The web-parity pass (2026-10-28) closed most of the list. "Partial" names what i
 | 9. Add Server and Sign In | Closed. One Connect sheet. |
 | 10. Confirmations | Closed. |
 | 11. Identity, status, mute, profile | Partial. You (3.11) edits the name, bio and avatar and picks a status; the profile card (3.10) and the server pane (3.12) are in. Mute and pause are not. |
-| 12. Lifecycle | Partial. Sessions stop in the background and start in the foreground, and a returning network reconnects. `status {idle: 0}` before backgrounding is not sent. |
+| 12. Lifecycle | Partial. Sessions report idle and stop in the background, start in the foreground, and a returning network reconnects; after 5 minutes without input they report idle while open. |
 | 13. Threads | Partial. Posting into an unjoined room joins first. No Threads list, "Other threads", or unjoined-thread preview. |
 | 14. Reactions | Closed. Frequent six plus the system emoji keyboard; who reacted on long press and in VoiceOver. |
 | 15. Haptics and keyboard | Partial. Return sends and Shift-Return is a new line with a hardware keyboard; a light haptic on send. The other shortcuts and haptics in 4.5 and 4.7 are not added, and swipe to reply (principle 3) is not built. |

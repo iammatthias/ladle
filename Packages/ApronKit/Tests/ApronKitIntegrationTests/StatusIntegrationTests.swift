@@ -74,6 +74,24 @@ final class StatusIntegrationTests: XCTestCase {
         }
     }
 
+    func testOthersSeeYouIdleUntilYouAreBack() async throws {
+        let server = try await started(["--limit.status-coalesce-seconds", "0"])
+        let ada = try await signedIn(server)
+        let environment = ServerSession.Environment(makeTransport: { WebSocketTransport(url: $0.url, origin: $0.origin) })
+        let admin = ServerSession(record: ServerRecord(url: server.url), tokens: InMemoryTokenStore(), environment: environment)
+        sessions.append(admin)
+        admin.start()
+        try await waitFor("admin connected") { admin.status == .signedOut }
+        try await admin.signIn(.token(server.adminToken))
+        let adaID = try XCTUnwrap(ada.you?.userID)
+        try await waitFor("Ada online to the admin") { admin.presence(of: adaID) == .online }
+
+        ada.setIdle(true, inputAt: Date().addingTimeInterval(-30))
+        try await waitFor("Ada idle to the admin", timeout: .seconds(10)) { admin.presence(of: adaID) == .idle }
+        ada.setIdle(false, inputAt: Date())
+        try await waitFor("Ada back", timeout: .seconds(10)) { admin.presence(of: adaID) == .online }
+    }
+
     func testAMuteOfARoomYouCannotSeeIsRefusedWithTheServersWords() async throws {
         let server = try await started()
         let phone = try await signedIn(server)

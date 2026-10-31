@@ -42,6 +42,7 @@ extension ServerSession {
     /// `composerInput` and `sendTyping`. Nothing goes to a server without the capability, before
     /// sign-in, or from someone who may not write.
     public func composerChanged(in roomID: String) {
+        onInput?()
         guard status == .signedIn, server?.has("activity") == true, mayWrite else { return }
         let times = environment.typing
         let now = ContinuousClock.now

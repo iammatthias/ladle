@@ -16,6 +16,8 @@ public final class SessionStore {
     public let mediaSettings: MediaSettings
     /// Every room's composer draft, kept beside `servers.json`, its files in `Staged`.
     public let drafts: Drafts
+    /// Whether anyone attends the app, which every session tells its server (§4.5 `idle`).
+    public let attention: Attention
 
     private let serverStore: ServerStore?
     private let tokens: any TokenStore
@@ -39,6 +41,11 @@ public final class SessionStore {
             drafts = Drafts()
         }
         self.environment = environment
+        attention = Attention(now: environment.now)
+        attention.onChange = { [weak self] idle, inputAt in
+            guard let self else { return }
+            for session in sessions.values { session.setIdle(idle, inputAt: inputAt) }
+        }
     }
 
     /// Loads the saved servers and starts a session for each.
@@ -82,6 +89,8 @@ public final class SessionStore {
     private func startSession(for record: ServerRecord) -> ServerSession {
         let session = ServerSession(record: record, tokens: tokens, positions: positions, mediaSettings: mediaSettings, environment: environment)
         session.onRecordChange = { [weak self] changed in self?.accountChanged(changed) }
+        session.onInput = { [weak self] in self?.attention.input() }
+        if attention.idle { session.setIdle(true, inputAt: attention.inputAt) }
         sessions[record.id] = session
         session.start()
         return session

@@ -101,7 +101,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Unknown status as a dashed placeholder with its value | bh | has | `Design/People.swift` (`StatusDot`), `Kit/Timeline.swift` (`Presence.unknown`, `words`) | A dashed ring; the words say "Unknown status: away-ish". |
 | Status picker: Online, None, Do not disturb, Invisible per `server.status` | #48 | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`StatusChoice`, `chooseStatus`) | Your chosen status is read only from `you`. |
 | Server answered another status: callout | bh | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`StatusAnswer`) | An optional one it answered otherwise for is not offered again. |
-| Idle after 5 minutes, `status {idle}` reporting | #52 | missing | `App/RootView.swift` | UX.md 4.1 wants `{idle: 0}` on background. Not sent. |
+| Idle after 5 minutes, `status {idle}` reporting | #52 | has | `Kit/Attention.swift`, `Kit/ServerSession+Idle.swift`, `App/RootView.swift`, `App/InputWatcher.swift` | Idle after 5 minutes without a touch or typing, and in the background (before the session stops), as seconds since the last input; `idle: false` on the next input. |
 | Pause notifications (1 h, 8 h, until tomorrow, until I resume) | #48 | has | `Kit/Mutes.swift` (`MuteChoice.pause`), `Kit/ServerSession+Mutes.swift` (`setPause`), `Profile/YouView.swift` | In You, with Resume and the server's words on a refusal. |
 | Pause set elsewhere shows here | bh | has | `Kit/ServerSession+Mutes.swift` (`applyStatus`) | The server's `status` sets it on every device, and again after each sign-in. |
 | Last seen on the profile card and member tooltip | #126 | partial | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` (`LastSeen`) | On the card, as `lastSeen`. No member-list tooltip (iOS has no hover); apron-web's local `sawOffline` floor is not kept. |
@@ -533,7 +533,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 21. **Rate limit feedback.** Count down "Sending is paused", show "Uploads are paused", and refuse reactions, joins, and leaves during a pause with the server's words. S.
 22. ~~**Server pane.**~~ Done (`Profile/ServerPaneView.swift`). Disconnect signs out of that server, with a confirmation; a disconnect that keeps the saved session is not offered, since each server keeps its own connection.
 23. **Reconnect feedback.** A floating pill with the 400/600/300 ms timing, "Checking for new messages…", the catching-up line under the header, and your own dot as a dashed ring while reconnecting. S.
-24. **Idle reporting.** Send `status {idle}` on background and after 5 minutes without input, and `{idle: false}` on return. S.
+24. ~~**Idle reporting.**~~ Done (`Kit/Attention.swift`, `Kit/ServerSession+Idle.swift`).
 25. **Sign-in QR display.** Show a sign-in link from a `~private` notice as a QR code behind a warning, so a second device can scan it. S.
 26. **Sender-side link previews.** Build `og` for GitHub, YouTube, X, Bluesky, and Wikipedia links from their public APIs, and send it as a `link` embed with × to drop it before sending. Others then see the card. M.
 27. **Passkeys.** Sign in, create an account, add a passkey, and resume a held session with a tap. Needs `webcredentials` associated domains. L.

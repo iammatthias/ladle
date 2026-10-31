@@ -44,11 +44,25 @@ struct RootView: View {
             open(link)
             return .handled
         })
-        .onChange(of: scenePhase) { _, phase in
+        .background { InputWatcher { store.attention.input() } }
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            // Going to the background, each session tells its server this app is idle (§4.5),
+            // so it can push what comes after, and then stops; coming back, they start again,
+            // attended, as a new connection starts.
+            switch phase {
+            case .background: store.attention.background()
+            case .active: store.attention.input()
+            default: break
+            }
             for record in store.records {
                 guard let session = store.session(for: record.id) else { continue }
                 switch phase {
-                case .background: Task { await session.stop() }
+                case .background:
+                    let task = UIApplication.shared.beginBackgroundTask(withName: "Idle report")
+                    Task {
+                        await session.suspend()
+                        UIApplication.shared.endBackgroundTask(task)
+                    }
                 case .active: session.start()
                 default: break
                 }
