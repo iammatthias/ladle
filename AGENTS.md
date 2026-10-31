@@ -345,7 +345,7 @@ clone), which is only a worked example.
   TestFlight, with cloud signing through a Team API key (`ASC_KEY_ID`, `ASC_ISSUER_ID`, the key
   in `~/.appstoreconnect/private_keys/`). The build number is the commit count, so it needs a
   clean tree. `tools/beta.sh` runs it, then waits for processing, adds the build to the Public
-  TestFlight group and submits it for beta review, through `tools/asc.py` (needs `uv`).
+  TestFlight group, sets its What to Test notes (a file argument, else the commit subjects since the last uploaded build) and submits it for beta review, through `tools/asc.py` (needs `uv`).
   `docs/PRIVACY.md` is the privacy policy TestFlight links to, and
   `Ladle/PrivacyInfo.xcprivacy` declares no tracking and no collected data; keep both true.
 - Deployment target is iOS 27.1 because the newest installed SDK is iOS 27.1 (Xcode 27.1); a
