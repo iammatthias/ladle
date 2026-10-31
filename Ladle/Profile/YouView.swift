@@ -2,12 +2,16 @@ import ApronKit
 import PhotosUI
 import SwiftUI
 
-/// You, on one server: apron-web's Preferences > Profile as a sheet. Your avatar with Change and
-/// Remove, your display name and the `@user_id` the server assigned, your bio where the server
-/// keeps one, Revert and Save, the status picker with what the server answered, and how you sign
-/// in, with Sign Out. Each server has its own.
+/// You, on one server: apron-web's Preferences > Profile, in Preferences or, from the server
+/// pane's Edit Profile, as a sheet of its own (`standalone`). Your avatar with Change and Remove,
+/// your display name and the `@user_id` the server assigned, your bio where the server keeps one,
+/// Revert and Save, the status picker with what the server answered, and how you sign in, with
+/// Sign Out. Each server has its own. Pause notifications is in Preferences > Notifications, as
+/// on the web.
 struct YouView: View {
     let session: ServerSession
+    /// A sheet of its own, with Done, rather than a screen in Preferences.
+    let standalone: Bool
     @State private var form: ProfileForm
     @State private var saving = false
     @State private var shownSaved = false
@@ -18,25 +22,33 @@ struct YouView: View {
     @State private var avatarBusy: String?
     @State private var avatarError: String?
     @State private var signingOut = false
-    /// What the server refused of the last Pause or Resume (§4.5: nothing changed), until the next.
-    @State private var pauseRefused: (title: String, message: String)?
-    @State private var pausing = false
     @FocusState private var focused: Bool
     @Environment(\.dismiss) private var dismiss
 
-    init(session: ServerSession) {
+    init(session: ServerSession, standalone: Bool = true) {
         self.session = session
+        self.standalone = standalone
         _form = State(initialValue: ProfileForm(you: session.you))
     }
 
     var body: some View {
-        NavigationStack {
+        if standalone {
+            NavigationStack {
+                content.toolbar {
+                    ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
+                }
+            }
+        } else {
+            content
+        }
+    }
+
+    private var content: some View {
             Form {
                 if let you = session.you {
                     identity(you)
                     if session.keepsBio { bio }
                     if session.maySetStatus { status }
-                    if session.mayMute { pause }
                 }
                 signIn
             }
@@ -45,7 +57,6 @@ struct YouView: View {
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Done") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     if saving {
                         ProgressView()
@@ -63,7 +74,6 @@ struct YouView: View {
                 setAvatar(from: item)
             }
             .onChange(of: session.you?.userID) { form = ProfileForm(you: session.you) }
-        }
     }
 
     private var dirty: Bool { form.isDirty(keepsBio: session.keepsBio) }
@@ -180,59 +190,6 @@ struct YouView: View {
             answer = await session.chooseStatus(value)
             choosing = nil
             if let answer { AccessibilityNotification.Announcement("\(answer.title). \(answer.text)").post() }
-        }
-    }
-
-    // MARK: Pause
-
-    /// apron-web's Pause notifications: a Pause… menu of how long, or Resume while paused, which
-    /// only ask; the line changes when the server's `status` says so, perhaps shorter.
-    private var pause: some View {
-        Section {
-            if let paused = session.pausedLine {
-                Label("\(paused) · no notifications on your devices.", systemImage: "bell.slash")
-                    .apText(.ui).foregroundStyle(Palette.warn)
-                Button("Resume") { ask(nil) }
-                    .disabled(pausing || !connected)
-            } else {
-                Menu {
-                    ForEach(MuteChoice.pause(now: Date())) { choice in
-                        Button {
-                            ask(choice.end)
-                        } label: {
-                            Text(choice.title)
-                            if let hint = choice.hint { Text(hint) }
-                        }
-                    }
-                } label: {
-                    Label(pausing ? "Pausing…" : "Pause…", systemImage: "bell.slash")
-                }
-                .disabled(pausing || !connected)
-            }
-            if let pauseRefused {
-                Callout(title: pauseRefused.title) { Text(pauseRefused.message) }
-                    .listRowInsets(EdgeInsets(top: Tokens.Space.s2, leading: Tokens.Space.s4, bottom: Tokens.Space.s2, trailing: Tokens.Space.s4))
-            }
-        } header: {
-            Text("Pause Notifications")
-        } footer: {
-            if session.pause == nil {
-                Text("Silence notifications on all your devices for a while. Only you see it.")
-            }
-        }
-    }
-
-    private func ask(_ end: MuteEnd?) {
-        pausing = true
-        pauseRefused = nil
-        Task {
-            do {
-                try await session.setPause(end)
-            } catch {
-                pauseRefused = (end == nil ? "Notifications are still paused" : "Notifications weren’t paused", errorText(error))
-                AccessibilityNotification.Announcement(pauseRefused?.title ?? "").post()
-            }
-            pausing = false
         }
     }
 

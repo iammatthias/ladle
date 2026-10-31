@@ -2,7 +2,7 @@
 
 This is the backlog of record for parity with apron-web. The rule is that every apron-web feature exists in Ladle. The iOS form may differ. Ladle may do more. Nothing is left out.
 
-The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`. It carries upstream through #178 and #179, and role mentions (#181), plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
+The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`. It carries upstream through #178 and #179, role mentions (#181), themes (#174) and Preferences sections (#184), at 0811a18 for the design tokens, plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
 
 Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections 3.10 to 3.12 describe the profile card, You and the server pane as built.
 
@@ -85,7 +85,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Sidebar head: server avatar, title, host | #138 | has | `Servers/ServerListView.swift`, `Rooms/RoomListView.swift` title | |
 | Server pane: description, connection dot, who you are, address with copy, protocol version | #177 | has | `Profile/ServerPaneView.swift`, `Kit/ServerPane.swift` | From the room list's title, and on iPad the sidebar head. Connect to Another Server… opens Connect; Disconnect signs out of this server after a confirmation, since Ladle keeps every server. |
 | Edit profile from the server pane | #177 | has | `Profile/ServerPaneView.swift`, `Rooms/RoomListView.swift` | Opens You. |
-| Profile bar: avatar, name, status line or "notifications paused", gear | #177 | has | `Rooms/RoomListView.swift` (`profileBar`), `Kit/Profile.swift` (`profileLine`) | Avatar with your dot, name, "Paused until 14:30" with a bell-off while paused, else your status in words or `@user_id`, and a gear (with a small bell-off while paused) that opens You. |
+| Profile bar: avatar, name, status line or "notifications paused", gear | #177 | has | `Rooms/RoomListView.swift` (`profileBar`), `Kit/Profile.swift` (`profileLine`) | Avatar with your dot, name, "Paused until 14:30" with a bell-off while paused, else your status in words or `@user_id`, and a gear (with a small bell-off while paused) that opens Preferences at Profile for this server (`openPreferences`), as the web's. |
 | Edit display name (`me {name}`) | bh | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`save`) | Says when the server kept another name or declined it. |
 | Edit bio (`ext:bio`) | #115 | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`Bio`, `save`) | Cleaned as `cleanBio`, 250 code points, `too_large` explained. |
 | Upload avatar (`/avatar` with an upload embed) | bh | has | `Profile/YouView.swift`, `Kit/ServerSession+Uploads.swift` | |
@@ -102,7 +102,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Status picker: Online, None, Do not disturb, Invisible per `server.status` | #48 | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`StatusChoice`, `chooseStatus`) | Your chosen status is read only from `you`. |
 | Server answered another status: callout | bh | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`StatusAnswer`) | An optional one it answered otherwise for is not offered again. |
 | Idle after 5 minutes, `status {idle}` reporting | #52 | has | `Kit/Attention.swift`, `Kit/ServerSession+Idle.swift`, `App/RootView.swift`, `App/InputWatcher.swift` | Idle after 5 minutes without a touch or typing, and in the background (before the session stops), as seconds since the last input; `idle: false` on the next input. |
-| Pause notifications (1 h, 8 h, until tomorrow, until I resume) | #48 | has | `Kit/Mutes.swift` (`MuteChoice.pause`), `Kit/ServerSession+Mutes.swift` (`setPause`), `Profile/YouView.swift` | In You, with Resume and the server's words on a refusal. Not offered to a guest without a token to sign back in with, as the web's `canPause` (`mayMute`, `resumable`). |
+| Pause notifications (1 h, 8 h, until tomorrow, until I resume) | #48 | has | `Kit/Mutes.swift` (`MuteChoice.pause`), `Kit/ServerSession+Mutes.swift` (`setPause`), `Profile/PauseSection.swift` | In Preferences > Notifications, with Resume and the server's words on a refusal. Not offered to a guest without a token to sign back in with, as the web's `canPause` (`mayMute`, `resumable`). |
 | Pause set elsewhere shows here | bh | has | `Kit/ServerSession+Mutes.swift` (`applyStatus`) | The server's `status` sets it on every device, and again after each sign-in. |
 | Last seen on the profile card and member tooltip | #126 | partial | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` (`LastSeen`) | On the card, as `lastSeen`. No member-list tooltip (iOS has no hover); apron-web's local `sawOffline` floor is not kept. |
 | Do not disturb silences this device | bh | missing | | Depends on notifications. |
@@ -358,7 +358,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Media gate: everything else waits for a click (Load) | #163 | has | `Kit/MediaGate.swift`, `Media/MediaAskTile.swift` | |
 | Always load adds the site to Trusted origins | #163 | has | `Media/MediaAskTile.swift` | |
 | The Load tile shows the media's full URL; Always load names its host | #186 | has | `Media/MediaAskTile.swift` | Two lines, cut in the middle; VoiceOver reads the whole URL. |
-| Preferences, Media: Server and trusted sites, or Any site; Trusted origins field | #137, #163 | has | `Servers/PreferencesView.swift` | |
+| Preferences, Media: Server and trusted sites, or Any site; Trusted origins field | #137, #163 | has | `Servers/PreferencesView.swift` (`MediaPreferences`) | |
 | Custom emoji and avatars from untrusted sites wait or fall back | #163 | has | `Kit/MediaGate.swift` (`.avatar`) | |
 | HTML embeds never load `srcset`, `background`, `ping` | #163 | missing | | Depends on `html` embeds (section 16). Build it with them. |
 | Streams only from the server's origin | bh | missing | | Depends on live streams (section 16). Build the origin rule with them. |
@@ -435,7 +435,10 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
-| Preferences dialog with Profile, Notifications, Appearance, Media, History | #23, #171, #177 | missing | | Ladle has a Settings.bundle page with Show Link Previews only. |
+| Preferences with Profile, Notifications, Appearance, Media, History, in the web's order | #23, #171, #177, #184 | has | `Kit/PreferencesSection.swift`, `Servers/PreferencesView.swift` | A list of the five, each a screen. Profile and Notifications are per server: for the server it was opened for, else a list of those signed in. Notifications has what Ladle notifies (Remind Me's permission) and each server's Pause; History says Ladle keeps no messages and export is not built (section 22). Show Link Previews stays in the Settings app. |
+| Open Preferences at a section from elsewhere (`preferencesOpener`), Back through the sections opened | #184 | has | `Servers/PreferencesView.swift` (`openPreferences`, `PreferencesRequest`), `App/RootView.swift` | The profile bar opens Profile for its server; Back goes to the list. |
+| The open section in the page address (`#room=…&preferences=media`) | #184 | N/A-iOS | `Kit/PreferencesSection.swift`, `Kit/ApronLink.swift` | apron-web's own page address, not a link.apron.chat key, and no client writes it in a link. `ApronLink` refuses a link that names only `preferences` and keeps the key unread beside a place (`PreferencesSectionTests`). |
+| Pause notifications in Preferences > Notifications | #184 | has | `Profile/PauseSection.swift` | Moved out of Profile, as the web's. |
 | Mode: light, dark, or system, over any theme | #23, #174 | has | `Kit/Appearance.swift` (`ThemeMode`), `Servers/AppearanceView.swift`, `Design/Apron.swift` (`Appearance.setMode`) | Every window's style, sheets included. |
 | Premade themes: Apron, Ferrous, Gumball, Linocut (high contrast), with previews | #174 | has | `Kit/WebTokens.swift` (generated from `THEMES`), `Kit/Themes.swift`, `Servers/AppearanceView.swift` | Read by the same parser as custom CSS; each row has a swatch in its colors and face. A theme redraws every open screen (`ActiveTheme`). |
 | Base colors derive the palette (`--base-ground`, `--base-ink`, `--base-accent`, `--base-link`) | #174 | has | `Kit/ThemeCSS.swift` (`deriveTokens`) | Port of `theme-colors.ts`, held to the web's own output (`ThemeTests`, `tools/design/theme-goldens.py`). |
@@ -525,7 +528,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 4. ~~**Drafts per room.**~~ Done (`Kit/Drafts.swift`): text, mentions, reply target and ready files per room and thread, kept across a relaunch.
 5. ~~**Typing.**~~ Done (`Kit/ServerSession+Typing.swift`, `Timeline/TypingIndicator.swift`): sends `activity typing` as the web does, and shows others typing in the header on iPhone and above the composer on iPad.
 6. **Notifications and push.** Local alerts for other rooms while open, then APNs push through a §4.9.2 relay. Add Notify me about scopes, the per-device switch, the first-mention offer, the app badge, tap to open, closing notifications once read, and a test notification. Push, never polling. L.
-7. ~~**Mute and pause.**~~ Done (`Kit/ServerSession+Mutes.swift`, `Rooms/MuteMenu.swift`, You's Pause notifications). Muted rooms not notifying waits for item 6, since Ladle does not notify yet.
+7. ~~**Mute and pause.**~~ Done (`Kit/ServerSession+Mutes.swift`, `Rooms/MuteMenu.swift`, Preferences > Notifications' Pause, `Profile/PauseSection.swift`). Muted rooms not notifying waits for item 6, since Ladle does not notify yet.
 8. **Threads.** Start thread from a message (title from its first line, quote as Description, first reply links back). Add a Description field to New Thread. Add an Other Threads heading with last active times. Order joined threads by activity. Show threads only under the open room, plus those with news. Name untitled threads "Untitled". Show "N+ replies". M.
 9. **Room header.** Pin the Description under the header with expand and dismiss. Add Edit room or thread (`room_set` title and description) and Copy link to the room to the ⋯ menu (Mute is there). M.
 10. **Private rooms and direct messages.** Create a room with Private. Add New private conversation with a people picker. Add Message on the profile card. Add a Private section with faces. Name untitled private rooms for their members. Add the intro card, the "You were added" banner, and the private room limit. L.

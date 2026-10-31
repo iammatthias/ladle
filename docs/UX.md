@@ -85,6 +85,7 @@ The link's keys resolve as follows:
 - **`room`.** Open the room. If you have not joined it, it opens in preview (3.5) and you join only by tapping **Join**. A link never joins or sends (§A.4).
 - **`message`.** Open the room, load history around the message, scroll to it, and highlight it briefly. If it is gone, show "Message unavailable" as a toast above the composer.
 - **`user`.** Open User Profile.
+- **`preferences`.** Not a link key: apron-web names its open Preferences section in its own page address (#184), which no client writes in a link. A link with nothing else opens nothing; beside a place, the place opens and the key is ignored. Ladle opens Preferences at a section from its own screens (3.14).
 - **`token` with `state`.** If the state is from a proposal this connection made, approve it on the server that Ladle proposed to, and ignore `server` (§4.11.2). Without matching state, ask "Sign in to chat.example with this link?" and then present it with `scheme: "token"`.
 
 Ladle writes the `https` form when you copy or share a link (§A.4), using `ShareLink` and **Copy Link**.
@@ -544,14 +545,14 @@ Last seen reads "recently" under ten minutes (a server may record `seen` coarsel
 
 ### 3.11 You (profile and status)
 
-**Purpose.** Change how this server's account appears, as apron-web's Preferences > Profile. Each server has its own. **Entry.** The profile bar at the foot of the room list (your face, your name, a gear, and under the name "Paused until 14:30" with `bell.slash` in the warning color while your notifications are paused, else your status in words, else your `@user_id`; the gear then carries a small bell-off, and VoiceOver hears "Notifications paused until 14:30"), or Edit Profile in the server pane (3.12). **Layout.** A sheet with a grouped `Form` (`YouView`). **Done** closes it; **Save** is on while the name or bio differs from what the server keeps.
+**Purpose.** Change how this server's account appears, as apron-web's Preferences > Profile. Each server has its own. **Entry.** The profile bar at the foot of the room list (your face, your name, a gear, and under the name "Paused until 14:30" with `bell.slash` in the warning color while your notifications are paused, else your status in words, else your `@user_id`; the gear then carries a small bell-off, and VoiceOver hears "Notifications paused until 14:30"), which opens Preferences at Profile for this server (3.14), or Edit Profile in the server pane (3.12), a sheet of its own. **Layout.** A grouped `Form` (`YouView`). As a sheet, **Done** closes it; **Save** is on while the name or bio differs from what the server keeps.
 
 | Section | Rows | Protocol |
 |---|---|---|
 | Display Name | Your avatar with **Upload Avatar** or **Change Avatar** (where `/avatar` takes an upload) and **Remove Avatar** (when you have one), the **Display name** field, which saves on Return, and **Revert** while it differs. The footer reads "User ID assigned by server: @ada", selectable. | `/avatar` with an upload embed (§4.8.6); `me {avatar: ""}`; `me {name}` (§3.3.2). The result's `you` is complete and replaces what is kept. |
 | Bio (`ext:bio` or `ext`) | A multi-line field, "A few words about you, in plain text", with a count to 250 in the header that turns red over the limit | `me {ext: {bio}}`, cleaned as apron-web's `cleanBio`; `""` clears it. Sent before the name. |
 | Status (`status`, signed in) | A menu picker, **Show Me As**, each choice with its dot and hint: **Online** (Automatic) and **None** (Show no status) always, **Do not disturb** (Mutes notifications) and **Invisible** (Appear offline) only where `server.status` lists them (§4.5.1). The footer says what the current one means to others. | `me {status}`. |
-| Pause Notifications (`status`, signed in) | **Pause…**, a menu of For 1 hour ("until 15:30"), For 8 hours, Until tomorrow ("9:00", or Until this morning before 9:00) and Until I resume, as apron-web's `pauseChoices`. While paused, "Paused until 22:30 · no notifications on your devices." in the warning color, and **Resume**. The footer, when not paused: "Silence notifications on all your devices for a while. Only you see it." A refusal shows a callout, "Notifications weren’t paused" or "Notifications are still paused", with the server's words. | `status {mute}` without `room_id` (§4.5): seconds left, `true`, or `false` to resume. The line changes when the server's `status` says so, on every device, set here or elsewhere. |
+| Pause Notifications (`status`, signed in; in Preferences > Notifications, as apron-web #184, not here) | **Pause…**, a menu of For 1 hour ("until 15:30"), For 8 hours, Until tomorrow ("9:00", or Until this morning before 9:00) and Until I resume, as apron-web's `pauseChoices`. While paused, "Paused until 22:30 · no notifications on your devices." in the warning color, and **Resume**. The footer, when not paused: "Silence notifications on all your devices for a while. Only you see it." A refusal shows a callout, "Notifications weren’t paused" or "Notifications are still paused", with the server's words. | `status {mute}` without `room_id` (§4.5): seconds left, `true`, or `false` to resume. The line changes when the server's `status` says so, on every device, set here or elsewhere. |
 | Sign-in | How this account signs in, and **Sign Out** (3.12's confirmation). The footer reads "Signed in to Home as Ada." | |
 
 What the server did with a save shows under the name: "Saved." for two seconds, "The server saved your name as “Ada L.”" when it kept another, or "The server declined this name (…). Your old one is still in use." in red. A bio the server refuses as `too_large` says "Your bio is too long for this server. Try a shorter one." and the name is not sent.
@@ -578,13 +579,21 @@ The server's name, address and origin are edited in the Connect sheet (Edit on t
 
 Connection state is not a screen. It is one model, rendered in the Rooms section header and in the timeline status pill. Section 4.1 defines it.
 
-### 3.14 Preferences and media from other sites
+### 3.14 Preferences, and media from other sites
 
-**Purpose.** Choose where images, video, audio, avatars and custom emoji load from. Loading one tells the site that hosts it that you are reading (§5.5). This mirrors apron-web's Preferences > Media.
+**Purpose.** apron-web's Preferences (#184): Profile, Notifications, Appearance, Media and History, in its order. The Media section chooses where images, video, audio, avatars and custom emoji load from. Loading one tells the site that hosts it that you are reading (§5.5).
 
-**Entry.** **Preferences** (`gearshape`) at the leading edge of the Servers toolbar on iPhone, and at the foot of the server rail on iPad. It opens a sheet with a grouped `Form` and **Done**.
+**Entry.** **Preferences** (`gearshape`) at the leading edge of the Servers toolbar on iPhone, and at the foot of the server rail on iPad, opens it at its list. The profile bar's gear opens it at Profile for that server, as apron-web's `preferencesOpener`. It is one sheet with **Done** and a navigation stack: a section opened directly sits over the list, so Back goes to the list, as apron-web's Back steps through the sections opened. apron-web also names the open section in its page address; that is not a link.apron.chat key, so a link naming only `preferences` opens nothing (2.4).
 
-**Layout.**
+**Sections.**
+
+- **Profile.** You (3.11) for the server it was opened for; opened from the server list, the servers you are signed in to, each opening its You.
+- **Notifications.** Whether iOS lets Ladle notify (On, Off in Settings with **Open Settings**, or asked with your first reminder): Ladle notifies for Remind Me; alerts for messages need push (§4.9), not built. Then **Pause Notifications** for each server with `status` (3.11's former section, as apron-web's PauseNotifications), headed with the server's name when several show.
+- **Appearance.** 3.15.
+- **Media.** Below.
+- **History.** Ladle keeps no messages on this device, so there is no retention to choose; it keeps read positions, drafts and reminders until the server goes. Export Chats and Open an Export read "Not yet" (PARITY section 22).
+
+**Media layout.**
 
 1. **Load Media From.** An inline picker: **This Server and Trusted Sites** (the default) or **Any Site**. The footer says what each does.
 2. **Trusted Sites.** Your sites, one row each, swipe to delete. A field takes a site as a bare host (`cdn.example`) or any URL on it, several at once separated by spaces or commas. Only `https:` with a dotted host is kept, reduced to its origin and listed once, as apron-web's `parseMediaOrigins`. Anything else shows "Enter an https site or address…" under the field.

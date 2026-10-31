@@ -26,11 +26,11 @@ enum Screen: String, CaseIterable {
     case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded"
     case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline", serverPane = "server-pane", serverPaneDemo = "server-pane-demo", mentionChip = "mention-chip"
     case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing", rolePicker = "role-picker", roleChip = "role-chip"
-    case muted, paused, youPaused = "you-paused", limited
-    case appearance, appearanceCustom = "appearance-custom"
+    case muted, paused, notificationsPaused = "notifications-paused", limited
+    case appearance, appearanceCustom = "appearance-custom", preferences, history
 
     /// Shots of home with its notifications paused.
-    var isPaused: Bool { self == .paused || self == .youPaused }
+    var isPaused: Bool { self == .paused || self == .notificationsPaused }
 
     var isPad: Bool { self == .ipad || self == .ipadTyping }
 }
@@ -238,8 +238,12 @@ enum Renderer {
         case .paused:
             // The profile bar while paused, over the muted room and its thread's bells.
             AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
-        case .youPaused:
-            AnyView(YouView(session: home))
+        case .notificationsPaused:
+            AnyView(PreferencesView(store: store, request: PreferencesRequest(section: .notifications, server: PreviewFixtures.homeID)))
+        case .preferences:
+            AnyView(PreferencesView(store: store))
+        case .history:
+            AnyView(PreferencesView(store: store, request: PreferencesRequest(section: .history)))
         case .roleChip:
             // Ada's `@&announce` as a role chip, and the same words in code left as written.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkRoomID, reminders: store.reminders, drafts: Drafts()) })

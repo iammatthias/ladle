@@ -25,6 +25,7 @@ struct RoomListView: View {
     /// The room a swipe asked to mute, whose choices a dialog lists.
     @State private var muting: String?
     @State private var panel: Panel?
+    @Environment(\.openPreferences) private var openPreferences
     /// What the server pane asked for, once it has gone.
     @State private var afterPanel: (() -> Void)?
 
@@ -227,13 +228,13 @@ struct RoomListView: View {
     }
 
     /// The web's ProfileBar: you, your status in words (else your `@user_id`), and the gear that
-    /// opens your profile.
+    /// opens Preferences at Profile, for this server.
     @ViewBuilder
     private var profileBar: some View {
         if let you = session.you {
             let name = session.displayName(for: you)
             let line = session.profileLine
-            Button { panel = .you } label: {
+            Button { openPreferences(.profile, server: session.record.id) } label: {
                 HStack(spacing: Tokens.Space.s2) {
                     Avatar(name: name, userID: you.userID, presence: session.presence(of: you.userID), image: session.avatarURL(of: you.userID))
                     VStack(alignment: .leading, spacing: 0) {

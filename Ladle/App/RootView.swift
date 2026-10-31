@@ -14,6 +14,7 @@ struct RootView: View {
     @SceneStorage("room") private var roomID: String?
     @State private var path: [Route] = []
     @State private var connecting: ConnectRequest?
+    @State private var preferences: PreferencesRequest?
     /// A link's message or member, for the room it opens to show.
     @State private var place: ApronLink?
     @State private var restored = false
@@ -37,6 +38,8 @@ struct RootView: View {
                 if request.record == nil { show(id, request.place) }
             }
         }
+        .sheet(item: $preferences) { PreferencesView(store: store, request: $0) }
+        .environment(\.openPreferences, OpenPreferencesAction { preferences = $0 })
         .environment(\.requestSignIn, SignInAction { connecting = ConnectRequest(record: $0) })
         .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
         .onOpenURL { url in ApronLink(url).map(open) }

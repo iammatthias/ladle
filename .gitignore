@@ -13,3 +13,4 @@ Config/Domains.xcconfig
 .env
 .env.*
 .build/
+__pycache__/
