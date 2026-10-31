@@ -28,6 +28,7 @@ fi
 if [[ $ACTION == test && -z $NO_FIXTURE_CHECK ]]; then
   scripts/sync-fixtures.sh --check || exit 1
   tools/design/tokens.py --check || exit 1
+  tools/design/theme-goldens.py --check || exit 1
 fi
 
 [[ -f Config/Domains.xcconfig ]] || cp Config/Domains.example.xcconfig Config/Domains.xcconfig

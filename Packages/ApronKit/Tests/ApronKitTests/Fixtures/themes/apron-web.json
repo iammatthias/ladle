@@ -1,0 +1,633 @@
+{
+ "themes": [
+  {
+   "id": "apron",
+   "name": "Apron",
+   "vars": [
+    [
+     "--font-sans",
+     "var(--font-sans-system)"
+    ],
+    [
+     "--font-chat",
+     "var(--font-sans)"
+    ],
+    [
+     "--font-mono",
+     "var(--font-mono-system)"
+    ]
+   ]
+  },
+  {
+   "id": "ferrous",
+   "name": "Ferrous",
+   "vars": [
+    [
+     "--bg-rail",
+     "light-dark(#dad7d1, #171717)"
+    ],
+    [
+     "--bg-000",
+     "light-dark(#e6e3dc, #1f1f1f)"
+    ],
+    [
+     "--bg-100",
+     "light-dark(#f2efe8, #292929)"
+    ],
+    [
+     "--bg-200",
+     "light-dark(#ebe8e1, #333333)"
+    ],
+    [
+     "--bg-300",
+     "light-dark(#e0ddd7, #3e3d3c)"
+    ],
+    [
+     "--line",
+     "light-dark(#e0ddd7, #3a3a39)"
+    ],
+    [
+     "--line-strong",
+     "light-dark(#84827d, #807e79)"
+    ],
+    [
+     "--ink",
+     "light-dark(#2a2926, #d7d3c8)"
+    ],
+    [
+     "--ink-muted",
+     "light-dark(#666460, #a3a098)"
+    ],
+    [
+     "--accent",
+     "light-dark(#2a2926, #f0e9d8)"
+    ],
+    [
+     "--on-accent",
+     "light-dark(#f2efe8, #292929)"
+    ],
+    [
+     "--accent-soft",
+     "light-dark(#d2cfc9, #4d4c49)"
+    ],
+    [
+     "--denim",
+     "light-dark(#3f5468, #a9b6c4)"
+    ],
+    [
+     "--denim-soft",
+     "light-dark(#d9d9d6, #434548)"
+    ],
+    [
+     "--font-sans",
+     "\"Recursive Sans Casual Static\", \"Apron Recursive Casual\", var(--font-sans-system)"
+    ],
+    [
+     "--font-chat",
+     "var(--font-sans)"
+    ],
+    [
+     "--font-mono",
+     "\"RecMonoCasual Nerd Font\", \"Rec Mono Casual\", \"Apron Rec Mono Casual\", var(--font-mono-system)"
+    ],
+    [
+     "--base-ground",
+     "light-dark(#f2efe8, #292929)"
+    ],
+    [
+     "--base-ink",
+     "light-dark(#2a2926, #d7d3c8)"
+    ],
+    [
+     "--base-accent",
+     "light-dark(#2a2926, #f0e9d8)"
+    ],
+    [
+     "--base-link",
+     "light-dark(#3f5468, #a9b6c4)"
+    ]
+   ]
+  },
+  {
+   "id": "gumball",
+   "name": "Gumball",
+   "vars": [
+    [
+     "--bg-100",
+     "light-dark(#fff6fb, #251a35)"
+    ],
+    [
+     "--ink",
+     "light-dark(#3a2e5c, #f3eaff)"
+    ],
+    [
+     "--accent",
+     "light-dark(#c93a7e, #ff8cc6)"
+    ],
+    [
+     "--on-accent",
+     "light-dark(#fff6fb, #251a35)"
+    ],
+    [
+     "--denim",
+     "light-dark(#2f6fd6, #8fc4ff)"
+    ],
+    [
+     "--font-sans",
+     "\"Nunito\", \"Apron Nunito\", var(--font-sans-system)"
+    ],
+    [
+     "--font-chat",
+     "var(--font-sans)"
+    ],
+    [
+     "--font-mono",
+     "var(--font-mono-system)"
+    ],
+    [
+     "--base-ground",
+     "light-dark(#fff6fb, #251a35)"
+    ],
+    [
+     "--base-ink",
+     "light-dark(#3a2e5c, #f3eaff)"
+    ],
+    [
+     "--base-accent",
+     "light-dark(#c93a7e, #ff8cc6)"
+    ],
+    [
+     "--base-link",
+     "light-dark(#2f6fd6, #8fc4ff)"
+    ],
+    [
+     "--bg-rail",
+     "light-dark(#ddd6f2, #141a36)"
+    ],
+    [
+     "--bg-000",
+     "light-dark(#ebe6fb, #1a2142)"
+    ],
+    [
+     "--bg-200",
+     "light-dark(#ffffff, #2f2242)"
+    ],
+    [
+     "--bg-300",
+     "light-dark(#ffe3f0, #3b2b52)"
+    ],
+    [
+     "--line",
+     "light-dark(#f0dbe8, #3e3058)"
+    ],
+    [
+     "--line-strong",
+     "light-dark(#9a7a94, #8e7fae)"
+    ],
+    [
+     "--ink-muted",
+     "light-dark(#6f638f, #b9abd8)"
+    ],
+    [
+     "--accent-soft",
+     "light-dark(#ffd9ec, #4b2a52)"
+    ],
+    [
+     "--denim-soft",
+     "light-dark(#dcebff, #24345c)"
+    ]
+   ]
+  },
+  {
+   "id": "linocut",
+   "name": "Linocut (high contrast)",
+   "vars": [
+    [
+     "--bg-rail",
+     "light-dark(#e0e0e0, #000000)"
+    ],
+    [
+     "--bg-000",
+     "light-dark(#f0f0f0, #000000)"
+    ],
+    [
+     "--bg-100",
+     "light-dark(#ffffff, #000000)"
+    ],
+    [
+     "--bg-200",
+     "light-dark(#f6f6f6, #0f0f0f)"
+    ],
+    [
+     "--bg-300",
+     "light-dark(#e8e8e8, #1f1f1f)"
+    ],
+    [
+     "--ink",
+     "light-dark(#000000, #ffffff)"
+    ],
+    [
+     "--accent",
+     "light-dark(#8a2c08, #ff9a4d)"
+    ],
+    [
+     "--on-accent",
+     "light-dark(#ffffff, #000000)"
+    ],
+    [
+     "--accent-soft",
+     "light-dark(#ecddd7, #2e1c0e)"
+    ],
+    [
+     "--denim",
+     "light-dark(#1b3a8f, #b3cbff)"
+    ],
+    [
+     "--denim-soft",
+     "light-dark(#dfe3ef, #242933)"
+    ],
+    [
+     "--font-sans",
+     "var(--font-sans-system)"
+    ],
+    [
+     "--font-chat",
+     "var(--font-sans)"
+    ],
+    [
+     "--font-mono",
+     "var(--font-mono-system)"
+    ],
+    [
+     "--base-ground",
+     "light-dark(#ffffff, #000000)"
+    ],
+    [
+     "--base-ink",
+     "light-dark(#000000, #ffffff)"
+    ],
+    [
+     "--base-accent",
+     "light-dark(#8a2c08, #ff9a4d)"
+    ],
+    [
+     "--base-link",
+     "light-dark(#1b3a8f, #b3cbff)"
+    ],
+    [
+     "--ink-muted",
+     "light-dark(#33353f, #d6d4de)"
+    ],
+    [
+     "--line",
+     "light-dark(#8f8a82, #5c5c6e)"
+    ],
+    [
+     "--line-strong",
+     "light-dark(#3d3a35, #c8c8d4)"
+    ]
+   ]
+  }
+ ],
+ "cases": [
+  {
+   "css": ":root {\n\t/* fonts */\n\t--font-sans: \"A B\",\n\t\tserif;\n\t--accent: #f00;\n\t--font-sans: Inter\n}",
+   "vars": [
+    [
+     "--accent",
+     "#f00"
+    ],
+    [
+     "--font-sans",
+     "Inter"
+    ]
+   ]
+  },
+  {
+   "css": "--bg-100: #000;",
+   "vars": [
+    [
+     "--bg-100",
+     "#000"
+    ]
+   ]
+  },
+  {
+   "css": "--ink: light-dark(#000000, #ffffff);",
+   "vars": [
+    [
+     "--ink",
+     "light-dark(#000000, #ffffff)"
+    ]
+   ]
+  },
+  {
+   "css": "  /* nothing */  ",
+   "vars": []
+  },
+  {
+   "css": "body { color: red; }",
+   "vars": [],
+   "error": "Expected a token such as --font-sans: value; at “body { color: red”."
+  },
+  {
+   "css": "color: red;",
+   "vars": [],
+   "error": "Expected a token such as --font-sans: value; at “color: red”."
+  },
+  {
+   "css": ":root { --a: x; } body { --b: y; }",
+   "vars": [],
+   "error": "Expected a token such as --font-sans: value; at “} body { --b: y”."
+  },
+  {
+   "css": "--font-sans: ;",
+   "vars": [],
+   "error": "--font-sans needs a value."
+  },
+  {
+   "css": "--bg: url(https://example.com/x.png);",
+   "vars": [],
+   "error": "--bg can’t use url(), @, braces, backslashes or !important."
+  },
+  {
+   "css": "--bg: image-set(\"x.png\" 1x);",
+   "vars": [],
+   "error": "--bg can’t use url(), @, braces, backslashes or !important."
+  },
+  {
+   "css": "--font-sans: \"unclosed;",
+   "vars": [],
+   "error": "--font-sans has an unclosed quote."
+  },
+  {
+   "css": "--a: x !important;",
+   "vars": [],
+   "error": "--a can’t use url(), @, braces, backslashes or !important."
+  },
+  {
+   "css": "--a: u\\72l(x);",
+   "vars": [],
+   "error": "--a can’t use url(), @, braces, backslashes or !important."
+  },
+  {
+   "css": "@import \"x.css\"; --a: b;",
+   "vars": [],
+   "error": "Expected a token such as --font-sans: value; at “@import \"x.css\"”."
+  },
+  {
+   "css": "--a: b; /* open",
+   "vars": [],
+   "error": "A comment is missing its closing */."
+  },
+  {
+   "css": "--base-ground: red; --base-ink: #fff;",
+   "vars": [],
+   "error": "--base-ground takes a #hex color, or light-dark(#hex, #hex)."
+  },
+  {
+   "css": "--accent: red);",
+   "vars": [],
+   "error": "--accent has a bracket that isn’t closed or opened."
+  },
+  {
+   "css": "--accent: rgb(1, 2, 3;",
+   "vars": [],
+   "error": "--accent has a bracket that isn’t closed or opened."
+  },
+  {
+   "css": "--base-ground: light-dark(#fff, #000);",
+   "vars": [],
+   "error": "Base colors start from --base-ground and --base-ink together."
+  },
+  {
+   "css": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+   "vars": [],
+   "error": "A theme can be at most 4000 characters."
+  },
+  {
+   "css": "--base-ground: #ffffff; --base-ink: #000000; --base-accent: #8a2c08; --line: #123456;",
+   "vars": [
+    [
+     "--bg-rail",
+     "#e0e0e0"
+    ],
+    [
+     "--bg-000",
+     "#f0f0f0"
+    ],
+    [
+     "--bg-100",
+     "#ffffff"
+    ],
+    [
+     "--bg-200",
+     "#f6f6f6"
+    ],
+    [
+     "--bg-300",
+     "#e8e8e8"
+    ],
+    [
+     "--line-strong",
+     "#737373"
+    ],
+    [
+     "--ink",
+     "#000000"
+    ],
+    [
+     "--ink-muted",
+     "#4d4d4d"
+    ],
+    [
+     "--accent",
+     "#8a2c08"
+    ],
+    [
+     "--on-accent",
+     "#ffffff"
+    ],
+    [
+     "--accent-soft",
+     "#ecddd7"
+    ],
+    [
+     "--base-ground",
+     "#ffffff"
+    ],
+    [
+     "--base-ink",
+     "#000000"
+    ],
+    [
+     "--base-accent",
+     "#8a2c08"
+    ],
+    [
+     "--line",
+     "#123456"
+    ]
+   ]
+  },
+  {
+   "css": "--base-ground: #000000; --base-ink: light-dark(#ffffff, #eeeeee)",
+   "vars": [
+    [
+     "--bg-rail",
+     "#000000"
+    ],
+    [
+     "--bg-000",
+     "#000000"
+    ],
+    [
+     "--bg-100",
+     "#000000"
+    ],
+    [
+     "--bg-200",
+     "light-dark(#0f0f0f, #0e0e0e)"
+    ],
+    [
+     "--bg-300",
+     "light-dark(#1f1f1f, #1d1d1d)"
+    ],
+    [
+     "--line",
+     "light-dark(#1a1a1a, #181818)"
+    ],
+    [
+     "--line-strong",
+     "light-dark(#808080, #777777)"
+    ],
+    [
+     "--ink",
+     "light-dark(#ffffff, #eeeeee)"
+    ],
+    [
+     "--ink-muted",
+     "light-dark(#b3b3b3, #a7a7a7)"
+    ],
+    [
+     "--base-ground",
+     "#000000"
+    ],
+    [
+     "--base-ink",
+     "light-dark(#ffffff, #eeeeee)"
+    ]
+   ]
+  },
+  {
+   "css": "nope here is a long declaration without any colon in it at all",
+   "vars": [],
+   "error": "Expected a token such as --font-sans: value; at “nope here is a long declaration without …”."
+  },
+  {
+   "css": "--ok: 1; short",
+   "vars": [],
+   "error": "Expected a token such as --font-sans: value; at “short”."
+  },
+  {
+   "css": "--t0: 1; --t1: 1; --t2: 1; --t3: 1; --t4: 1; --t5: 1; --t6: 1; --t7: 1; --t8: 1; --t9: 1; --t10: 1; --t11: 1; --t12: 1; --t13: 1; --t14: 1; --t15: 1; --t16: 1; --t17: 1; --t18: 1; --t19: 1; --t20: 1; --t21: 1; --t22: 1; --t23: 1; --t24: 1; --t25: 1; --t26: 1; --t27: 1; --t28: 1; --t29: 1; --t30: 1; --t31: 1; --t32: 1; --t33: 1; --t34: 1; --t35: 1; --t36: 1; --t37: 1; --t38: 1; --t39: 1; --t40: 1; --t41: 1; --t42: 1; --t43: 1; --t44: 1; --t45: 1; --t46: 1; --t47: 1; --t48: 1; --t49: 1; --t50: 1; --t51: 1; --t52: 1; --t53: 1; --t54: 1; --t55: 1; --t56: 1; --t57: 1; --t58: 1; --t59: 1; --t60: 1; --t61: 1; --t62: 1; --t63: 1; --t64: 1; --t65: 1; --t66: 1; --t67: 1; --t68: 1; --t69: 1; --t70: 1; --t71: 1; --t72: 1; --t73: 1; --t74: 1; --t75: 1; --t76: 1; --t77: 1; --t78: 1; --t79: 1; --t80: 1; --t81: 1; --t82: 1; --t83: 1; --t84: 1; --t85: 1; --t86: 1; --t87: 1; --t88: 1; --t89: 1; --t90: 1; --t91: 1; --t92: 1; --t93: 1; --t94: 1; --t95: 1; --t96: 1; --t97: 1; --t98: 1; --t99: 1; --t100: 1;",
+   "vars": [],
+   "error": "A theme can set at most 100 tokens."
+  },
+  {
+   "css": "--base-link: #12345;",
+   "vars": [],
+   "error": "--base-link takes a #hex color, or light-dark(#hex, #hex)."
+  },
+  {
+   "css": "--base-accent: #abc;",
+   "vars": [],
+   "error": "Base colors start from --base-ground and --base-ink together."
+  },
+  {
+   "css": "--x: \"a;b\";",
+   "vars": [],
+   "error": "--x has an unclosed quote."
+  },
+  {
+   "css": "--font-sans: 'Comic Sans', \"x\";",
+   "vars": [
+    [
+     "--font-sans",
+     "'Comic Sans', \"x\""
+    ]
+   ]
+  },
+  {
+   "css": "--a: (b))(;",
+   "vars": [],
+   "error": "--a has a bracket that isn’t closed or opened."
+  },
+  {
+   "css": "--z-menu: 9; --accent: SRC (x); --émoji: 1;",
+   "vars": [],
+   "error": "--accent can’t use url(), @, braces, backslashes or !important."
+  },
+  {
+   "css": "--base-ground: #102030; --base-ink: #f0e0d0; --base-link: #3366cc;",
+   "vars": [
+    [
+     "--bg-rail",
+     "#09121a"
+    ],
+    [
+     "--bg-000",
+     "#0c1824"
+    ],
+    [
+     "--bg-100",
+     "#102030"
+    ],
+    [
+     "--bg-200",
+     "#1d2c3a"
+    ],
+    [
+     "--bg-300",
+     "#2b3743"
+    ],
+    [
+     "--line",
+     "#263340"
+    ],
+    [
+     "--line-strong",
+     "#808080"
+    ],
+    [
+     "--ink",
+     "#f0e0d0"
+    ],
+    [
+     "--ink-muted",
+     "#ada6a0"
+    ],
+    [
+     "--denim",
+     "#3366cc"
+    ],
+    [
+     "--denim-soft",
+     "#172e4f"
+    ],
+    [
+     "--base-ground",
+     "#102030"
+    ],
+    [
+     "--base-ink",
+     "#f0e0d0"
+    ],
+    [
+     "--base-link",
+     "#3366cc"
+    ]
+   ]
+  }
+ ]
+}

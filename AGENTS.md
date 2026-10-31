@@ -353,6 +353,17 @@ clone), which is only a worked example.
     words it (`17s`, `m:ss`, `3h 12m`, spoken forms, `45s`/`3m`/`2h`), and `RPCError.userFacing`
     adds "Try again in 45s." to every `retry_after` error the app shows. The outbox's sleeps
     read the same clock, so tests tie `Environment.now` to `FakeClock`'s released sleeps.
+  - Themes (`ThemeCSS.swift`, `CSSValues.swift`, `ResolvedTheme.swift`, `Themes.swift`,
+    `ThemeValues.swift`, generated `WebTokens.swift`), as apron-web's `appearance.svelte.ts` and
+    `theme-colors.ts`: `ThemeCSS.parse` is `parseThemeCss` (same grammar, 4000-character and
+    100-token limits, unsafe-value rule and messages, lengths in UTF-16 units) with
+    `deriveTokens`, `readBase` and `forMode`. `PremadeTheme.all` is apron-web's `THEMES`, read
+    by the same parser. `CSSValue` reads what a theme sets without a CSS engine: `var()` with
+    fallbacks (a cycle reads as nothing), `#hex`, `rgb()`, `hsl()`, `oklch()`, `oklab()`,
+    `light-dark()`, `color-mix(in srgb, …)`, the named colors, `px`, `ms`/`s`, percentages,
+    numbers, `cubic-bezier()` and `0 Ypx Bpx <color>` shadows. `ResolvedTheme` is every token
+    Ladle applies (`WebTokens.applied`) in both modes; a value it can't read keeps tokens.css's
+    and joins `notShown` with the web-only and unknown names.
   - `ServerPane` (`ServerPane.swift`): `ServerSession.pane`, the server pane's facts as
     apron-web's ServerPane: name, host, description, the connection in words with a tone,
     "Signed in as Ada (guest)", the address, and "Apron 9".
@@ -465,23 +476,34 @@ Ladle follows apron-web (the clone at `~/Developer/forks/apron-web`, its `origin
 translated through the HIG. Its narrow layout (under 720 px) is the iPhone reference; its wide
 layout (960 px and wider) is the iPad split view.
 
-- Tokens are generated, never copied: `tools/design/tokens.py` reads `tokens.css` and
-  `rail.css` at the apron-web commit in `tools/design/UPSTREAM` (from the clone above, or
-  `APRON_WEB`; it fetches the clone's origin when the pin is missing) and writes
-  `Ladle/Design/Tokens.swift`. `tools/design/tokens.py --check` (run by `./build.sh test`)
-  fails when the file differs from a fresh generation and says when apron-web's `origin/main`
-  has moved past the pin. To follow a newer apron-web, review its design changes, move the pin, regenerate.
-- Colors, grounds by depth, spacing, radii, avatar sizes, durations and easing are verbatim in
-  both themes. Accent (rust) is what you can do; denim is where you can go; every status color
-  carries a word or shape; the private color always comes with its lock (`Palette`'s doc).
+- Tokens are generated, never copied: `tools/design/tokens.py` reads `tokens.css`, `rail.css`
+  and `appearance.svelte.ts` at the apron-web commit in `tools/design/UPSTREAM` (from the clone
+  above, or `APRON_WEB`; it fetches the clone's origin when the pin is missing) and writes
+  `Packages/ApronKit/Sources/ApronKit/WebTokens.swift` (every declaration as written, both modes,
+  aliases kept as `var()`; the premade themes' CSS; the theme limits) and
+  `Ladle/Design/Tokens.swift` (an accessor per token Ladle uses). `--check` (run by
+  `./build.sh test`) fails when either differs from a fresh generation and says when apron-web's
+  `origin/main` has moved past the pin. `tools/design/theme-goldens.py` runs apron-web's own
+  `parseThemeCss` at the pin with bun and writes the goldens `ThemeTests` holds the Swift port to.
+  To follow a newer apron-web, review its design changes, move the pin, rerun both.
+- Themes, as apron-web's (#174): every token reads the active theme (`ActiveTheme.shared`, a
+  `ResolvedTheme`), so `Palette.accent` and `Tokens.Space.s2` stay what views write and a new
+  theme redraws every view that reads one, with no per-view code. `ResolvedTheme` reads a
+  theme's own value for a token, else tokens.css's, with `var()` read against the theme first,
+  so an alias follows it (`--focus` is the theme's `--accent`, `--selected` its `--ink` at 8%).
+  Under Apron, colors, grounds by depth, spacing, radii, avatar sizes, durations and easing are
+  tokens.css's verbatim in both modes. Accent is what you can do; denim is where you can go;
+  every status color carries a word or shape; the private color always comes with its lock
+  (`Palette`'s doc). A theme may move any of them; the premade themes move only grounds, lines,
+  ink, accent and denim.
 - Text uses the web's roles (`TextRole`: caps, xs, sm, ui, field, body, title). Each role's web
   px value is its size at the Large Dynamic Type setting and scales from there with the HIG's
   table. System faces only (SF, SF Mono), as the web.
 - Anything tappable takes 44 pt (`touchTarget()`, the web's `--touch-target`). Native controls
   where the HIG expects them (navigation stacks, sheets, swipe actions, context menus,
   confirmation dialogs, the segmented control, the emoji keyboard), styled with the tokens.
-- Reduce Motion turns the web's motion off (`Motion`); Increase Contrast swaps `line` for
-  `line-strong` and `ink-muted` for `ink`, which the web has no counterpart for.
+- Reduce Motion turns the web's motion off (`Motion`); Increase Contrast swaps the theme's `line`
+  for its `line-strong` and its `ink-muted` for its `ink`, which the web has no counterpart for.
 
 ## Design review
 
@@ -501,11 +523,11 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the room list and You while paused, and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; and the iPad
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the room list and You while paused, and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; the busy room in Ferrous, Gumball and Linocut (`ladle-timeline-<theme>-<mode>`); and the iPad
 split view at 1180x820 pt (regular width) in dark and light, on the busy room and on the random room with its typing line. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with
-generated pictures, and fails the remote room's unreachable host; a video has no frame to draw, so its tile stays black), writes `contrast.json` (WCAG ratios of the text tokens on their
+generated pictures, and fails the remote room's unreachable host; a video has no frame to draw, so its tile stays black), writes `contrast.json` (for each premade theme, WCAG ratios of the text tokens on their
 grounds), and quits. `TZ=UTC` keeps the times reproducible.
 
 Limits of the Mac render, each checked on this machine:

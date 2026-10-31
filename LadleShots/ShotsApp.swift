@@ -59,15 +59,20 @@ enum Renderer {
         let store = await PreviewFixtures.makeStore()
         guard let home = store.session(for: PreviewFixtures.homeID) else { exit(1) }
 
-        var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool)] = []
+        var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool, theme: PremadeTheme?)] = []
         for screen in Screen.allCases where screen != .limited {
-            shots.append((screen, .dark, false))
-            shots.append((screen, .light, false))
+            shots.append((screen, .dark, false, nil))
+            shots.append((screen, .light, false, nil))
         }
-        shots.append((.timeline, .dark, true))
+        shots.append((.timeline, .dark, true, nil))
+        // The busy room in each premade theme but Apron, which every other shot is in.
+        for theme in PremadeTheme.all.dropFirst() {
+            shots.append((.timeline, .dark, false, theme))
+            shots.append((.timeline, .light, false, theme))
+        }
         // Last, since the waits it asks for hold home back for the shots after it.
-        shots.append((.limited, .dark, false))
-        shots.append((.limited, .light, false))
+        shots.append((.limited, .dark, false, nil))
+        shots.append((.limited, .light, false, nil))
 
         for shot in shots {
             let size = shot.screen.isPad ? pad : phone
@@ -75,6 +80,7 @@ enum Renderer {
             scene.sizeRestrictions?.maximumSize = size
             scene.sizeRestrictions?.minimumSize = size
             scene.windows.first?.overrideUserInterfaceStyle = shot.style
+            ActiveTheme.shared.theme = shot.theme.flatMap { PremadeTheme.resolved[$0.id] } ?? .apron
             await seedReminder(shot.screen == .reminder, in: store, home: home)
             await seedPause(shot.screen.isPaused, home: home)
             if shot.screen == .limited { await seedWaits(home: home) }
@@ -86,7 +92,8 @@ enum Renderer {
                 .apronStyle()
                 .id(UUID())))
             try? await Task.sleep(for: .milliseconds(shot.screen.isPad ? 2500 : 1500))
-            let name = "ladle-\(shot.screen.rawValue)-\(shot.large ? "ax3" : shot.style == .dark ? "dark" : "light").png"
+            let theme = shot.theme.map { "-\($0.id)" } ?? ""
+            let name = "ladle-\(shot.screen.rawValue)\(theme)-\(shot.large ? "ax3" : shot.style == .dark ? "dark" : "light").png"
             capture(scene, to: directory.appending(path: name))
         }
         writeContrast(to: directory.appending(path: "contrast.json"))
@@ -270,32 +277,28 @@ enum Renderer {
         try? image.pngData()?.write(to: url)
     }
 
-    /// WCAG 2 contrast of the text tokens on the grounds they sit on, per theme.
+    /// WCAG 2 contrast of the text tokens on the grounds they sit on, per mode, for each premade
+    /// theme by id.
     static func writeContrast(to url: URL) {
-        typealias C = Tokens.Color
-        let pairs: [(String, Themed<RGBA>, Themed<RGBA>)] = [
-            ("ink on timeline", C.ink, C.bg100), ("ink-muted on timeline", C.inkMuted, C.bg100),
-            ("ink-muted on chrome", C.inkMuted, C.bg000), ("ink on raised", C.ink, C.bg200),
-            ("on-accent on accent", C.onAccent, C.accent), ("accent on timeline", C.accent, C.bg100),
-            ("denim on denim-soft", C.denim, C.denimSoft), ("denim on timeline", C.denim, C.bg100),
-            ("ink on accent-soft", C.ink, C.accentSoft), ("private on private-soft", C.private, C.privateSoft),
-            ("danger on timeline", C.danger, C.bg100),
+        let pairs: [(String, String, String)] = [
+            ("ink on timeline", "--ink", "--bg-100"), ("ink-muted on timeline", "--ink-muted", "--bg-100"),
+            ("ink-muted on chrome", "--ink-muted", "--bg-000"), ("ink on raised", "--ink", "--bg-200"),
+            ("ink-muted on rail", "--ink-muted", "--bg-rail"),
+            ("on-accent on accent", "--on-accent", "--accent"), ("accent on timeline", "--accent", "--bg-100"),
+            ("denim on denim-soft", "--denim", "--denim-soft"), ("denim on timeline", "--denim", "--bg-100"),
+            ("ink on accent-soft", "--ink", "--accent-soft"), ("private on private-soft", "--private", "--private-soft"),
+            ("danger on timeline", "--danger", "--bg-100"), ("line-strong on timeline", "--line-strong", "--bg-100"),
         ]
-        func luminance(_ rgb: UInt32) -> Double {
-            func channel(_ value: UInt32) -> Double {
-                let c = Double(value & 0xFF) / 255
-                return c <= 0.04045 ? c / 12.92 : pow((c + 0.055) / 1.055, 2.4)
-            }
-            return 0.2126 * channel(rgb >> 16) + 0.7152 * channel(rgb >> 8) + 0.0722 * channel(rgb)
+        func ratio(_ a: RGBA, _ b: RGBA) -> JSONValue { .number(String(format: "%.2f", a.contrast(with: b))) }
+        var report: [String: JSONValue] = [:]
+        for premade in PremadeTheme.all {
+            guard let theme = PremadeTheme.resolved[premade.id] else { continue }
+            report[premade.id] = .array(pairs.map { name, text, ground in
+                let (t, g) = (theme.color(text), theme.color(ground))
+                return ["pair": .string(name), "dark": ratio(t.dark, g.dark), "light": ratio(t.light, g.light)]
+            })
         }
-        func ratio(_ a: RGBA, _ b: RGBA) -> String {
-            let (l1, l2) = (luminance(a.rgb), luminance(b.rgb))
-            return String(format: "%.2f", (max(l1, l2) + 0.05) / (min(l1, l2) + 0.05))
-        }
-        let report: [JSONValue] = pairs.map { name, text, ground in
-            ["pair": .string(name), "dark": .number(ratio(text.dark, ground.dark)), "light": .number(ratio(text.light, ground.light))]
-        }
-        try? JSONValue.array(report).serializedData().write(to: url)
+        try? JSONValue.object(report).serializedData().write(to: url)
     }
 }
 

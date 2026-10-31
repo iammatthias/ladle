@@ -1,8 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// apron-web's colors by job, from `Tokens.Color`. Both themes come from tokens.css; dark is the
-/// reference.
+/// apron-web's colors by job, from `Tokens.Color`: the active theme's (`ActiveTheme`), in both
+/// modes; dark is the reference. Each is read when a view's body runs, so a new theme redraws it.
 ///
 /// - `accent` (rust) is what you can do: the primary button, Send, a mention of you, the bar on
 ///   the open room.
@@ -16,44 +16,46 @@ import UIKit
 enum Palette {
     typealias C = Tokens.Color
     /// Grounds by depth: rail < chrome < timeline < raised < hover.
-    static let rail = C.bgRail.color()
-    static let chrome = C.bg000.color()
-    static let timeline = C.bg100.color()
-    static let raised = C.bg200.color()
-    static let hover = C.bg300.color()
-    static let selected = C.selected.color(increasedContrast: C.hover)
+    static var rail: Color { C.bgRail.color() }
+    static var chrome: Color { C.bg000.color() }
+    static var timeline: Color { C.bg100.color() }
+    static var raised: Color { C.bg200.color() }
+    static var hover: Color { C.bg300.color() }
+    static var selected: Color { C.selected.color(increasedContrast: C.hover) }
 
-    static let line = C.line.color(increasedContrast: C.lineStrong)
-    static let lineStrong = C.lineStrong.color()
-    static let ink = C.ink.color()
-    static let inkMuted = C.inkMuted.color(increasedContrast: C.ink)
+    static var line: Color { C.line.color(increasedContrast: C.lineStrong) }
+    static var lineStrong: Color { C.lineStrong.color() }
+    static var ink: Color { C.ink.color() }
+    static var inkMuted: Color { C.inkMuted.color(increasedContrast: C.ink) }
 
-    static let accent = C.accent.color()
-    static let onAccent = C.onAccent.color()
-    static let accentSoft = C.accentSoft.color()
-    static let denim = C.denim.color()
-    static let denimSoft = C.denimSoft.color()
+    static var accent: Color { C.accent.color() }
+    static var onAccent: Color { C.onAccent.color() }
+    static var accentSoft: Color { C.accentSoft.color() }
+    static var denim: Color { C.denim.color() }
+    static var denimSoft: Color { C.denimSoft.color() }
 
-    static let danger = C.danger.color()
-    static let warn = C.warn.color()
-    static let ok = C.ok.color()
-    static let `private` = C.private.color()
-    static let privateSoft = C.privateSoft.color()
-    static let scrim = C.scrim.color()
+    static var danger: Color { C.danger.color() }
+    static var warn: Color { C.warn.color() }
+    static var ok: Color { C.ok.color() }
+    static var `private`: Color { C.private.color() }
+    static var privateSoft: Color { C.privateSoft.color() }
+    static var scrim: Color { C.scrim.color() }
     /// The media viewer: dark like a photo viewer whatever the theme.
-    static let viewerGround = C.viewerGround.color()
-    static let viewerInk = C.viewerInk.color()
-    static let viewerInkMuted = C.viewerInkMuted.color()
-    static let viewerControl = C.viewerControl.color()
+    static var viewerGround: Color { C.viewerGround.color() }
+    static var viewerInk: Color { C.viewerInk.color() }
+    static var viewerInkMuted: Color { C.viewerInkMuted.color() }
+    static var viewerControl: Color { C.viewerControl.color() }
 
     /// `--count-shade`: a quiet count keeps this much of its ground, the rest black.
-    static let quietCount = Color(uiColor: UIColor { traits in
-        let shade = Tokens.countShade.value(for: traits)
-        let ground = C.bg300.value(for: traits).uiColor
-        var (r, g, b, a) = (CGFloat(0), CGFloat(0), CGFloat(0), CGFloat(0))
-        ground.getRed(&r, green: &g, blue: &b, alpha: &a)
-        return UIColor(red: r * shade, green: g * shade, blue: b * shade, alpha: a)
-    })
+    static var quietCount: Color {
+        Color(uiColor: UIColor { [shades = Tokens.countShade, grounds = C.bg300] traits in
+            let shade = shades.value(for: traits)
+            let ground = grounds.value(for: traits).uiColor
+            var (r, g, b, a) = (CGFloat(0), CGFloat(0), CGFloat(0), CGFloat(0))
+            ground.getRed(&r, green: &g, blue: &b, alpha: &a)
+            return UIColor(red: r * shade, green: g * shade, blue: b * shade, alpha: a)
+        })
+    }
 }
 
 /// apron-web's text roles. Each role's web size is its size at the Large Dynamic Type setting,
@@ -219,8 +221,15 @@ enum Motion {
 extension View {
     /// Installs the web's grounds and ink on this hierarchy, including the UIKit bars.
     func apronStyle() -> some View {
-        tint(Palette.accent)
-            .onAppear(perform: Appearance.apply)
+        modifier(ApronStyle())
+    }
+}
+
+private struct ApronStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        content
+            .tint(Palette.accent)
+            .onChange(of: ActiveTheme.shared.theme, initial: true) { Appearance.apply() }
     }
 }
 
@@ -228,7 +237,8 @@ extension View {
 enum Appearance {
     /// The navigation bar on the chrome ground with a hairline, as the web's room header
     /// (`--header-h`, `--bg-100`, a `--line` border). Titles stay the system's size: the HIG's
-    /// navigation bar, not the web's 15 px header.
+    /// navigation bar, not the web's 15 px header. A new theme reaches the bars already on
+    /// screen too, since an appearance proxy only styles bars made after it.
     static func apply() {
         let bar = UINavigationBarAppearance()
         bar.configureWithOpaqueBackground()
@@ -239,5 +249,15 @@ enum Appearance {
         UINavigationBar.appearance().standardAppearance = bar
         UINavigationBar.appearance().scrollEdgeAppearance = bar
         UINavigationBar.appearance().compactAppearance = bar
+        let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+        for bar in windows.flatMap({ navigationBars(in: $0) }) {
+            bar.standardAppearance = UINavigationBar.appearance().standardAppearance
+            bar.scrollEdgeAppearance = UINavigationBar.appearance().scrollEdgeAppearance
+            bar.compactAppearance = UINavigationBar.appearance().compactAppearance
+        }
+    }
+
+    private static func navigationBars(in view: UIView) -> [UINavigationBar] {
+        (view as? UINavigationBar).map { [$0] } ?? view.subviews.flatMap(navigationBars)
     }
 }
