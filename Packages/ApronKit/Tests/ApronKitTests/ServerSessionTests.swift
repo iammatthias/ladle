@@ -17,6 +17,14 @@ final class FakeClock: Sendable {
 
     func release() { released.withLock { $0 += 1 } }
     var recorded: [Duration] { delays.withLock { $0 } }
+
+    /// Real time moved on by the sleeps released so far, so a wait the session notes by the wall
+    /// clock is over once the sleep for it is.
+    var now: Date {
+        let count = released.withLock { $0 }
+        let slept = recorded.prefix(count).reduce(Duration.zero, +)
+        return Date().addingTimeInterval(Double(slept.components.seconds) + Double(slept.components.attoseconds) / 1e18)
+    }
 }
 
 /// Polls an async condition until it holds or two seconds pass.
@@ -93,7 +101,8 @@ final class ServerSessionTests: XCTestCase {
             pageSize: 3,
             fetchConnectionStatus: { [probes] url, origin in try probes.answer(url, origin) },
             readCursorInterval: .milliseconds(100),
-            typing: TypingTimes(seconds: 15, refresh: .milliseconds(300), idle: .milliseconds(150), longest: .milliseconds(400))
+            typing: TypingTimes(seconds: 15, refresh: .milliseconds(300), idle: .milliseconds(150), longest: .milliseconds(400)),
+            now: { clock.now }
         )
         session = ServerSession(record: record, tokens: tokens, positions: positions, environment: environment)
     }
@@ -1375,8 +1384,8 @@ final class ServerSessionTests: XCTestCase {
     }
 
     func testAnUploadLimitHoldsBackOnlyTheMessageWithTheFile() async throws {
+        let socket = queueTransport(capabilities: ["history", "edit", "rooms", "reactions", "ext:limits"])
         session.start()
-        let socket = await transport(0)
         try await signInAsGuest(on: socket)
         let photo = Attachment(fileURL: URL(filePath: "/tmp/photo.png"), title: "photo.png", contentType: "image/png", byteCount: 10)
         session.post("look", in: "general", attachments: [photo])

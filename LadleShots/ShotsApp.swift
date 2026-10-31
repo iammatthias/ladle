@@ -26,7 +26,7 @@ enum Screen: String, CaseIterable {
     case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded"
     case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline", serverPane = "server-pane", serverPaneDemo = "server-pane-demo", mentionChip = "mention-chip"
     case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing", rolePicker = "role-picker", roleChip = "role-chip"
-    case muted, paused, youPaused = "you-paused"
+    case muted, paused, youPaused = "you-paused", limited
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .youPaused }
@@ -60,11 +60,14 @@ enum Renderer {
         guard let home = store.session(for: PreviewFixtures.homeID) else { exit(1) }
 
         var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool)] = []
-        for screen in Screen.allCases {
+        for screen in Screen.allCases where screen != .limited {
             shots.append((screen, .dark, false))
             shots.append((screen, .light, false))
         }
         shots.append((.timeline, .dark, true))
+        // Last, since the waits it asks for hold home back for the shots after it.
+        shots.append((.limited, .dark, false))
+        shots.append((.limited, .light, false))
 
         for shot in shots {
             let size = shot.screen.isPad ? pad : phone
@@ -74,6 +77,7 @@ enum Renderer {
             scene.windows.first?.overrideUserInterfaceStyle = shot.style
             await seedReminder(shot.screen == .reminder, in: store, home: home)
             await seedPause(shot.screen.isPaused, home: home)
+            if shot.screen == .limited { await seedWaits(home: home) }
             show(AnyView(view(shot.screen, store: store, home: home, staged: staged)
                 .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
                 .environment(\.scenePhase, .inactive)
@@ -198,6 +202,13 @@ enum Renderer {
                 TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders,
                              drafts: kept(home, PreviewFixtures.busyRoomID, ComposerDraft(field: DraftField(text: "Release is out, @&"))))
             })
+        case .limited:
+            // Sending paused by a posting limit (the ring and Send counting down), and uploads
+            // paused for two hours (the clock, which can be put away).
+            AnyView(NavigationStack {
+                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders,
+                             drafts: kept(home, PreviewFixtures.busyRoomID, ComposerDraft(field: DraftField(text: "Right after this"))))
+            })
         case .muted:
             // A muted room: the bell-off left of ⋯ in its header, and its thread card.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.mutedRoomID, reminders: store.reminders, drafts: Drafts()) })
@@ -225,6 +236,15 @@ enum Renderer {
     }
 
     /// A reminder an hour off on the busy room's last message from Bram, for its shot alone.
+    /// Asks home's preview server for a refused reaction and a refused upload, once.
+    static func seedWaits(home: ServerSession) async {
+        guard home.sendWait == nil, let message = home.timeline(PreviewFixtures.busyRoomID).last else { return }
+        // The upload first: once posting waits, the message with it would not go.
+        let photo = Attachment(fileURL: URL(filePath: "/tmp/limited.png"), title: "limited.png", contentType: "image/png", byteCount: 10)
+        try? await home.send("", in: PreviewFixtures.busyRoomID, attachments: [photo])
+        try? await home.toggleReaction(PreviewServer.slowReaction, on: message.messageID)
+    }
+
     /// Pauses home until resumed for the paused shots (the preview server echoes it), else resumes.
     static func seedPause(_ paused: Bool, home: ServerSession) async {
         guard (home.pause != nil) != paused else { return }

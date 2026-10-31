@@ -462,6 +462,13 @@ A thread is a room with `parent_room_id`, so it uses 3.5 with these differences.
 
 **Sending, failure, and the outbox.** See 4.2. A sent message appears at once as pending and is never shown twice. The draft clears only into the outbox, never into nothing.
 
+**Waits the server asks for** (§1.1 `retry_after`, `ext:limits`), as apron-web's RateLimitNotice and `heldBack`. A refused request notes what it holds back: a refused `message` holds back sending; with `ext:limits`, a `write` refusal holds back posting, reactions, joins, leaves and room changes, and an `upload` refusal holds back only messages (and commands) with new files. While a wait lasts:
+
+- Above the composer, "Sending is paused. You can send again in 17s." and "Uploads are paused. Uploads resume in 2h 5m.", counting down each second (`17s`, then `m:ss`; a wait of an hour or more in `3h 12m`). A ring in the warning color empties as the wait runs out; a wait of an hour or more shows `clock` instead and has × to put it away, and the next Send shows it again. VoiceOver hears the wait once, as it began ("You can send again in 17 seconds").
+- Send shows `hourglass` and the time left, and does nothing; the draft and its files stay, and nothing goes by itself. An upload wait holds Send only while files are attached. A message already in the outbox waits out the time and goes, as before (4.2).
+- A reaction, join or leave during a write wait is refused without sending, in the server's words with when to try again: "Posting limit reached. Try again in 18s." Every refused request with `retry_after` reads that way.
+- A wait belongs to its account: another sign-in starts without them.
+
 **Accessibility.** Suggestions are announced as "3 suggestions", and each is a button. The field's accessibility label includes the room ("Message, General"). The send button label is "Send" or "Run".
 
 **Haptics.** None on send. `UINotificationFeedbackGenerator` `.error` once when a send fails while the room is on screen.

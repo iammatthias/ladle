@@ -2,7 +2,8 @@
 import Foundation
 import XCTest
 
-/// `status` (§4.5) against the real Rust server: pausing and muting, seen on another device.
+/// `status` (§4.5) against the real Rust server: pausing and muting seen on another device, idle,
+/// and a posting limit's wait (§1.1 `retry_after`, `ext:limits`).
 @MainActor
 final class StatusIntegrationTests: XCTestCase {
     private var servers: [Aprond] = []
@@ -90,6 +91,29 @@ final class StatusIntegrationTests: XCTestCase {
         try await waitFor("Ada idle to the admin", timeout: .seconds(10)) { admin.presence(of: adaID) == .idle }
         ada.setIdle(false, inputAt: Date())
         try await waitFor("Ada back", timeout: .seconds(10)) { admin.presence(of: adaID) == .online }
+    }
+
+    func testAPostingLimitPausesSendingAndRefusesReactionsInTheServersWords() async throws {
+        let server = try await started(["--limit.posts-per-minute", "1"])
+        let ada = try await signedIn(server)
+        XCTAssertTrue(ada.server?.has("ext:limits") == true, "aprond advertises ext:limits")
+        let first = try await ada.send("one", in: "general")
+        do {
+            _ = try await ada.send("two", in: "general")
+            XCTFail("the second post in a minute is refused")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.limitCategory, "write")
+        }
+        let wait = try XCTUnwrap(ada.sendWait, "sending waits")
+        XCTAssertEqual(wait.until.timeIntervalSinceNow, 60, accuracy: 61)
+        let words = wait.message
+        do {
+            try await ada.toggleReaction("👍", on: XCTUnwrap(first))
+            XCTFail("a reaction is a write, held back here")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.message, words, "in the server's words")
+            XCTAssertTrue(error.userFacing.contains(" Try again in "), error.userFacing)
+        }
     }
 
     func testAMuteOfARoomYouCannotSeeIsRefusedWithTheServersWords() async throws {

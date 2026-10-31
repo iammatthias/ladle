@@ -22,6 +22,8 @@ struct ComposerView: View {
     /// Where fitted files are kept while the draft holds them (`Drafts.staging`).
     let staging: URL
     let onSend: (DraftField, [Attachment]) -> Void
+    /// Send while a wait holds it back: the notice shows again if it was put away.
+    var onHeld: () -> Void = {}
     var onProblem: (String) -> Void = { _ in }
     @FocusState private var focused: Bool
     @State private var pickingPhotos = false
@@ -165,10 +167,25 @@ struct ComposerView: View {
                 .frame(minHeight: Tokens.Control.md)
                 .accessibilityLabel(textLimit.isOver ? "\(-textLimit.remaining) bytes over the limit" : "\(textLimit.remaining) bytes left")
         }
-        Button("Send") { send() }
-            .buttonStyle(PrimaryButtonStyle())
-            .disabled(!canSend)
-            .keyboardShortcut(.return, modifiers: .command)
+        // While the server asked sending to wait, Send counts down and the draft stays, as the web's.
+        if let wait = session.composerWait(withFiles: !draft.files.isEmpty) {
+            SwiftUI.TimelineView(.periodic(from: .now, by: 1)) { context in
+                let left = max(0, wait.until.timeIntervalSince(context.date))
+                Button { onHeld() } label: {
+                    Label(WaitWords.countdown(left, long: left >= WaitWords.long), systemImage: "hourglass")
+                        .labelStyle(TightLabel())
+                        .monospacedDigit()
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                .opacity(0.6)
+                .accessibilityLabel("Send again in \(WaitWords.spoken(left, long: left >= WaitWords.long))")
+            }
+        } else {
+            Button("Send") { send() }
+                .buttonStyle(PrimaryButtonStyle())
+                .disabled(!canSend)
+                .keyboardShortcut(.return, modifiers: .command)
+        }
     }
 
     private var attachMenu: some View {
@@ -298,6 +315,7 @@ struct ComposerView: View {
     }
 
     private func send() {
+        if session.composerWait(withFiles: !draft.files.isEmpty) != nil { return onHeld() }
         guard canSend else { return }
         onSend(draft.field, draft.field.isEdit ? [] : draft.files.compactMap(\.attachment))
     }

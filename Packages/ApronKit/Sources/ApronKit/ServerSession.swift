@@ -151,6 +151,9 @@ public final class ServerSession {
     @ObservationIgnored var idleInputAt: Date?
     @ObservationIgnored var idleReport: IdleReport?
     @ObservationIgnored var idleSending: Task<Void, Never>?
+    /// Waits the server asked for, by what they hold back (`ServerSession+Limits`), and whose.
+    public internal(set) var limits: [LimitScope: LimitWait] = [:]
+    @ObservationIgnored var limitsUserID: String?
     private var formerUserIDs: Set<String> = []
     /// The fraction written of each of this user's uploads in flight, by `embed_id` (§4.8.3).
     public internal(set) var uploadProgress: [String: Double] = [:]
@@ -492,6 +495,7 @@ public final class ServerSession {
         formerUserIDs = []
         clearTyping()
         resetMutes()
+        limits = [:]
     }
 
     // MARK: Frames
@@ -963,7 +967,13 @@ public final class ServerSession {
     func request(_ method: String, _ params: JSONValue, id: String? = nil) async throws -> JSONValue {
         guard let connection else { throw Failure.notConnected }
         guard status == .signedIn else { throw Failure.notSignedIn }
-        return try await connection.request(method, params: params, id: id)
+        if let held = heldBack(method, params) { throw held }
+        do {
+            return try await connection.request(method, params: params, id: id)
+        } catch let error as RPCError {
+            noteLimit(error, method: method, params: params)
+            throw error
+        }
     }
 
     // MARK: Reading

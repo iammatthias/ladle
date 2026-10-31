@@ -62,7 +62,7 @@ public enum PreviewFixtures {
 
     private static let greeting: JSONValue = [
         "apron": 9, "auth": ["token", "guest"], "agent": "aprond/0.9",
-        "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity", "command", "embed:upload", "ext", "ext:emoji"],
+        "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity", "command", "embed:upload", "ext", "ext:emoji", "ext:limits"],
         "status": ["dnd", "invisible"],
         "ext": ["emoji": ["catalog_url": "https://home.example/emoji/catalog.json"]],
     ]

@@ -65,6 +65,12 @@ public actor PreviewServer: FrameTransport {
                 "body": ["text": .string(Self.help), "format": "markdown"],
             ]])
             deliver(["id": id, "result": [:]])
+        case "reactions" where params?["emojis"]?.arrayValue?.contains(.string(Self.slowReaction)) == true:
+            deliver(["id": id, "error": ["code": -32002, "message": "Posting limit reached",
+                                         "data": ["retry_after": 45, "ext": ["limits": "write"]]]])
+        case "message" where LimitScope.addsUpload("message", params):
+            deliver(["id": id, "error": ["code": -32002, "message": "Daily upload limit reached",
+                                         "data": ["retry_after": 7500, "ext": ["limits": "upload"]]]])
         case "status" where params?["mute"] != nil:
             deliver(["method": "status", "params": params ?? [:]])
             deliver(["id": id, "result": [:]])
@@ -72,6 +78,10 @@ public actor PreviewServer: FrameTransport {
             deliver(["id": id, "result": [:]])
         }
     }
+
+    /// A reaction the server refuses as over its posting limit (45 s, `ext:limits` `write`), so a
+    /// preview can show sending paused. Any new upload is refused for two hours (`upload`).
+    public static let slowReaction = "⏳"
 
     /// What apron-server-rust's `/help` lists for an account with no roles.
     static let help = """

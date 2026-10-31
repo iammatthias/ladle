@@ -5,7 +5,8 @@ import Foundation
 func errorText(_ error: any Error) -> String {
     switch error {
     case let error as RPCError:
-        return error.message.isEmpty ? "The server refused the request (\(error.code))." : error.message
+        // A wait the server asked for says when to try again, as apron-web's `userFacingRpcError`.
+        return error.message.isEmpty ? "The server refused the request (\(error.code))." : error.userFacing
     case Connection.Failure.closed:
         return "The connection closed before the server answered. Try again."
     case ServerSession.Failure.notConnected:

@@ -183,7 +183,8 @@ clone), which is only a worked example.
     two-server world built on it (rooms, threads, unread rooms, replies, reactions, an edit, a
     deleted message, presence). The design screenshots render from it; `PreviewFixturesTests`
     pins what it holds. It sends the script's `statuses` after `auth` (the design room is muted)
-    and echoes a `status` mute back, as servers do. Message ids are server-wide, so no two rooms share a minute in the
+    and echoes a `status` mute back, as servers do; it refuses the `⏳` reaction for 45 s
+    (`write`) and any new upload for two hours (`upload`), for the waits shot. Message ids are server-wide, so no two rooms share a minute in the
     script.
   - `MessageText`: a body as apron-web renders it (§3.5, §3.5.2): `blocks` gives `MessageBlock`s
     (`MessageBlocks.swift`). `markdown` is Foundation's full CommonMark and GFM parse (no
@@ -342,6 +343,16 @@ clone), which is only a worked example.
     after a `retry_after` wait or a 5 s backoff doubling to 5 minutes; a connection starts
     attended, so an attended app sends nothing. `suspend()` reports idle, waits up to 3 s, and
     stops: what the app does going to the background.
+  - Waits (`RateLimits.swift`, `ServerSession+Limits.swift`, §1.1 `retry_after`, `ext:limits`), as
+    apron-web's `noteLimit`, `heldBack`, `limitScope` and RateLimitNotice: `request` notes what a
+    refusal holds back (`LimitScope`: a refused `message`, history, and with `ext:limits` a
+    `write` on any write or an `upload` on a request adding a new upload) in `limits`, the
+    longer wait winning, by account, and refuses held requests before sending with a
+    `retry_after` error in the server's words ("Sending is paused" for a message wait).
+    `sendWait` and `composerWait(withFiles:)` are what the composer counts down; `WaitWords`
+    words it (`17s`, `m:ss`, `3h 12m`, spoken forms, `45s`/`3m`/`2h`), and `RPCError.userFacing`
+    adds "Try again in 45s." to every `retry_after` error the app shows. The outbox's sleeps
+    read the same clock, so tests tie `Environment.now` to `FakeClock`'s released sleeps.
   - `ServerPane` (`ServerPane.swift`): `ServerSession.pane`, the server pane's facts as
     apron-web's ServerPane: name, host, description, the connection in words with a tone,
     "Signed in as Ada (guest)", the address, and "Apron 9".
@@ -379,7 +390,7 @@ clone), which is only a worked example.
   context menu and the room's ⋯ menu; `MutedBell`), a muted row's bell-off and quiet count, the
   header's bell-off button, the profile bar's paused line, and You's Pause notifications;
   `Servers/` (the server list and iPad rail, `PreferencesView`: the media policy and trusted sites, from the list's toolbar and the rail's foot, `ConnectView`: add a server and sign in in one
-  sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
+  sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, `RateLimitNotice` and Send's countdown over the composer while a wait holds it back, composer with the
   mention list, the custom emoji `:` list, the `#` room list and the command list (`CommandSuggestions`: usage and
   summary, scrolling past five rows; picking fills `/name ` and keeps the keyboard up), reaction picker (custom emoji by category first),
   member list, `CustomEmojiViews`: `EmojiText` draws each marked key as its image at the line's
@@ -489,7 +500,7 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the room list and You while paused; the busy room at AX3; and the iPad
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the room list and You while paused, and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light, on the busy room and on the random room with its typing line. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with

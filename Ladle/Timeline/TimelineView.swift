@@ -19,6 +19,8 @@ struct TimelineView: View {
     @State private var reacting: MessageSnapshot?
     @State private var deleting: MessageSnapshot?
     @State private var leaving = false
+    /// The ends of the long waits put away, which show again on the next Send.
+    @State private var dismissedWaits: Set<Date> = []
     @State private var showingMembers = false
     @State private var atBottom = true
     @State private var visit = Visit.opening
@@ -118,7 +120,9 @@ struct TimelineView: View {
                     if !session.mayWrite {
                         ReadOnlyPrompt(session: session) { requestSignIn(session.record) }
                     } else {
-                        ComposerView(session: session, roomID: roomID, draft: draft, staging: drafts.staging, onSend: send, onProblem: { problem = $0 })
+                        waits
+                        ComposerView(session: session, roomID: roomID, draft: draft, staging: drafts.staging, onSend: send,
+                                     onHeld: { dismissedWaits = [] }, onProblem: { problem = $0 })
                     }
                 }
                 .background(Palette.timeline)
@@ -248,6 +252,22 @@ struct TimelineView: View {
 
     private var isReading: Bool {
         visible && scenePhase == .active && atBottom && visit.isLanded && session.status == .signedIn
+    }
+
+    /// Waits the server asked for on sending and on uploads, above the composer they hold back.
+    @ViewBuilder
+    private var waits: some View {
+        let shown = [(LimitScope.message, session.sendWait), (.upload, session.wait(.upload))]
+            .compactMap { scope, wait in wait.flatMap { dismissedWaits.contains($0.until) ? nil : (scope, $0) } }
+        if !shown.isEmpty {
+            VStack(spacing: Tokens.Space.s1) {
+                ForEach(shown, id: \.0) { scope, wait in
+                    RateLimitNotice(scope: scope, wait: wait) { dismissedWaits.insert(wait.until) }
+                }
+            }
+            .padding(.horizontal, Tokens.Space.s3)
+            .padding(.top, Tokens.Space.s2)
+        }
     }
 
     @ToolbarContentBuilder

@@ -301,8 +301,8 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Failed command gives the draft back | bh | partial | `Kit/ServerSession.swift` outbox | Not verified in code: the draft returns. |
 | Drafts per room | bh | has | `Kit/Drafts.swift` | See section 2. Reply keeps the text; an edit sits beside the draft and gives it back. |
 | Link previews above the composer with × to drop | #11, #19 | missing | | |
-| Rate limit: Send counts down under "Sending is paused" | #109 | missing | | Kit waits. No countdown shows. |
-| Uploads are paused notice (`ext:limits` upload) | #109 | partial | `Kit/ServerSession.swift` | Kit pauses uploads. No notice. |
+| Rate limit: Send counts down under "Sending is paused" | #109 | has | `Kit/ServerSession+Limits.swift` (`sendWait`), `Timeline/RateLimitNotice.swift`, `Timeline/ComposerView.swift` | The ring, or a clock with × for an hour or more. |
+| Uploads are paused notice (`ext:limits` upload) | #109 | has | `Kit/ServerSession+Limits.swift` (`composerWait`), `Timeline/RateLimitNotice.swift` | Holds Send only with files attached. |
 
 ## 15. Links, deep links, and place cards
 
@@ -447,9 +447,9 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | `ext:permissions`: write, add_members, move_any | #111, #121 | has | `Kit/Permissions.swift` | `add_members` is read but nothing uses it. |
 | `ext:settings`: read_cursors | #111 | has | `Kit/ServerInfo.swift` | |
 | `ext:settings`: private_rooms limit | #123 | missing | | |
-| `ext:limits` write and upload pauses | #109 | partial | `Kit/ServerSession.swift` | Kit holds requests. No countdown UI. |
+| `ext:limits` write and upload pauses | #109 | has | `Kit/RateLimits.swift` (`LimitScope`), `Kit/ServerSession+Limits.swift` | As apron-web's `limitScope` and `limitHolds`; the category counts only with the capability. |
 | `retry_after` holds `history` and `message` | #109 | has | `Kit/ServerSession.swift` | |
-| Reaction, join, leave refused during a pause with a toast | #109 | missing | | |
+| Reaction, join, leave refused during a pause with a toast | #109 | has | `Kit/ServerSession+Limits.swift` (`heldBack`), `Kit/RateLimits.swift` (`userFacing`), `App/ErrorText.swift` | Refused without sending; the banner gives the server's words and "Try again in 18s". |
 | Only write `ext` to servers with `ext` | bh | partial | `Kit/ServerSession.swift` (`save`) | An edit resends the stored `ext` with no `ext` capability check. Ladle never writes new `ext`. |
 
 ## 25. Keyboard shortcuts
@@ -530,7 +530,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 18. **Rooms list order and folding.** Keep room order on device with drag to reorder. Fold sections to rooms with news, remember folded rooms, and fold a room's threads when it is picked again. Make Browse Rooms show member counts and descriptions, and open a room to read before joining. M.
 19. **Streams and terminal output.** Read a stream's `url` live with a Live badge. Render `terminal` with ANSI colors and carriage-return overwrite. Only from the server's origin. M.
 20. **Apron link chips.** Draw Apron links as chips that say what they are ("Message in #general"), and other-server links as a globe chip. S.
-21. **Rate limit feedback.** Count down "Sending is paused", show "Uploads are paused", and refuse reactions, joins, and leaves during a pause with the server's words. S.
+21. ~~**Rate limit feedback.**~~ Done (`Kit/ServerSession+Limits.swift`, `Timeline/RateLimitNotice.swift`). "Loading history is paused" by the loading row is not built: history paging waits silently.
 22. ~~**Server pane.**~~ Done (`Profile/ServerPaneView.swift`). Disconnect signs out of that server, with a confirmation; a disconnect that keeps the saved session is not offered, since each server keeps its own connection.
 23. **Reconnect feedback.** A floating pill with the 400/600/300 ms timing, "Checking for new messages…", the catching-up line under the header, and your own dot as a dashed ring while reconnecting. S.
 24. ~~**Idle reporting.**~~ Done (`Kit/Attention.swift`, `Kit/ServerSession+Idle.swift`).
