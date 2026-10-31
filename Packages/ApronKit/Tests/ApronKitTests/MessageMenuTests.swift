@@ -11,8 +11,12 @@ final class MessageMenuTests: XCTestCase {
         let ada = try XCTUnwrap(general.first { $0.from.userID == "ada" })
         let mine = MessageMenu(own, in: home), theirs = MessageMenu(ada, in: home)
         XCTAssertEqual([mine.reacts, mine.mayWrite, mine.editable, theirs.editable], [true, true, true, false])
-        XCTAssertEqual(mine.moveDestinations, ["1793092125000"], "your own message moves to the room's threads")
+        XCTAssertEqual(mine.moveDestinations.map(home.title(of:)), ["2024 offsite", "Archive 2025", "Benchmarks", "Docs", "Hiring", "Icons v1", "Load test", "Origin check", "Passkeys", "Release 0.2", "Untitled"],
+                       "your own message moves to the room's threads, by title")
         XCTAssertEqual(theirs.moveDestinations, [], "someone else's needs move_any")
+        XCTAssertEqual([mine.startsThread, theirs.startsThread], [true, true])
+        let reply = try XCTUnwrap(home.timeline(PreviewFixtures.releaseThreadID).first)
+        XCTAssertFalse(MessageMenu(reply, in: home).startsThread, "threads don't nest")
         XCTAssertEqual(theirs.link?.absoluteString, "https://link.apron.chat/#server=wss://home.example/ws&room=general&message=\(ada.messageID.text)")
         XCTAssertEqual(theirs.text, ada.plainText)
 

@@ -254,12 +254,14 @@ public enum PreviewFixtures {
     Raw <b>HTML</b> stays text.
     """
 
-    private static func room(_ id: String, _ title: String, parent: String? = nil, members: [String],
-                             description: String? = nil, isPrivate: Bool = false, logID: String? = nil) -> JSONValue {
+    private static func room(_ id: String, _ title: String?, parent: String? = nil, members: [String],
+                             description: String? = nil, isPrivate: Bool = false, logID: String? = nil, latest: Int? = nil) -> JSONValue {
         var room: [String: JSONValue] = [
-            "room_id": .string(id), "log_id": .string(logID ?? (parent == nil ? message(-600) : id)), "title": .string(title),
+            "room_id": .string(id), "log_id": .string(logID ?? (parent == nil ? message(-600) : id)),
             "members": .array(members.map { ["user_id": .string($0)] }),
         ]
+        if let title { room["title"] = .string(title) }
+        if let latest { room["latest_log_id"] = .string(message(latest)) }
         if let parent { room["parent_room_id"] = .string(parent) }
         if let description { room["description"] = .string(description) }
         if isPrivate { room["private"] = true }
@@ -271,6 +273,32 @@ public enum PreviewFixtures {
     /// The thread renamed from "Release", whose timeline shows the rename.
     public static let releaseThreadID = releaseThread
     private static let iconThread = String(start + 3 * 60_000 + 45_000)
+
+    /// A thread of #general started `minute` minutes from the start (45 s past it).
+    private static func generalThread(_ minute: Int) -> String { String(start + Int64(minute) * 60_000 + 45_000) }
+
+    /// #general's other joined threads, quiet for a while: the newest five of all its joined
+    /// threads stay up top, and the two quiet for more than three days fold under Inactive, one
+    /// of them untitled.
+    private static let loadTestThread = generalThread(-150)
+    private static let originThread = generalThread(-500)
+    private static let docsThread = generalThread(-1200)
+    private static let passkeyThread = generalThread(-5100)
+    public static let untitledThreadID = generalThread(-9100)
+    private static let archiveThread = generalThread(-600_100)
+
+    /// #general's threads Sam has not joined, for Other Threads: last active 4 days, 9 weeks, 2
+    /// years and 3 years before `now`, the last behind "1 more…".
+    private static let otherThreads: [JSONValue] = [
+        room(generalThread(-5900), "Benchmarks", parent: "general", members: ["bram"], latest: -5800),
+        room(generalThread(-91000), "Hiring", parent: "general", members: ["ada"], description: "Two roles, both remote", latest: -90700),
+        room(generalThread(-1_060_000), "2024 offsite", parent: "general", members: ["chiara"], latest: -1_055_000),
+        room(generalThread(-1_600_000), "Icons v1", parent: "general", members: ["eunji"], latest: -1_590_000),
+    ]
+
+    /// When the rooms list's shots are taken, so "4d" and Inactive read the same every run:
+    /// 2026-10-27 10:00 UTC, an hour after the first message.
+    public static let now = Date(timeIntervalSince1970: Double(start) / 1000 + 3600)
 
     /// The thread whose messages link to a message, a thread and a private room's unloaded
     /// message, for the link cards; one link also comes with a sender's preview the card hides.
@@ -313,6 +341,12 @@ public enum PreviewFixtures {
                 room("general", "general", members: ["sam", "ada", "bram", "chiara", "dev", "eunji"]),
                 room(releaseThread, "Release 0.2", parent: "general", members: ["sam", "ada", "bram"],
                      description: "Ship Friday, then freeze", logID: String(start + 16 * 60_000 + 30_000)),
+                room(loadTestThread, "Load test", parent: "general", members: ["sam", "bram"]),
+                room(originThread, "Origin check", parent: "general", members: ["sam", "ada"]),
+                room(docsThread, "Docs", parent: "general", members: ["sam", "eunji"], description: "What the README still owes"),
+                room(passkeyThread, "Passkeys", parent: "general", members: ["sam", "ada"]),
+                room(untitledThreadID, nil, parent: "general", members: ["sam", "chiara"]),
+                room(archiveThread, "Archive 2025", parent: "general", members: ["sam", "dev"]),
                 room("design", "design", members: ["sam", "ada", "eunji"], description: "Icons, type and color"),
                 room(iconThread, "Icon sketches", parent: "design", members: ["sam", "eunji"]),
                 room("random", "random", members: ["sam", "ada", "bram", "chiara"]),
@@ -340,6 +374,12 @@ public enum PreviewFixtures {
                 ["room_id": .string(releaseThread), "log_id": .string(releaseThread), "parent_room_id": "general", "title": "Release",
                  "description": "Ship Friday, then freeze"],
             ]),
+            loadTestThread: history(loadTestThread, [line(-140, "bram", "Ramping to 500 connections at noon.")]),
+            originThread: history(originThread, [line(-480, "ada", "Both boxes send the right Origin now.")]),
+            docsThread: history(docsThread, [line(-1100, "eunji", "The sign-in section needs a QR screenshot.")]),
+            passkeyThread: history(passkeyThread, [line(-5000, "sam", "AASA plan: one file per domain.")]),
+            untitledThreadID: history(untitledThreadID, [line(-9000, "chiara", "Notes from the offsite, before I lose them.")]),
+            archiveThread: history(archiveThread, [line(-600_000, "dev", "Last year's release checklists, for reference.")]),
             "design": history("design", [
                 line(-40, "eunji", "Three takes on the app icon: a ladle in profile, a ladle from above, and just the bowl."),
                 line(-38, "ada", "From above reads best at small sizes."),
@@ -399,7 +439,9 @@ public enum PreviewFixtures {
         ],
         readCursors: [
             "general": message(9), releaseThread: message(17), "design": message(-22),
-            iconThread: message(-18), "random": message(-90), "ops": message(-290), "kitchen": message(-126),
+            iconThread: message(-18), "random": message(-90),
+            loadTestThread: message(-140), originThread: message(-480), docsThread: message(-1100), passkeyThread: message(-5000),
+            untitledThreadID: message(-9000), archiveThread: message(-600_000), "ops": message(-290), "kitchen": message(-126),
             "markdown": message(-400), "remote": message(-408),
         ],
         notices: [[
@@ -410,7 +452,8 @@ public enum PreviewFixtures {
             ["room_id": .string(typingRoomID), "from": people["ada"]!, "typing": 3600],
             ["room_id": .string(typingRoomID), "from": people["bram"]!, "typing": 3600],
         ],
-        statuses: [["room_id": .string(mutedRoomID), "mute": true]]
+        statuses: [["room_id": .string(mutedRoomID), "mute": true]],
+        unjoinedThreads: ["general": .array(otherThreads)]
     )
 
     /// The room muted until unmuted, with its threads: its rows ring no bell.

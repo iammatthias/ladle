@@ -173,7 +173,9 @@ Each screen section below lists only where it departs from these conventions.
 | Second line | "Ada: last message…" when held. Otherwise the first line of `description`. For a promoted thread, "Thread in General". When threads have news, "2 threads with new replies". | `.secondary`, one line |
 | Trailing | Unread count, or a dot when the count is unknown (4.3). `at` when you are mentioned. `bell.slash` before the count when muted (its own mute, or for a thread its room's), and then the news stays quiet: no bold title and a quiet count, as apron-web's RoomItem. | Count pill in the accent color, not a red badge ([notifications]: "Avoid creating a custom image or component that mimics the appearance or behavior of a badge.") |
 
-Rows stay in title order with `codePointLess`. They do not move by recency. **Judgment call.** A stable order keeps your memory of where a room is (Slack's default sidebar works this way), and rows never jump under your finger while new messages arrive. Unread rooms stand out by weight and the count.
+Rooms stay in title order with `codePointLess`. They do not move by recency. **Judgment call.** A stable order keeps your memory of where a room is (Slack's default sidebar works this way), and rows never jump under your finger while new messages arrive. Unread rooms stand out by weight and the count.
+
+**Threads under a room**, as apron-web's ThreadList (`ThreadList`). The open room (the selected one, or the room of the selected thread) lists its joined threads on a guide line, most recently active first: newest loaded message, else the server's `latest_log_id`, else the thread's creation. Then **Other Threads · 4**, the threads you have not joined, from `room_list {parent_room_id, filter: not_joined}`: a fold heading kept as you left it on this device, three rows, then "1 more…", each with when it was last active ("4d", "9w", "2y"); a tap reads one without joining, and Join is a leading swipe or its menu. Any other room lists only its joined threads with news, so nothing is missed, and the thread open in it. A thread without a title is "Untitled".
 
 **Navigation.** Tap a row to push its timeline, or show it in the detail column on iPad. The selection stays highlighted on iPad ([split-views]: "persistently highlight the current selection").
 
@@ -433,7 +435,8 @@ A thread is a room with `parent_room_id`, so it uses 3.5 with these differences.
 **Thread timeline.** The title is the thread title, and the subtitle is "in #General". Tap the subtitle to go to the parent room.
 
 - In a thread you have not joined, the composer placeholder reads "Reply (joins the thread)". Sending joins first, then posts. A poster who has not joined gets no broadcast (§4.2.2).
-- **Start Thread** from a message (3.8) opens New Thread with the title prefilled from the message's first line, at most 60 characters, which you can edit. Ladle creates the thread with `room_set`. The thread's first message replies to the source message, following the web client's convention. The thread opens when its `room_update` arrives.
+- The subtitle line under the bar says how many replies are loaded: "1 reply", "12 replies", or "12+ replies" while older ones are still to load. On iPhone, who is typing takes its place.
+- **Start Thread** from a room's message (3.8) opens the thread form (`RoomFormSheet`, also New Thread and New Room): the title from the message's first line that is not blank, its white space made single, at most 60 code points; the description the message quoted as Markdown (`> `), cut near 500 code points on a line or word with a code fence closed, plain text escaped. Ladle creates the thread with `room_set` (`parent_room_id`, `title`, `description`; never `private`, which a thread takes from its room). It opens with its composer replying to the message: that first reply is the link back, the web client's convention. Start Thread on a message that already has a thread (one this device started, or one loaded from its start whose first message replies to it) opens that thread.
 
 **Keyboard.** ⌘[ goes back to the parent. This is system navigation.
 

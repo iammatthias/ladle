@@ -28,7 +28,7 @@ enum Screen: String, CaseIterable {
     case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing", rolePicker = "role-picker", roleChip = "role-chip"
     case muted, paused, notificationsPaused = "notifications-paused", limited
     case appearance, appearanceCustom = "appearance-custom", preferences, history
-    case threadRenamed = "thread-renamed"
+    case threadRenamed = "thread-renamed", startThread = "start-thread"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -57,6 +57,7 @@ enum Renderer {
             url.host() == "git.example" ? FixtureMedia.wikiPreview : nil
         }
         let staged = FixtureMedia.stagedAttachments()
+        UserDefaults.standard.set(true, forKey: "otherThreadsOpen")
 
         let store = await PreviewFixtures.makeStore()
         guard let home = store.session(for: PreviewFixtures.homeID) else { exit(1) }
@@ -99,6 +100,7 @@ enum Renderer {
                 .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
                 .environment(\.scenePhase, .inactive)
                 .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
+                .environment(\.fixedNow, PreviewFixtures.now)
                 .dynamicTypeSize(shot.large ? .accessibility3 : .large)
                 .apronStyle()
                 .id(UUID())))
@@ -220,6 +222,14 @@ enum Renderer {
         case .threadRenamed:
             // The Release thread's rename, and in #general (the busy room) Dev's join.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.releaseThreadID, reminders: store.reminders, drafts: Drafts()) })
+        case .startThread:
+            // Start Thread on Bram's checklist message: its first line as the title, its text quoted.
+            AnyView(Group {
+                if let message = home.timeline(PreviewFixtures.busyRoomID).first(where: { $0.plainText.hasPrefix("Did anyone look") }) {
+                    RoomFormSheet(kind: .thread, mode: .create, subtitle: "In general", title: ThreadStart.title(message.body),
+                                  description: ThreadStart.description(message.body) ?? "") { _, _ in }
+                }
+            })
         case .typing:
             // Ada and Bram typing: the header's subtitle on a phone.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.typingRoomID, reminders: store.reminders, drafts: Drafts()) })

@@ -22,6 +22,8 @@ public struct ReplayStore: Sendable, Equatable {
     /// Every room record's title seen, superseded or not, by room and `log_id`: what renames are
     /// read from.
     private var roomTitles: [String: [LogID: String]] = [:]
+    /// The newest `log_id` the server has said each room's log holds (`latest_log_id`). Never lowered.
+    private var latest: [String: LogID] = [:]
 
     private struct MemberEntry: Hashable, Sendable {
         var user: UserObject
@@ -49,6 +51,7 @@ public struct ReplayStore: Sendable, Equatable {
                 roomTitles[record.roomID, default: [:]][logID] = record.title?.stringValue ?? ""
             }
             put(room: record)
+            if let latest = delivery.latestLogID { noteLatest(of: record.roomID, latest) }
             if let list = delivery.members { seedMembers(of: record.roomID, with: list, asOf: delivery.latestLogID) }
         }
         for snapshot in records.messages { put(message: snapshot) }
@@ -146,6 +149,14 @@ public struct ReplayStore: Sendable, Equatable {
     }
 
     public func floor(of roomID: String) -> LogID? { floors[roomID] }
+
+    /// Notes a room's `latest_log_id`, from a room record or a history page.
+    public mutating func noteLatest(of roomID: String, _ logID: LogID) {
+        if latest[roomID].map({ $0 < logID }) ?? true { latest[roomID] = logID }
+    }
+
+    /// The newest `log_id` the server has said the room's log holds, if it said.
+    public func latestLogID(of roomID: String) -> LogID? { latest[roomID] }
 
     /// The room's membership records, by `log_id`.
     public func membershipLog(of roomID: String) -> [MembershipRecord] { membershipLogs[roomID] ?? [] }

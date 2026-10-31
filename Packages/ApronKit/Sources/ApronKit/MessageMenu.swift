@@ -9,7 +9,7 @@ public struct MenuLink: Hashable, Sendable {
 }
 
 /// What a message's menu offers, as the session allows it: reactions, Reply, Copy Text, Select
-/// Text, Copy Link, Move To, the body's first three links, and Edit and Delete.
+/// Text, Copy Link, Start Thread, Move To, the body's first three links, and Edit and Delete.
 public struct MessageMenu: Sendable {
     /// The quick reactions and More Reactions: signed in, on a server with `reactions`.
     public var reacts: Bool
@@ -21,6 +21,9 @@ public struct MessageMenu: Sendable {
     public var selectableText: String?
     /// Copy Link's web link to the message.
     public var link: URL?
+    /// Start Thread: in a room, not a thread (threads don't nest), on a server with `rooms`.
+    /// Off with the reason, as Reply, for a user who may not write.
+    public var startsThread: Bool
     /// Move To's rooms, by id: none unless the user may move the message.
     public var moveDestinations: [String]
     public var links: [MenuLink]
@@ -34,6 +37,8 @@ public struct MessageMenu: Sendable {
         text = message.plainText
         selectableText = message.plainText.isEmpty ? nil : MessageText.plain(message.body)
         link = ApronLink(server: session.record.url, room: message.roomID, message: message.messageID).webURL
+        startsThread = session.status == .signedIn && session.server?.has("rooms") == true && !message.isTombstone
+            && session.store.room(message.roomID).map { $0.parentRoomID == nil } ?? false
         moveDestinations = session.mayMove(message) ? session.moveDestinations(for: message) : []
         links = MenuLink.links(in: message.body, from: session.record.url)
         editable = session.status == .signedIn && session.mayWrite && session.isYou(message.from.userID) && session.server?.has("edit") == true

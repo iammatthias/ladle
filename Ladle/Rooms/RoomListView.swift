@@ -19,7 +19,11 @@ struct RoomListView: View {
     var showsServerHead = false
     @State private var browsing = false
     @State private var naming: NewRoom?
-    @State private var newTitle = ""
+    /// Other Threads is open until folded, and stays as it was left, as the web's.
+    @AppStorage("otherThreadsOpen") private var othersOpen = true
+    /// The room whose other threads all show, past the first three, after "N more…".
+    @State private var allOthersFor: String?
+    @Environment(\.fixedNow) private var fixedNow
     @State private var problem: String?
     @State private var leaving: String?
     /// The room a swipe asked to mute, whose choices a dialog lists.
@@ -50,7 +54,7 @@ struct RoomListView: View {
             Section {
                 ForEach(session.roomTree) { node in
                     roomRow(node.roomID, isThread: false)
-                    ForEach(node.threadIDs, id: \.self) { roomRow($0, isThread: true) }
+                    threads(of: node)
                 }
             } header: {
                 HStack {
@@ -91,15 +95,13 @@ struct RoomListView: View {
             }
         }
         .sheet(isPresented: $browsing) { BrowseRoomsView(session: session) }
-        .alert(naming?.parent == nil ? "New Room" : "New Thread", isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
-            TextField("Title", text: $newTitle)
-            Button("Create") {
-                let parent = naming?.parent
-                let title = newTitle
-                newTitle = ""
-                perform { try await session.createRoom(title: title, parentRoomID: parent) }
+        .sheet(item: $naming) { new in
+            RoomFormSheet(kind: new.parent == nil ? .room : .thread, mode: .create,
+                          subtitle: new.parent.map { "In \(session.title(of: $0))" }, isPrivate: new.parent.map(session.isPrivate) ?? false,
+                          title: "", description: "") { title, description in
+                let created = try await session.createRoom(title: title, description: description, parentRoomID: new.parent)
+                if let created { open(created) }
             }
-            Button("Cancel", role: .cancel) { newTitle = "" }
         }
         .confirmationDialog(leaving.map { "Leave \(session.title(of: $0))?" } ?? "", isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } }),
                             titleVisibility: .visible, presenting: leaving) { roomID in
@@ -150,15 +152,45 @@ struct RoomListView: View {
 
     // MARK: Rows
 
+    /// A room's threads as the web's ThreadList: under the open room, its joined threads and
+    /// Other Threads; under another, only its joined threads with news.
+    @ViewBuilder
+    private func threads(of node: RoomNode) -> some View {
+        let list = session.threadList(of: node, open: selected, othersFolded: !othersOpen, allOthers: allOthersFor == node.roomID)
+        ForEach(list.joined, id: \.self) { roomRow($0, isThread: true) }
+        if list.othersCount > 0 {
+            FoldHeading(label: "Other Threads", count: list.othersCount, open: $othersOpen)
+            ForEach(list.others, id: \.self) { roomRow($0, isThread: true) }
+            if list.moreOthers > 0 {
+                Button { allOthersFor = node.roomID } label: {
+                    Text("\(list.moreOthers) more…").apText(.sm, .medium).foregroundStyle(Palette.denim)
+                        .padding(.leading, RoomRow.threadInset)
+                        .frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .listRowInsets(EdgeInsets(top: 0, leading: Tokens.Space.s2, bottom: 0, trailing: Tokens.Space.s2))
+                .listRowSeparator(.hidden)
+                .listRowBackground(Color.clear)
+                .accessibilityHint("Shows every other thread of \(session.title(of: node.roomID))")
+            }
+        }
+    }
+
     private func roomRow(_ roomID: String, isThread: Bool) -> some View {
         let isSelected = roomID == selected
         return Button { open(roomID) } label: {
-            RoomRow(session: session, roomID: roomID, isThread: isThread, isSelected: isSelected)
+            RoomRow(session: session, roomID: roomID, isThread: isThread, isSelected: isSelected, now: fixedNow ?? .now)
         }
         .buttonStyle(.plain)
         .listRowInsets(EdgeInsets(top: 1, leading: Tokens.Space.s2, bottom: 1, trailing: Tokens.Space.s2))
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
+        .swipeActions(edge: .leading) {
+            if isThread, !session.joinedRoomIDs.contains(roomID), session.server?.has("rooms") == true, session.mayWrite {
+                Button("Join", systemImage: "plus.circle") { perform { try await session.join(roomID) } }.tint(Palette.denim)
+            }
+        }
         .swipeActions {
             if session.joinedRoomIDs.contains(roomID), session.server?.has("rooms") == true {
                 Button("Leave", systemImage: "rectangle.portrait.and.arrow.right") { leaving = roomID }.tint(Palette.danger)
@@ -289,6 +321,11 @@ struct RoomRow: View {
     let roomID: String
     let isThread: Bool
     let isSelected: Bool
+    /// What a thread you have not joined counts its last activity from.
+    var now = Date()
+
+    /// Where a thread's text starts, right of the guide line.
+    static let threadInset = Tokens.Space.s3 + Tokens.Space.s4 + Tokens.Space.s2
 
     var body: some View {
         let unread = session.unreadCount(in: roomID)
@@ -331,13 +368,16 @@ struct RoomRow: View {
                 UnreadCount(count: mentions, mentions: true, quiet: muted)
             } else if unread > 0 {
                 UnreadCount(count: unread, quiet: muted)
+            } else if !joined, isThread, let active = session.lastActive(of: roomID) {
+                // When it was last active, as the web's Other Threads rows say it.
+                Text(LastActive.words(active, now: now)).apText(.sm).monospacedDigit().foregroundStyle(Palette.inkMuted)
             } else if !joined {
                 Text("Not joined").apText(.sm).foregroundStyle(Palette.inkMuted)
             }
         }
         .padding(.vertical, isThread ? Tokens.Space.s1_5 : Tokens.Space.s2)
         .padding(.trailing, Tokens.Space.s3)
-        .padding(.leading, isThread ? Tokens.Space.s3 + Tokens.Space.s4 + Tokens.Space.s2 : Tokens.Space.s3)
+        .padding(.leading, isThread ? Self.threadInset : Tokens.Space.s3)
         .frame(minHeight: Tokens.Size.touchTarget)
         .background(isSelected ? Palette.selected : .clear, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
         .overlay(alignment: .leading) {
@@ -376,9 +416,46 @@ struct RoomRow: View {
         if mentions > 0 { parts.append("\(mentions) \(mentions == 1 ? "mention" : "mentions") of you") }
         if unread > 0 { parts.append("\(unread) new") }
         if !joined { parts.append("not joined") }
+        if !joined, isThread, let active = session.lastActive(of: roomID) {
+            parts.append("last active \(active.formatted(.relative(presentation: .named)))")
+        }
         if isThread, let description = session.roomDescription(roomID) { parts.append(EmojiKeys.spoken(description, catalog: session.emojiCatalog)) }
         return parts.joined(separator: ", ")
     }
+}
+
+/// The web's FoldHeading over a room's threads: "Other Threads · 4", which folds them away.
+struct FoldHeading: View {
+    let label: String
+    let count: Int
+    @Binding var open: Bool
+
+    var body: some View {
+        Button { open.toggle() } label: {
+            HStack(spacing: Tokens.Space.s1) {
+                Text("\(label) · \(count)").apText(.caps, .semibold).textCase(.uppercase)
+                Image(systemName: "chevron.right").imageScale(.small).rotationEffect(.degrees(open ? 90 : 0))
+                Spacer(minLength: 0)
+            }
+            .foregroundStyle(Palette.inkMuted)
+            .padding(.leading, RoomRow.threadInset)
+            .frame(minHeight: Tokens.Size.touchTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets(top: 0, leading: Tokens.Space.s2, bottom: 0, trailing: Tokens.Space.s2))
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+        .accessibilityLabel("\(label), \(count)")
+        .accessibilityValue(open ? "Shown" : "Folded")
+        .accessibilityAddTraits(.isHeader)
+    }
+}
+
+extension EnvironmentValues {
+    /// The time the rooms list counts "4d" and Inactive from; the renderer pins it, so its shots
+    /// read the same every run. The app never sets it.
+    @Entry var fixedNow: Date?
 }
 
 /// The visible rooms the user has not joined, from `room_list`.

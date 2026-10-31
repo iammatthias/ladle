@@ -33,7 +33,7 @@ final class DraftFieldTests: XCTestCase {
         XCTAssertEqual(home.suggestions(for: DraftField(text: "Lunch :pa"), in: "kitchen"),
                        .emoji(home.emojiCatalog.map { $0.offered.filter { $0.key == ":partyparrot:" } } ?? []))
         guard case .rooms(let rooms) = home.suggestions(for: DraftField(text: "Moving this to #s"), in: "general") else { return XCTFail("rooms") }
-        XCTAssertEqual(rooms.map(\.title), ["design", "Icon sketches", "ops", "Release 0.2"])
+        XCTAssertEqual(rooms.map(\.title), ["2024 offsite", "Benchmarks", "design", "Docs", "Icon sketches", "Icons v1", "Load test", "ops"], "at most 8")
         XCTAssertNil(home.suggestions(for: DraftField(text: "/inv"), in: "general"), "no commands before /help answers")
         await home.loadCommands(in: "general")
         for _ in 0 ..< 100 where home.commands == nil { try await Task.sleep(for: .milliseconds(10)) }

@@ -12,7 +12,8 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(demo.status, .signedIn)
 
         XCTAssertEqual(home.roomTree.map { home.title(of: $0.roomID) }, ["design", "general", "kitchen", "markdown", "ops", "random", "remote"])
-        XCTAssertEqual(home.roomTree.map { $0.threadIDs.map(home.title(of:)) }, [["Icon sketches"], ["Release 0.2"], [], [], [], [], []])
+        XCTAssertEqual(home.roomTree.map { $0.threadIDs.map(home.title(of:)) }, [["Icon sketches"], ["Release 0.2", "Load test", "Origin check", "Docs", "Passkeys", "Benchmarks", "Untitled", "Hiring", "Archive 2025", "2024 offsite", "Icons v1"], [], [], [], [], []],
+                       "most recently active first, those not joined among them")
         for _ in 0 ..< 100 where home.typingNames(in: PreviewFixtures.typingRoomID).count < 2 { try await Task.sleep(for: .milliseconds(10)) }
         XCTAssertEqual(home.typingNames(in: PreviewFixtures.typingRoomID), ["Ada Okafor", "Bram"])
         XCTAssertEqual(home.typingNames(in: PreviewFixtures.busyRoomID), [])
@@ -73,7 +74,7 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(general.compactMap { $0.body?["embeds"]?.arrayValue?.first?["kind"]?.stringValue }, ["link", "poll"])
         XCTAssertEqual(home.store.room("ops")?.isPrivate, true)
         XCTAssertEqual(home.notices.map(\.roomID), ["general"])
-        XCTAssertEqual(home.store.room(home.roomTree[1].threadIDs[0])?.description?.stringValue, "Ship Friday, then freeze")
+        XCTAssertEqual(home.store.room(PreviewFixtures.releaseThreadID)?.description?.stringValue, "Ship Friday, then freeze")
         XCTAssertEqual(home.unreadCount(in: "random"), 0, "Sam's pending upload is the newest message")
         let uploads = home.timeline(PreviewFixtures.mediaRoomID).flatMap(\.embedList).compactMap(\.upload)
         XCTAssertEqual(uploads.map { upload -> String in
@@ -86,8 +87,8 @@ final class PreviewFixturesTests: XCTestCase {
             }
         }, ["image 1600x1200", "video", "file", "audio", "pending"])
         XCTAssertTrue(home.canAttach)
-        XCTAssertEqual(home.timeline(home.roomTree[1].threadIDs[0]).count, 4, "Release 0.2")
-        XCTAssertEqual(home.unreadCount(in: home.roomTree[1].threadIDs[0]), 2)
+        XCTAssertEqual(home.timeline(PreviewFixtures.releaseThreadID).count, 4, "Release 0.2")
+        XCTAssertEqual(home.unreadCount(in: PreviewFixtures.releaseThreadID), 2)
         XCTAssertEqual(home.unreadCount(in: "design"), 0)
         let players = home.timeline(PreviewFixtures.linkRoomID).flatMap(\.embedList).compactMap { $0.og?.player(gate: home.mediaGate) }
         XCTAssertEqual(players.map { player -> String in

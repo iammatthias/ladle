@@ -32,11 +32,15 @@ final class TimelineTests: XCTestCase {
         let home = try await home()
         let general = home.timeline("general")
         let items = home.timelineItems("general", lineBefore: general[10].messageID, calendar: utc)
-        XCTAssertEqual(names(items, in: home), ["day 1793059200", "ada", "bram", "sam", "chiara", "ada", "eunji", "bram",
-                                               "thread Release 0.2", "chiara", "ada", "sam", "New", "eunji", "bram", "Dev joined", "dev"])
-        XCTAssertEqual(items.map(\.id).prefix(3), ["day-1793059200.0", "1793091600000", "1793091660000"])
-        XCTAssertEqual(items[8].id, "thread-1793092125000")
-        XCTAssertEqual(items[12].id, "unread")
+        let today = try XCTUnwrap(items.firstIndex { $0.id == "day-1793059200.0" })
+        XCTAssertEqual(names(Array(items[..<today]), in: home).filter { $0.hasPrefix("thread") },
+                       ["thread Icons v1", "thread 2024 offsite", "thread Archive 2025", "thread Hiring", "thread Untitled", "thread Benchmarks",
+                        "thread Passkeys", "thread Docs"], "older threads' cards, each after its own day pill")
+        XCTAssertEqual(names(Array(items[today...]), in: home), ["day 1793059200", "thread Origin check", "thread Load test", "ada", "bram", "sam", "chiara", "ada", "eunji", "bram",
+                                                                 "thread Release 0.2", "chiara", "ada", "sam", "New", "eunji", "bram", "Dev joined", "dev"])
+        XCTAssertEqual(items[today...].map(\.id).prefix(4), ["day-1793059200.0", "thread-1793061645000", "thread-1793082645000", "1793091600000"])
+        XCTAssertEqual(items[today + 10].id, "thread-1793092125000")
+        XCTAssertEqual(items[today + 14].id, "unread")
     }
 
     func testAMessageContinuesItsAuthorsRunWithinFiveMinutes() async throws {
@@ -51,8 +55,8 @@ final class TimelineTests: XCTestCase {
         let home = try await home()
         XCTAssertEqual(home.mentionCount(in: "general"), 1, "Ada's @Sam, unread")
         XCTAssertEqual(home.mentionCount(in: "random"), 0)
-        XCTAssertEqual(home.threadIDs(in: "general").map(home.title(of:)), ["Release 0.2"])
-        XCTAssertEqual(home.roomDescription(home.threadIDs(in: "general")[0]), "Ship Friday, then freeze")
+        XCTAssertEqual(home.threadIDs(in: "general").count, 11)
+        XCTAssertEqual(home.roomDescription(PreviewFixtures.releaseThreadID), "Ship Friday, then freeze")
         XCTAssertNil(home.roomDescription("general"))
         XCTAssertTrue(home.isPrivate("ops"))
         XCTAssertFalse(home.isPrivate("general"))

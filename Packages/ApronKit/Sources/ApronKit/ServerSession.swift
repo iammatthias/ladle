@@ -133,6 +133,8 @@ public final class ServerSession {
     public private(set) var histories: [String: RoomHistory] = [:]
     /// Each room's first page while it loads, so a second `open` waits for it.
     @ObservationIgnored private var openings: [String: Task<Void, Error>] = [:]
+    /// Threads this device started, by the message each was started from (`startThread`).
+    @ObservationIgnored var startedThreads: [LogID: String] = [:]
     /// The rooms on screen, which a catch-up pages before the others.
     @ObservationIgnored private var onScreen: Set<String> = []
     /// This user's read cursor per room (§4.6): the server's, or the one this device sent.
@@ -693,6 +695,7 @@ public final class ServerSession {
         install(Records(historyResult: result))
         let page = HistoryPage(result)
         if let roomID = params["room_id"]?.stringValue, let floor = page.floor { store.raiseFloor(of: roomID, to: floor) }
+        if let roomID = params["room_id"]?.stringValue, let latest = page.latestLogID { store.noteLatest(of: roomID, latest) }
         return page
     }
 
@@ -945,11 +948,14 @@ public final class ServerSession {
         _ = try await request("room_leave", ["room_id": .string(roomID)])
     }
 
-    /// Creates a room, or a thread when `parentRoomID` is set (§4.2.4). Returns its `room_id`.
+    /// Creates a room, or a thread when `parentRoomID` is set (§4.2.4), its description left out
+    /// when blank. A thread is never sent `private`: it takes its room's. Returns its `room_id`.
     @discardableResult
-    public func createRoom(title: String, parentRoomID: String? = nil) async throws -> String? {
+    public func createRoom(title: String, description: String = "", parentRoomID: String? = nil) async throws -> String? {
         try require("rooms")
         var params: [String: JSONValue] = ["title": .string(title)]
+        let description = description.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !description.isEmpty { params["description"] = .string(description) }
         if let parentRoomID { params["parent_room_id"] = .string(parentRoomID) }
         return try await request("room_set", .object(params))["room_id"]?.stringValue
     }
@@ -1069,23 +1075,25 @@ public final class ServerSession {
         }
     }
 
+    /// A room's title; a thread without one is "Untitled", and another room its `room_id`.
     public func title(of roomID: String) -> String {
-        TextDirection.withoutOverrides(store.room(roomID)?.title?.stringValue.flatMap { $0.isEmpty ? nil : $0 } ?? roomID)
+        if isUntitled(roomID) { return "Untitled" }
+        return TextDirection.withoutOverrides(store.room(roomID)?.title?.stringValue.flatMap { $0.isEmpty ? nil : $0 } ?? roomID)
     }
 
-    /// The joined rooms, each with the threads known under it, by title. A joined thread whose
-    /// parent the user has not joined stands on its own.
+    /// The joined rooms by title, each with the threads known under it, most recently active
+    /// first (`ThreadList.byActivity`). A joined thread whose parent the user has not joined
+    /// stands on its own. `threadList(of:open:)` picks which of them the list shows.
     public var roomTree: [RoomNode] {
         let known = store.roomIDs.compactMap { store.room($0) }
-        let byTitle = { (lhs: RoomRecord, rhs: RoomRecord) in
-            codePointLess(self.title(of: lhs.roomID), self.title(of: rhs.roomID))
-        }
         let topLevel = known.filter { room in
             joinedRoomIDs.contains(room.roomID) && room.parentRoomID.map { !joinedRoomIDs.contains($0) } ?? true
         }
-        return topLevel.sorted(by: byTitle).map { room in
-            let threads = known.filter { $0.parentRoomID == room.roomID }.sorted(by: byTitle)
-            return RoomNode(roomID: room.roomID, threadIDs: threads.map(\.roomID))
+        return topLevel.sorted { codePointLess(title(of: $0.roomID), title(of: $1.roomID)) }.map { room in
+            let threads = known.filter { $0.parentRoomID == room.roomID }
+                .map { ThreadList.Entry(id: $0.roomID, joined: false, activity: activity(of: $0.roomID), hasNews: false) }
+                .sorted(by: ThreadList.byActivity)
+            return RoomNode(roomID: room.roomID, threadIDs: threads.map(\.id))
         }
     }
 }

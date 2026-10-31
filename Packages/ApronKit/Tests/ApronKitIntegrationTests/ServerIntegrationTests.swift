@@ -264,11 +264,11 @@ final class ServerIntegrationTests: XCTestCase {
         let missed = try XCTUnwrap(missedResult)
         bob.start()
         try await waitFor("resumed") { bob.status == .signedIn }
-        try await waitFor("missed thread under general") { bob.roomTree.first?.threadIDs == [live, missed] }
+        try await waitFor("missed thread under general") { bob.roomTree.first?.threadIDs == [missed, live] }
 
         let carol = try await signedInGuest(server)
         try await carol.open("general")
-        try await waitFor("earlier threads under general") { carol.roomTree.first?.threadIDs == [live, missed] }
+        try await waitFor("earlier threads under general") { carol.roomTree.first?.threadIDs == [missed, live] }
         XCTAssertEqual(carol.store.room(missed)?.parentRoomID, "general")
         XCTAssertEqual(carol.title(of: missed), "Missed")
         XCTAssertEqual(carol.joinedRoomIDs, ["general"])

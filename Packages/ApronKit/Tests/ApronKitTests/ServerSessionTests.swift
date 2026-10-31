@@ -623,6 +623,23 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.store.floor(of: "general"), LogID("110"), "null means nothing is kept: latest + 1")
     }
 
+    func testAThreadsReplyCountSaysWhenOlderRepliesAreStillToLoad() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        await socket.deliver(["method": "room_update", "params": ["joined": [["room_id": "t", "log_id": "100", "parent_room_id": "general"]]]])
+        await eventually("thread known") { session.store.room("t") != nil }
+        XCTAssertNil(session.replyWords(in: "t"), "nothing until its history loads")
+        let open = Task { try await session.open("t") }
+        _ = await frame(socket, 2)
+        await socket.deliver(["id": "c3", "result": [
+            "messages": [message("104", "d", room: "t")], "first_log_id": "104", "last_log_id": "104", "more": true, "latest_log_id": "104",
+        ]])
+        try await open.value
+        XCTAssertEqual(session.replyWords(in: "t"), "1+ replies")
+        XCTAssertEqual(session.title(of: "t"), "Untitled")
+    }
+
     func testPagesNewestFirstThenOlderUntilTheStart() async throws {
         session.start()
         let socket = await transport(0)

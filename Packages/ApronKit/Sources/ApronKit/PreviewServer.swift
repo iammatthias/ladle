@@ -3,7 +3,7 @@ import Foundation
 /// An in-memory server that answers a session from a fixed script: the greeting, `auth`,
 /// `room_list`, `history` by room, the user's read cursors as `activity` (§4.6), others' typing, and the
 /// mutes in effect (§4.5). A `status` mute is echoed back before its `{}`, as servers do. A room's
-/// unjoined threads are none, since the script joins every room. Every other request gets `{}`.
+/// unjoined threads are the script's `unjoinedThreads`. Every other request gets `{}`.
 /// It never sends anything unasked, so a seeded session stays still.
 public actor PreviewServer: FrameTransport {
     public struct Script: Sendable {
@@ -21,6 +21,8 @@ public actor PreviewServer: FrameTransport {
         public var activities: [JSONValue] = []
         /// `status` params (§4.5 `mute`) in effect, sent after the `auth` result.
         public var statuses: [JSONValue] = []
+        /// `room_list {parent_room_id, filter: not_joined}` results' `not_joined`, by parent.
+        public var unjoinedThreads: [String: JSONValue] = [:]
     }
 
     private let script: Script
@@ -46,7 +48,7 @@ public actor PreviewServer: FrameTransport {
             deliver(["id": id, "result": ["you": script.you, "token": "preview"]])
             for status in script.statuses { deliver(["method": "status", "params": status]) }
         case "room_list" where params?["parent_room_id"] != nil:
-            deliver(["id": id, "result": ["not_joined": []]])
+            deliver(["id": id, "result": ["not_joined": script.unjoinedThreads[params?["parent_room_id"]?.stringValue ?? ""] ?? []]])
         case "room_list":
             deliver(["id": id, "result": script.roomList])
             for (roomID, read) in script.readCursors.sorted(by: { codePointLess($0.key, $1.key) }) {

@@ -51,6 +51,45 @@ final class RoomsIntegrationTests: XCTestCase {
         }
     }
 
+    /// Start Thread on a message: the thread carries its title and quoted description, opens
+    /// replying to the message, and Start Thread on it again finds it, here and on a device that
+    /// loads the thread from its start. Others see it under Other Threads with when it was active.
+    func testAThreadStartedFromAMessageCarriesItsDescriptionAndLinksBack() async throws {
+        let server = try await started()
+        let ada = try await connected(server)
+        try await ada.signIn(.guest(name: nil))
+        try await ada.open("general")
+        let sentID = try await ada.send("Deploy *tonight*\nafter the freeze", in: "general")
+        let messageID = try XCTUnwrap(sentID)
+        try await waitFor("message loaded") { ada.store.message(messageID) != nil }
+        let message = try XCTUnwrap(ada.store.message(messageID))
+
+        let title = ThreadStart.title(message.body), description = try XCTUnwrap(ThreadStart.description(message.body))
+        XCTAssertEqual([title, description], ["Deploy *tonight*", "> Deploy \\*tonight\\*\n> after the freeze"])
+        let started = try await ada.startThread(from: message, title: title, description: description)
+        let thread = try XCTUnwrap(started)
+        try await waitFor("thread record") { ada.store.room(thread) != nil }
+        XCTAssertEqual(ada.store.room(thread)?.parentRoomID, "general")
+        XCTAssertEqual(ada.title(of: thread), "Deploy *tonight*")
+        XCTAssertEqual(ada.roomDescription(thread), description)
+        XCTAssertEqual(ada.thread(startedFrom: messageID, in: "general"), thread)
+        _ = try await ada.send("on it", in: thread, replyTo: messageID)
+
+        let bob = try await connected(server)
+        try await bob.signIn(.guest(name: nil))
+        try await bob.open("general")
+        let general = try XCTUnwrap(bob.roomTree.first { $0.roomID == "general" })
+        try await waitFor("listed under general") { bob.threadList(of: general, open: "general").others == [thread] }
+        XCTAssertEqual(bob.threadList(of: general, open: "general").joined, [])
+        let active = try XCTUnwrap(bob.lastActive(of: thread))
+        XCTAssertEqual(LastActive.words(active, now: active.addingTimeInterval(4 * 86_400)), "4d")
+        XCTAssertNil(bob.thread(startedFrom: messageID, in: "general"), "not until its first reply is loaded")
+        try await bob.open(thread)
+        try await waitFor("thread loaded") { bob.timeline(thread).count == 1 }
+        XCTAssertEqual(bob.thread(startedFrom: messageID, in: "general"), thread, "its first reply replies to the message")
+        XCTAssertEqual(bob.replyWords(in: thread), "1 reply")
+    }
+
     /// apron-web #170: an add is a join, and a rename shows in the room, live and from history.
     func testAddsJoinsLeavesAndRenamesShowAsLinesLiveAndFromHistory() async throws {
         let server = try await started()

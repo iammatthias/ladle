@@ -31,6 +31,10 @@ struct TimelineView: View {
     @State private var selecting: SelectableBody?
     @State private var remindingAt: CustomReminder?
     @State private var profile: ProfileRequest?
+    /// Start Thread's form, suggested from its message.
+    @State private var startingThread: ThreadRequest?
+    /// The thread Start Thread made, opened once its form has gone.
+    @State private var startedThread: String?
     @State private var reminding: MessageReminders
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -160,6 +164,18 @@ struct TimelineView: View {
                                   remindingAt = nil
                               },
                               cancel: { remindingAt = nil })
+        }
+        .sheet(item: $startingThread, onDismiss: {
+            if let startedThread { openRoom(startedThread) }
+            startedThread = nil
+        }) { request in
+            RoomFormSheet(kind: .thread, mode: .create, subtitle: "In \(session.title(of: roomID))", isPrivate: session.isPrivate(roomID),
+                          title: request.title, description: request.description) { title, description in
+                guard let thread = try await session.startThread(from: request.message, title: title, description: description) else { return }
+                // The link back is its first reply: the thread opens replying to the message.
+                drafts[DraftKey(server: session.record.id, roomID: thread)].field.mode = .reply(request.message.messageID)
+                startedThread = thread
+            }
         }
         .sheet(item: $profile) { request in
             ProfileCardView(session: session, request: request) { id, name in draft.wrappedValue.field.mention(id, named: name) }
@@ -325,6 +341,16 @@ struct TimelineView: View {
                     .padding(.vertical, Tokens.Space.s1)
                     .background(Palette.timeline)
                     .accessibilityAddTraits(.updatesFrequently)
+            } else if let replies = session.replyWords(in: roomID) {
+                // A thread's header subtitle, as the web's: "12+ replies" while older ones are still to load.
+                Text(replies)
+                    .apText(.sm)
+                    .foregroundStyle(Palette.inkMuted)
+                    .monospacedDigit()
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Tokens.Space.s1)
+                    .background(Palette.timeline)
             }
             if let message = session.unavailableMessage {
                 Callout(title: session.serverName) { Text(message) }
@@ -430,6 +456,9 @@ struct TimelineView: View {
                 editing = nil
                 drafts[draftKey].field.mode = .reply(message.messageID)
             }
+            if menu.startsThread {
+                Button("Start Thread", systemImage: "bubble.left.and.text.bubble.right") { startThread(from: message) }
+            }
         } header: {
             if !menu.mayWrite { Text(ReadOnlyPrompt.reason(session)) }
         }
@@ -454,6 +483,18 @@ struct TimelineView: View {
             Button("Edit", systemImage: "pencil") { editing = ComposerDraft(field: DraftField(editing: message, in: session)) }
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
         }
+    }
+
+    /// Start Thread, as apron-web's: a thread already started from the message opens; otherwise
+    /// the form suggests the message's first line as the title and its text, quoted, as the
+    /// description.
+    private func startThread(from message: MessageSnapshot) {
+        if let existing = session.thread(startedFrom: message.messageID, in: roomID) {
+            openRoom(existing)
+            return
+        }
+        startingThread = ThreadRequest(message: message, title: ThreadStart.title(message.body),
+                                       description: ThreadStart.description(message.body) ?? "")
     }
 
     /// Remind Me: a time from now, tomorrow morning, or one picked; and the reminder's removal.
@@ -571,6 +612,14 @@ struct ReadMark: Equatable {
 struct SelectableBody: Identifiable {
     let id = UUID()
     let text: String
+}
+
+/// Start Thread's form: the message and what it suggests.
+struct ThreadRequest: Identifiable {
+    let id = UUID()
+    let message: MessageSnapshot
+    let title: String
+    let description: String
 }
 
 /// Remind Me's Custom…: the message, and the time being picked.

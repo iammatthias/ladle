@@ -95,7 +95,7 @@ final class MembershipLinesTests: XCTestCase {
         XCTAssertEqual(moved.from.userID, "dev")
         XCTAssertFalse(continues)
 
-        let thread = home.timelineItems(home.threadIDs(in: "general")[0], lineBefore: nil, calendar: utc)
+        let thread = home.timelineItems(PreviewFixtures.releaseThreadID, lineBefore: nil, calendar: utc)
         let renames = thread.compactMap { item -> String? in if case .renamed(let rename) = item { rename.title } else { nil } }
         XCTAssertEqual(renames, ["Release 0.2"])
     }

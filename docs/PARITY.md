@@ -133,21 +133,21 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
-| Threads under the open room on a guide line | #66, #73 | partial | `Rooms/RoomListView.swift` | Every known thread shows under every joined room, always. Web shows them under the open room, and only those with news elsewhere. |
-| Joined threads most recently active first | #120 | missing | `Kit/ServerSession.swift` (`roomTree`) | Ladle sorts threads by title. |
+| Threads under the open room on a guide line; under other rooms only joined ones with news, and the open one | #66, #73 | has | `Kit/Threads.swift` (`ThreadList`, `threadList(of:open:)`), `Rooms/RoomListView.swift` (`threads(of:)`) | The open room is the selected room, or the room of the selected thread. With nothing selected (the iPhone list over no room), every room shows only its threads with news. |
+| Joined threads most recently active first | #120 | has | `Kit/Threads.swift` (`byActivity`, `activity(of:)`) | Newest loaded message, else `latest_log_id`, else creation; ties by `room_id`. The web holds the order still while the pointer is on the list; a touch list has no hover, so rows reorder as replies arrive. |
 | Thread row: title, description line, latest message, unread bubble | #73, #87 | has | `Rooms/RoomListView.swift` (`RoomRow`) | |
 | Quiet threads step back (muted title) | #76 | partial | `Rooms/RoomListView.swift` | Weight changes with unread. Not verified in code: the muted look for quiet threads. |
-| Other Threads heading, last active, "N more…" | #66, #74, #79 | missing | `Kit/ServerSession.swift` lists `not_joined` threads | Unjoined threads mix in with joined ones under the room, marked "Not joined". |
+| Other Threads heading, last active, "N more…" | #66, #74, #79 | has | `Kit/Threads.swift` (`ThreadList`, `LastActive`), `Rooms/RoomListView.swift` (`FoldHeading`) | "Other Threads · 4" folds them (kept on the device, open by default), three show, then "1 more…"; each says when it was last active ("4d", "9w", "2y"), and Join is a leading swipe or its menu. |
 | Join a thread from its row | #74 | has | `Rooms/RoomListView.swift` (context menu) | |
 | Leave a thread from its row without asking | #66 | partial | `Rooms/RoomListView.swift` | Leave asks first. |
 | Read a thread without joining it | #102 | has | `Kit/ServerSession.swift` (`open`) | |
 | Thread card in the room feed, with description and latest message | #87, #103 | has | `Timeline/TimelineView.swift` (`ThreadCard`) | |
 | Thread card shows unread and private | #103 | has | `Timeline/TimelineView.swift` (`ThreadCard`) | |
-| Start thread dialog: title and CommonMark Description | #71 | partial | `Rooms/RoomListView.swift` (`alert`) | Title only. No Description field. |
-| Start thread from a message, with quote as Description, first reply links back | bh | missing | `Kit/MessageMenu.swift` | Not in the message menu. UX.md 3.6 plans it. |
+| Start thread dialog: title and CommonMark Description | #71 | has | `Rooms/RoomFormSheet.swift` | A sheet; "Enter a thread title." without one. New Room takes a description too. |
+| Start thread from a message, with quote as Description, first reply links back | bh | has | `Kit/Threads.swift` (`ThreadStart`, `startThread`, `thread(startedFrom:in:)`), `Kit/MessageMenu.swift` (`startsThread`), `Timeline/TimelineView.swift` | Title from the first line (60 code points), the text quoted (500, fences closed, plain text escaped). The thread opens with its composer replying to the message. A thread already started from it opens instead. A private room's members are not added to a thread started in it (gap 10). |
 | Thread opens at its latest reply, pages older on scroll | #91, shazow/apron#33 | has | `Kit/ServerSession.swift` (`loadOlder`) | |
-| "N+ replies" on threads with older replies | bh | missing | | |
-| A thread without a title is "Untitled" | bh | missing | `Kit/ServerSession.swift` (`title`) | Falls back to `room_id`. |
+| "N+ replies" on threads with older replies | bh | has | `Kit/Threads.swift` (`replyWords`), `Timeline/TimelineView.swift` (`banner`) | The open thread's subtitle line under the bar; typing takes its place on iPhone. |
+| A thread without a title is "Untitled" | bh | has | `Kit/Threads.swift` (`isUntitled`), `Kit/ServerSession.swift` (`title`) | A top-level room without one stays its `room_id`. |
 | Thread header: crumb back to its room | bh | partial | `Timeline/TimelineView.swift` toolbar | Back pops the stack. No crumb with the room name. |
 | Private room's thread must come back private | bh | missing | | |
 
@@ -252,7 +252,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Long press opens the actions on touch | #139 | has | `Timeline/TimelineView.swift` (`contextMenu`) | Native context menu. |
 | Reply | bh | has | `Timeline/TimelineView.swift` | |
 | React (full picker) | #10 | has | `Timeline/ReactionPicker.swift` | Quick six, then the emoji keyboard and custom emoji. |
-| Start thread | bh | missing | `Kit/MessageMenu.swift` | |
+| Start thread | bh | has | `Kit/MessageMenu.swift` (`startsThread`) | In a room's messages, not a thread's. |
 | Edit (own) | bh | has | `Kit/DraftField.swift` (edit mode) | |
 | Edit keeps and edits embeds as tiles, rename uploads | #70 | missing | | Edit changes text and mentions only. |
 | Select (enter select mode) | #14, #54 | missing | | |
@@ -529,7 +529,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 5. ~~**Typing.**~~ Done (`Kit/ServerSession+Typing.swift`, `Timeline/TypingIndicator.swift`): sends `activity typing` as the web does, and shows others typing in the header on iPhone and above the composer on iPad.
 6. **Notifications and push.** Local alerts for other rooms while open, then APNs push through a §4.9.2 relay. Add Notify me about scopes, the per-device switch, the first-mention offer, the app badge, tap to open, closing notifications once read, and a test notification. Push, never polling. L.
 7. ~~**Mute and pause.**~~ Done (`Kit/ServerSession+Mutes.swift`, `Rooms/MuteMenu.swift`, Preferences > Notifications' Pause, `Profile/PauseSection.swift`). Muted rooms not notifying waits for item 6, since Ladle does not notify yet.
-8. **Threads.** Start thread from a message (title from its first line, quote as Description, first reply links back). Add a Description field to New Thread. Add an Other Threads heading with last active times. Order joined threads by activity. Show threads only under the open room, plus those with news. Name untitled threads "Untitled". Show "N+ replies". M.
+8. ~~**Threads.**~~ Done (`Kit/Threads.swift`, `Rooms/RoomFormSheet.swift`): Start Thread from a message, Description on New Thread, Other Threads with last active times, joined threads by activity under the open room and those with news elsewhere, "Untitled", "N+ replies". Adding a private room's members to its new thread waits for item 10.
 9. **Room header.** Pin the Description under the header with expand and dismiss. Add Edit room or thread (`room_set` title and description) and Copy link to the room to the ⋯ menu (Mute is there). M.
 10. **Private rooms and direct messages.** Create a room with Private. Add New private conversation with a people picker. Add Message on the profile card. Add a Private section with faces. Name untitled private rooms for their members. Add the intro card, the "You were added" banner, and the private room limit. L.
 11. **Kept view and local history.** Cache rooms and recent messages on disk so a relaunch shows them at once. Keep history with Retention, delete it on sign-out, and page older messages from the device first. L.
