@@ -13,6 +13,9 @@ final class PreviewFixturesTests: XCTestCase {
 
         XCTAssertEqual(home.roomTree.map { home.title(of: $0.roomID) }, ["design", "general", "kitchen", "markdown", "ops", "random", "remote"])
         XCTAssertEqual(home.roomTree.map { $0.threadIDs.map(home.title(of:)) }, [["Icon sketches"], ["Release 0.2"], [], [], [], [], []])
+        for _ in 0 ..< 100 where home.typingNames(in: PreviewFixtures.typingRoomID).count < 2 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(home.typingNames(in: PreviewFixtures.typingRoomID), ["Ada Okafor", "Bram"])
+        XCTAssertEqual(home.typingNames(in: PreviewFixtures.busyRoomID), [])
 
         let blocks = home.timeline(PreviewFixtures.markdownRoomID).flatMap { MessageText.blocks($0.body) }
         XCTAssertEqual(Set(blocks.map { block -> String in

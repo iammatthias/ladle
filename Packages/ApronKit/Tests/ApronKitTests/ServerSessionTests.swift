@@ -92,7 +92,8 @@ final class ServerSessionTests: XCTestCase {
             agent: "ladle-ios/test",
             pageSize: 3,
             fetchConnectionStatus: { [probes] url, origin in try probes.answer(url, origin) },
-            readCursorInterval: .milliseconds(100)
+            readCursorInterval: .milliseconds(100),
+            typing: TypingTimes(seconds: 15, refresh: .milliseconds(300), idle: .milliseconds(150), longest: .milliseconds(400))
         )
         session = ServerSession(record: record, tokens: tokens, positions: positions, environment: environment)
     }
@@ -1496,5 +1497,86 @@ final class SessionStoreTests: XCTestCase {
         XCTAssertNil(try tokens.token(for: first.id))
         XCTAssertEqual(try ServerStore(directory: directory).load().map(\.id), [second.id])
         await store.remove(second.id)
+    }
+}
+
+// MARK: Typing (§4.6)
+
+extension ServerSessionTests {
+    private static let typing15 = #"{"method":"activity","params":{"room_id":"general","typing":15}}"#
+    private static let typing0 = #"{"method":"activity","params":{"room_id":"general","typing":0}}"#
+
+    func testTypingGoesOnceARefreshAndStopsWhenTheComposerIsLeftAlone() async throws {
+        let socket = queueTransport(capabilities: ["history", "rooms", "activity"])
+        session.start()
+        try await signInAsGuest(on: socket)
+        for _ in 0 ..< 9 {
+            session.composerChanged(in: "general")
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        let sent = await frames(socket, count: 5)
+        XCTAssertEqual(Array(sent[2...]), [Self.typing15, Self.typing15, Self.typing0],
+                       "nine keystrokes over 450 ms: one frame, one refresh after 300 ms, then 0 after 150 ms idle")
+        try await Task.sleep(for: .milliseconds(250))
+        let all = await socket.sentLog
+        XCTAssertEqual(all.count, 5, "nothing more once stopped")
+    }
+
+    func testAMessageEndsTypingWithoutAZero() async throws {
+        let socket = queueTransport(capabilities: ["history", "rooms", "activity"])
+        session.start()
+        try await signInAsGuest(on: socket)
+        session.composerChanged(in: "general")
+        let posting = Task { try await session.send("hi", in: "general") }
+        _ = await frames(socket, count: 4)
+        await socket.deliver(["id": "c3", "result": ["message_id": "200"]])
+        _ = try await posting.value
+        try await Task.sleep(for: .milliseconds(300))
+        let all = await socket.sentLog
+        XCTAssertEqual(Array(all[2...]), [Self.typing15, #"{"id":"c3","method":"message","params":{"body":{"format":"plain","text":"hi"},"room_id":"general"}}"#])
+    }
+
+    func testWithoutTheActivityCapabilityTypingSendsNothing() async throws {
+        let socket = queueTransport(capabilities: ["history", "rooms"])
+        session.start()
+        try await signInAsGuest(on: socket)
+        session.composerChanged(in: "general")
+        try await Task.sleep(for: .milliseconds(250))
+        let all = await socket.sentLog
+        XCTAssertEqual(all.count, 2, "auth and room_list only: \(all)")
+    }
+
+    func testOthersShowAsTypingUntilTheirTimeAMessageOrZero() async throws {
+        let socket = queueTransport(capabilities: ["history", "rooms", "activity"])
+        session.start()
+        try await signInAsGuest(on: socket)
+        func typing(_ id: String, _ name: String, _ seconds: JSONValue) -> JSONValue {
+            ["method": "activity", "params": ["room_id": "general", "from": ["user_id": .string(id), "name": .string(name)], "typing": seconds]]
+        }
+        await socket.deliver(typing("bob", "Bob", 15))
+        await socket.deliver(typing("ada", "Ada", 15))
+        await socket.deliver(typing("carol", "Carol", 15))
+        await socket.deliver(typing("bob", "Bob", 15))
+        await eventually("four frames applied") { session.typingNames(in: "general") == ["Carol", "Bob"] }
+        XCTAssertEqual(TypingLine.line(session.typingNames(in: "general")), "\u{2068}Carol\u{2069} and \u{2068}Bob\u{2069} are typing…",
+                       "you never show; a refresh moves Bob last")
+
+        await socket.deliver(["method": "message", "params": ["message_id": "201", "log_id": "201", "room_id": "general",
+                                                              "from": ["user_id": "carol"], "body": ["text": "done"]]])
+        await eventually("Carol's message ends hers") { session.typingNames(in: "general") == ["Bob"] }
+        await socket.deliver(typing("bob", "Bob", 0))
+        await eventually("Bob stopped") { session.typingNames(in: "general").isEmpty }
+
+        await socket.deliver(typing("dan", "Dan", 3600))
+        await eventually("Dan shows") { session.typingNames(in: "general") == ["Dan"] }
+        try await Task.sleep(for: .milliseconds(600))
+        XCTAssertEqual(session.typingNames(in: "general"), [], "held no longer than `longest`, whatever was sent")
+    }
+
+    func testTypingLinesSayWhoAsTheWebDoes() {
+        XCTAssertEqual([[], ["Ada"], ["Ada", "Bram"], ["Ada", "Bram", "Chiara"]].map(TypingLine.line),
+                       [nil, "\u{2068}Ada\u{2069} is typing…", "\u{2068}Ada\u{2069} and \u{2068}Bram\u{2069} are typing…", "Several people are typing…"])
+        XCTAssertEqual([[], ["Ada"], ["Ada", "Bram"], ["Ada", "Bram", "Chiara"]].map(TypingLine.subtitle),
+                       [nil, "\u{2068}Ada\u{2069} is typing…", "2 people are typing…", "3 people are typing…"])
     }
 }

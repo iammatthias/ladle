@@ -337,7 +337,7 @@ The HIG has no Live Text or scanning page. The `live-text` page returned 404, so
 
 - **Top.** Back, the title (one line), and a subtitle with the first line of the description or "8 members" (`navigationSubtitle`). The trailing group holds **Threads** (`bubble.left.and.text.bubble.right`, badged with the count of threads with news) and **Room Info** (`info.circle`). That is at most two items ([toolbars]: "Prioritize only the most important items").
 - **Middle.** Messages, oldest at top, anchored to the bottom.
-- **Bottom, floating.** The status pill (4.1), centered above the composer, and **Jump to Latest** (`arrow.down`, with a count of new messages below the fold) at the trailing edge. A typing line ("Ada is typing…") sits above the composer when the server has `activity`.
+- **Bottom, floating.** The status pill (4.1), centered above the composer, and **Jump to Latest** (`arrow.down`, with a count of new messages below the fold) at the trailing edge. Who is typing, as apron-web shows it: on iPhone a centered denim line under the navigation bar ("Ada is typing…", "2 people are typing…"), the web's header subtitle kept out of the bar so the centered title never moves; on iPad a line above the composer with three bobbing dots ("Ada and Bram are typing…", "Several people are typing…"), whose row stays while nobody is, when the server has `activity`. Your own typing, relayed from your other devices, never shows. Someone shows until their seconds run out (at most 300 s), their next message there, or their `typing: 0`.
 - **Bottom, fixed.** The reply or edit banner, the mention suggestions, and the composer (3.7), on the keyboard layout guide ([virtual-keyboards]).
 
 **Message row** (structure only; the look belongs to design):
@@ -454,7 +454,7 @@ A thread is a room with `parent_room_id`, so it uses 3.5 with these differences.
 - Commands send everything after `/` as a `command` request. Replies arrive as `~private` notices in the timeline (3.5). A failed command shows its error in the same style. Ladle handles no command locally in v1. **Judgment call**, because §4.1 makes local handling optional.
 - An edit sends again every client field it keeps (`ServerSession.edit` already does this, §4.4). Edit is offered only for your own messages on `edit` servers.
 - Each room and thread keeps its own draft: the text, its mentions, the reply target and the staged files, as apron-web's `PaneDrafts` does, and across a relaunch (2.5), where apron-web instead warns that reloading clears an unsent message. Switching rooms never loses text. Reply keeps the text and files; canceling a reply keeps the text. An edit opens beside the draft and gives it back on save or cancel. A file dropped or picked while you leave the room lands in that room's draft once it is fitted. Sending empties the room's draft. Removing a server removes its drafts and their files; files no draft holds are swept at launch.
-- Typing (the `activity` capability) sends `typing: 15` at most once every 12 s while you type and `typing: 0` when you clear the field. Sending a message sends no `typing: 0` (the web client's rule).
+- Typing (the `activity` capability) sends `typing: 15` at most once every 12 s while you type in the composer, never the editor, and `typing: 0` once it has been left alone for 5 s, as apron-web's `composerInput` and `sendTyping`. Sending a message sends no `typing: 0` (§4.6: the message ends it). `ext:settings` has no say in typing.
 
 **Return key.** The on-screen keyboard's Return inserts a new line, as in Messages, and Send is the button. On a hardware keyboard, Return sends, ⇧Return and ⌥Return insert a new line, and ⌘Return always sends. **Judgment call** that follows Messages on iPad. The HIG has no guidance on multi-line composers.
 
@@ -697,7 +697,7 @@ Never for these: incoming messages, mentions, typing, connection changes, paging
 - New messages insert with the system list animation. Ladle adds no bounce on send ([motion]: "In apps, generally avoid adding motion to UI interactions that occur frequently.").
 - Jumping to a message scrolls with animation and highlights the target with a 1.5 s fade. Your touch interrupts the scroll ([motion]: "Let people cancel motion.").
 - The swipe-to-reply row tracks your finger and springs back ([motion]).
-- With Reduce Motion on, jumps scroll without animation, highlights become a static outline for 1.5 s, the typing indicator becomes static text, and the pill fades instead of sliding ([accessibility]: "Replacing transitions in x-, y-, and z-axes with fades").
+- With Reduce Motion on, jumps scroll without animation, highlights become a static outline for 1.5 s, the typing dots hold still and dim, and the pill fades instead of sliding ([accessibility]: "Replacing transitions in x-, y-, and z-axes with fades").
 
 ### 4.7 iPad and hardware keyboard
 

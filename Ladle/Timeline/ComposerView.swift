@@ -104,6 +104,11 @@ struct ComposerView: View {
             if typingCommand { await session.loadCommands(in: roomID) }
         }
         .task(id: typingEmoji) { if typingEmoji { await session.loadEmojiCatalog() } }
+        .onChange(of: draft.field.text) {
+            // Typing in the composer, never the editor, says so (§4.6), as the web's `composerInput`.
+            // An emptied field is most often a sent one, which the message itself ends.
+            if !draft.field.isEdit, !draft.field.text.isEmpty { session.composerChanged(in: roomID) }
+        }
         .onChange(of: draft.field.mode, initial: true) { if draft.field.mode != .new { focused = true } }
         .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, maxSelectionCount: 10,
                       matching: .any(of: (offer.images ? [.images] : []) + (offer.videos ? [.videos] : [])), preferredItemEncoding: .compatible)

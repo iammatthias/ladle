@@ -1,7 +1,7 @@
 import Foundation
 
 /// An in-memory server that answers a session from a fixed script: the greeting, `auth`,
-/// `room_list`, `history` by room, and the user's read cursors as `activity` (§4.6). A room's
+/// `room_list`, `history` by room, the user's read cursors as `activity` (§4.6), and others' typing. A room's
 /// unjoined threads are none, since the script joins every room. Every other request gets `{}`.
 /// It never sends anything unasked, so a seeded session stays still.
 public actor PreviewServer: FrameTransport {
@@ -16,6 +16,8 @@ public actor PreviewServer: FrameTransport {
         public var readCursors: [String: String]
         /// Notices (§3.5.3) sent after the `room_list` of joined rooms.
         public var notices: [JSONValue] = []
+        /// Others' `activity` (§4.6), such as typing, sent after the notices.
+        public var activities: [JSONValue] = []
     }
 
     private let script: Script
@@ -49,6 +51,7 @@ public actor PreviewServer: FrameTransport {
                 ]])
             }
             for notice in script.notices { deliver(["method": "message", "params": notice]) }
+            for activity in script.activities { deliver(["method": "activity", "params": activity]) }
         case "history":
             let roomID = params?["room_id"]?.stringValue ?? ""
             deliver(["id": id, "result": script.histories[roomID] ?? ["messages": [], "more": false]])

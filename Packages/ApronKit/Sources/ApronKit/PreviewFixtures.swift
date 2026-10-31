@@ -28,7 +28,8 @@ public enum PreviewFixtures {
             makeTransport: { record in PreviewServer(script: scripts[record.id] ?? home) },
             sleep: { _ in try await Task.sleep(for: .seconds(3600)) },
             jitter: { 1 },
-            fetchEmojiCatalog: { _ in emojiCatalog.serializedData() }
+            fetchEmojiCatalog: { _ in emojiCatalog.serializedData() },
+            typing: TypingTimes(longest: .seconds(3600))
         )
         let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment)
         try? tokens.setToken("preview", for: homeID)
@@ -382,8 +383,15 @@ public enum PreviewFixtures {
         notices: [[
             "room_id": "general", "from": ["user_id": "~room", "name": "general"],
             "body": ["text": "Release freeze starts Friday at 18:00 UTC. Type /help for the commands here.", "format": "plain"],
-        ]]
+        ]],
+        activities: [
+            ["room_id": .string(typingRoomID), "from": people["ada"]!, "typing": 3600],
+            ["room_id": .string(typingRoomID), "from": people["bram"]!, "typing": 3600],
+        ]
     )
+
+    /// The room where Ada and Bram are typing, held for an hour so every shot of it sees them.
+    public static let typingRoomID = "random"
 
     private static let demo = PreviewServer.Script(
         greeting: cloudflareGreeting,

@@ -223,6 +223,14 @@ clone), which is only a worked example.
     is the `#` word being typed (`[A-Za-z0-9_.-]`, at least one), `search` ranks exact, prefix,
     then contains on id and title, 8 at most, over `ServerSession.roomSuggestions` (every room
     and thread with a record), and `insert` puts `#room_id ` in the draft, which is what is sent.
+  - Typing (`ServerSession+Typing.swift`, §4.6), as apron-web's `sendTyping` and
+    `handleActivity`: `composerChanged(in:)` sends `activity {typing: 15}` with capability
+    `activity` while signed in and allowed to write, again no sooner than `TypingTimes.refresh`
+    (12 s), and `typing: 0` after `idle` (5 s) untouched; a message clears it without a `0`.
+    Others' typing is `typing` by room, in the order last started or refreshed, without you
+    (the server relays to your other devices too), held `min(seconds, longest)` (300 s), ended
+    by `0` or their next message there, and forgotten on disconnect. `TypingLine` words it: the
+    wide line ("Several people are typing…") and the phone subtitle ("3 people are typing…").
   - `Timeline` (`Timeline.swift`): what a room's timeline shows, in order (`TimelineItem`: day
     pills, messages, the New line, thread cards at the thread's creation position, and queued
     messages), mention counts, member sections (online, then offline, each by name),
@@ -354,7 +362,10 @@ clone), which is only a worked example.
   in the temporary directory (cleared at launch) until `AttachmentStaging.prepare` fits them into
   `Drafts.staging`, the camera; `TimelineView` binds the composer to the room's kept draft, or to
   an open edit beside it, and fits dropped and picked files into that room's draft by key, so one
-  finishing after the room is left still lands; `VoiceRecorder`: voice notes as
+  finishing after the room is left still lands; `TypingIndicator`: who is typing above the
+  composer in regular width, with `TypingDots`, still and dimmed under Reduce Motion; in compact
+  width a centered denim line under the navigation bar says it, standing for the web's header
+  subtitle so the centered title never moves; `VoiceRecorder`: voice notes as
   `audio/mp4`; `ReminderViews`: `ReminderBadge`, the due line and Clear on a reminded row,
   which takes an accent edge, and `ReminderDateSheet`, Custom…), `Media/` (`MediaLoader`: images decoded at their shown size and files for Quick
   Look, no cookies; `MediaAskTile`: media the gate holds back, Load on a tap, Always Load in its menu; `MediaViewer`: the room's images full screen, as the web's viewer), `Design/`
@@ -443,8 +454,8 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo); the busy room at AX3; and the iPad
-split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar); the busy room at AX3; and the iPad
+split view at 1180x820 pt (regular width) in dark and light, on the busy room and on the random room with its typing line. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with
 generated pictures, and fails the remote room's unreachable host; a video has no frame to draw, so its tile stays black), writes `contrast.json` (WCAG ratios of the text tokens on their

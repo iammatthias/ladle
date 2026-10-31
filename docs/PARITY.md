@@ -237,8 +237,8 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Welcome notice in the first room | bh | partial | `Servers/ConnectView.swift` | The welcome shows in the Connect sheet, not in the first room. |
 | Copy button on a notice's code block | bh | has | `Timeline/TimelineView.swift` (`noticeActions`) | Copy each code span from the menu. |
 | Show QR code for a sign-in link in a `~private` notice (fork) | fork "Show a sign-in link from a ~private notice as a QR code" | missing | | Ladle scans QR codes but cannot show one. Useful to sign in a second device. |
-| Typing indicator, others' | bh | missing | | |
-| Send typing (`activity typing: 15`, refresh 12 s) | bh | missing | | |
+| Typing indicator, others' | bh, `TypingIndicator.svelte`, `RoomHeader.svelte` | has | `Kit/ServerSession+Typing.swift`, `Timeline/TypingIndicator.swift` | On iPhone a centered denim line under the navigation bar ("Ada is typing…", "2 people are typing…"), the words of the web's header subtitle under 720 px, kept out of the bar so its centered title never moves; on iPad a line with three bobbing dots above the composer ("Ada and Bram are typing…", "Several people are typing…"), its row kept so nothing moves. Reduce Motion stills and dims the dots. Held at most 300 s; a message from them or `typing: 0` ends it. |
+| Send typing (`activity typing: 15`, refresh 12 s) | bh, `client.ts` `sendTyping` | has | `Kit/ServerSession+Typing.swift` (`composerChanged`) | 15 s, again no sooner than 12 s, `typing: 0` after 5 s untouched, nothing after a message. Only with `activity`; `ext:settings` does not govern typing (the web reads only `read_cursors` and `private_rooms` from it). |
 | Start-of-history card for private rooms | #124 | missing | | |
 | Placeholder while a room loads its first page | #173 | missing | `Timeline/TimelineView.swift` | No placeholder rows. |
 | iOS overscroll jitter, keyboard fit | #97, #165 | N/A-iOS | | Native scrolling and keyboard avoidance. |
@@ -509,7 +509,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 2. ~~**Profile card.**~~ Done (`Profile/ProfileCardView.swift`), but for Message, which comes with item 10.
 3. ~~**Your profile and status.**~~ Done: You (`Profile/YouView.swift`) edits the name, bio and avatar and picks a status, with the server's answer.
 4. ~~**Drafts per room.**~~ Done (`Kit/Drafts.swift`): text, mentions, reply target and ready files per room and thread, kept across a relaunch.
-5. **Typing.** Send `activity typing` (15 s, refresh at most every 12 s) and show others typing above the composer. S.
+5. ~~**Typing.**~~ Done (`Kit/ServerSession+Typing.swift`, `Timeline/TypingIndicator.swift`): sends `activity typing` as the web does, and shows others typing in the header on iPhone and above the composer on iPad.
 6. **Notifications and push.** Local alerts for other rooms while open, then APNs push through a §4.9.2 relay. Add Notify me about scopes, the per-device switch, the first-mention offer, the app badge, tap to open, closing notifications once read, and a test notification. Push, never polling. L.
 7. **Mute and pause.** Mute a room or thread from its header and row (`status {mute, room_id}`), show the bell-off state, and add Pause notifications. These matter on other devices even before Ladle notifies. M.
 8. **Threads.** Start thread from a message (title from its first line, quote as Description, first reply links back). Add a Description field to New Thread. Add an Other Threads heading with last active times. Order joined threads by activity. Show threads only under the open room, plus those with news. Name untitled threads "Untitled". Show "N+ replies". M.

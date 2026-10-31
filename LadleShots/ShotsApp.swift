@@ -25,7 +25,9 @@ enum Screen: String, CaseIterable {
     case reminder, reminderCustom = "reminder-custom"
     case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded"
     case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline", serverPane = "server-pane", serverPaneDemo = "server-pane-demo", mentionChip = "mention-chip"
-    case draftKept = "draft-kept"
+    case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing"
+
+    var isPad: Bool { self == .ipad || self == .ipadTyping }
 }
 
 @MainActor
@@ -61,7 +63,7 @@ enum Renderer {
         shots.append((.timeline, .dark, true))
 
         for shot in shots {
-            let size = shot.screen == .ipad ? pad : phone
+            let size = shot.screen.isPad ? pad : phone
             scene.sizeRestrictions?.minimumSize = .zero
             scene.sizeRestrictions?.maximumSize = size
             scene.sizeRestrictions?.minimumSize = size
@@ -74,7 +76,7 @@ enum Renderer {
                 .dynamicTypeSize(shot.large ? .accessibility3 : .large)
                 .apronStyle()
                 .id(UUID())))
-            try? await Task.sleep(for: .milliseconds(shot.screen == .ipad ? 2500 : 1500))
+            try? await Task.sleep(for: .milliseconds(shot.screen.isPad ? 2500 : 1500))
             let name = "ladle-\(shot.screen.rawValue)-\(shot.large ? "ax3" : shot.style == .dark ? "dark" : "light").png"
             capture(scene, to: directory.appending(path: name))
         }
@@ -182,9 +184,16 @@ enum Renderer {
                                  field: DraftField(mode: .reply(LogID("1793092500000")!), text: "On it. Here's the 20 pt one at 3x"),
                                  files: Array(staged.prefix(1)))))
             })
+        case .typing:
+            // Ada and Bram typing: the header's subtitle on a phone.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.typingRoomID, reminders: store.reminders, drafts: Drafts()) })
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))
+        case .ipadTyping:
+            // The same, wider: the line with the dots above the composer.
+            AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
+                                roomID: .constant(PreviewFixtures.typingRoomID), place: .constant(nil), connecting: .constant(nil)))
         }
     }
 

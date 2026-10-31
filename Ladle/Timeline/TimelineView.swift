@@ -110,7 +110,11 @@ struct TimelineView: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) { banner }
             .safeAreaInset(edge: .bottom, spacing: 0) {
-                Group {
+                VStack(spacing: 0) {
+                    // Wider, it is a line above the composer, as the web's TypingIndicator.
+                    if sizeClass != .compact, session.server?.has("activity") == true {
+                        TypingIndicator(names: session.typingNames(in: roomID))
+                    }
                     if !session.mayWrite {
                         ReadOnlyPrompt(session: session) { requestSignIn(session.record) }
                     } else {
@@ -276,6 +280,18 @@ struct TimelineView: View {
     private var banner: some View {
         let state = ConnectionState(session.status)
         VStack(spacing: Tokens.Space.s2) {
+            // On a phone, who is typing is the header's subtitle, in denim, as the web's RoomHeader:
+            // a line under the bar, so the centered title never moves when it comes and goes.
+            if sizeClass == .compact, let typing = TypingLine.subtitle(session.typingNames(in: roomID)) {
+                Text(typing)
+                    .apText(.sm)
+                    .foregroundStyle(Palette.denim)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, Tokens.Space.s1)
+                    .background(Palette.timeline)
+                    .accessibilityAddTraits(.updatesFrequently)
+            }
             if let message = session.unavailableMessage {
                 Callout(title: session.serverName) { Text(message) }
             }

@@ -63,6 +63,8 @@ public final class ServerSession {
         /// The least time between two read cursors sent for one room. Each is a frame, and
         /// Cloudflare's server closes a connection over 60 frames a minute.
         public var readCursorInterval: Duration
+        /// How typing goes out and how long others show as typing (§4.6).
+        public var typing: TypingTimes
 
         public init(
             makeTransport: @escaping @Sendable (ServerRecord) -> any FrameTransport,
@@ -76,7 +78,8 @@ public final class ServerSession {
             writeEmbed: @escaping EmbedWrite = EmbedWriter.live,
             fetchEmojiCatalog: @escaping @Sendable (URL) async throws -> Data = EmojiCatalogFetch.live,
             fetchConnectionStatus: @escaping ConnectionStatusFetch = ConnectionStatusProbe.live,
-            readCursorInterval: Duration = .seconds(5)
+            readCursorInterval: Duration = .seconds(5),
+            typing: TypingTimes = TypingTimes()
         ) {
             self.makeTransport = makeTransport
             self.sleep = sleep
@@ -90,6 +93,7 @@ public final class ServerSession {
             self.fetchEmojiCatalog = fetchEmojiCatalog
             self.fetchConnectionStatus = fetchConnectionStatus
             self.readCursorInterval = readCursorInterval
+            self.typing = typing
         }
 
         public static let live = Environment(makeTransport: { record in
@@ -128,6 +132,11 @@ public final class ServerSession {
     public private(set) var readCursors: [String: LogID] = [:]
     /// How far this user has read each room on this device.
     public private(set) var readPositions: [String: LogID] = [:]
+    /// Everyone else typing, by `room_id` (§4.6), in the order they last started or refreshed.
+    public internal(set) var typing: [String: [Typist]] = [:]
+    /// When this user was last said to be typing in each room, and the timers that end it.
+    @ObservationIgnored var typingSentAt: [String: ContinuousClock.Instant] = [:]
+    @ObservationIgnored var typingIdle: [String: Task<Void, Never>] = [:]
     private var formerUserIDs: Set<String> = []
     /// The fraction written of each of this user's uploads in flight, by `embed_id` (§4.8.3).
     public internal(set) var uploadProgress: [String: Double] = [:]
@@ -269,6 +278,7 @@ public final class ServerSession {
             await connection.close()
             if self.connection === connection { self.connection = nil }
             pendingEmail = nil
+            clearTyping()
             for roomID in histories.keys { histories[roomID]?.isLive = false }
             if Task.isCancelled { return }
             if let upgradeFailure {
@@ -458,6 +468,7 @@ public final class ServerSession {
         readCursors = [:]
         readPositions = [:]
         formerUserIDs = []
+        clearTyping()
     }
 
     // MARK: Frames
@@ -507,12 +518,14 @@ public final class ServerSession {
                 readCursors[roomID] = read
                 advancePosition(roomID, to: read)
             }
+            applyTyping(params)
         default:
             break
         }
         guard let records = Records(notification: notification) else { return }
         install(records)
         advanceLiveCheckpoints(records)
+        for message in records.messages where message.logID == message.messageID { endTyping(message.from.userID, in: message.roomID) }
     }
 
     /// Installs records, then raises the retention floors their rooms state, which drops the
@@ -672,6 +685,7 @@ public final class ServerSession {
         if !draft.isCommand, !joinedRoomIDs.contains(roomID), server?.has("rooms") == true, connection != nil, status == .signedIn {
             try await join(roomID)
         }
+        if !draft.isCommand { sentMessage(in: roomID) }
         var body: [String: JSONValue] = ["text": .string(draft.text), "format": "plain"]
         if !mentions.isEmpty { body["mentions"] = .array(mentions.map(JSONValue.string)) }
         if !attachments.isEmpty { body["embeds"] = .array(attachments.map(Self.uploadEmbed)) }
@@ -914,6 +928,11 @@ public final class ServerSession {
 
     func require(_ capability: String) throws {
         guard server?.has(capability) == true else { throw Failure.unsupported(capability: capability) }
+    }
+
+    /// Sends a notification on the open connection, if there is one; nothing answers it.
+    func notify(_ method: String, _ params: JSONValue) async {
+        try? await connection?.notify(method, params: params)
     }
 
     func request(_ method: String, _ params: JSONValue, id: String? = nil) async throws -> JSONValue {
