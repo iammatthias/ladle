@@ -51,7 +51,7 @@ struct MessageBlocksView: View {
             }
         case .code(_, let code):
             ScrollView(.horizontal) {
-                Text(code).apText(.ui, mono: true).foregroundStyle(Palette.ink).textSelection(.enabled)
+                Text(code).apText(.ui, mono: true).foregroundStyle(Palette.ink)
                     .fixedSize()
                     .padding(Tokens.Space.s3)
             }
