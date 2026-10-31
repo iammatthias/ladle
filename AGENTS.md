@@ -532,6 +532,13 @@ Fallbacks: email with a typed code (§4.11). Optional later paths, not implement
     committed. `ServerRecord.rpID` stays optional.
 - Native push needs a §4.9.2 `relay` with APNs, which is out of scope for v1.
 
+## Parity with apron-web
+
+Ladle has every feature apron-web has, in an iOS form, and may add more; it never leaves one
+out. `docs/PARITY.md` lists each apron-web feature with Ladle's status (has, partial, missing,
+N/A-iOS) and the gaps in order. Update the row in the same commit as the work, and add rows when
+an apron-web merge brings a new feature.
+
 ## Cleanup
 
 - `build/` is DerivedData, including the `LadleShots` build; delete it when a work session ends. `Packages/ApronKit/.build/` is
