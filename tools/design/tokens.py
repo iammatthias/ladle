@@ -3,12 +3,13 @@
 
 The source is apron-web's src/lib/design/tokens.css and rail.css at the commit pinned in
 tools/design/UPSTREAM, read with `git show`, so the output depends on the pin and not on the
-clone's working tree. APRON_WEB overrides the clone's path.
+clone's working tree or branch. The clone is ~/Developer/forks/apron-web; APRON_WEB overrides
+it. A pin the clone lacks is fetched from its origin first.
 
     tools/design/tokens.py           write Tokens.swift
     tools/design/tokens.py --check   exit 1 if Tokens.swift differs from a fresh generation
 
-The check also says when the clone's HEAD has moved past the pin.
+The check also says when the clone's origin/main has moved past the pin.
 """
 import os
 import re
@@ -19,7 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 PIN = ROOT / "tools/design/UPSTREAM"
 OUT = ROOT / "Ladle/Design/Tokens.swift"
-WEB = Path(os.environ.get("APRON_WEB", Path.home() / "Developer/forks/apron-server-go/.apron-web"))
+WEB = Path(os.environ.get("APRON_WEB", Path.home() / "Developer/forks/apron-web"))
 
 # Tokens the app has no use for: font stacks (the app uses SF and SF Mono), stacking order (SwiftUI
 # orders by view tree), focus rings (iOS draws its own focus), web-only widths and the CSS filter.
@@ -36,10 +37,25 @@ def pinned_commit():
     sys.exit("tokens.py: no 'apron-web <commit>' line in " + str(PIN))
 
 
+def git(*args):
+    return subprocess.run(["git", "-C", str(WEB), *args], capture_output=True, text=True)
+
+
+def ensure(commit):
+    """Fetches the clone's origin when it lacks the pinned commit."""
+    if git("cat-file", "-e", f"{commit}^{{commit}}").returncode == 0:
+        return
+    print(f"tokens.py: fetching origin into {WEB} for {commit[:7]}", file=sys.stderr)
+    git("fetch", "--quiet", "origin")
+    if git("cat-file", "-e", f"{commit}^{{commit}}").returncode != 0:
+        sys.exit(f"tokens.py: {WEB} has no commit {commit}, even after fetching; set APRON_WEB to an apron-web clone")
+
+
 def source(commit, path):
-    return subprocess.run(
-        ["git", "-C", str(WEB), "show", f"{commit}:{path}"], check=True, capture_output=True, text=True
-    ).stdout
+    result = git("show", f"{commit}:{path}")
+    if result.returncode != 0:
+        sys.exit(f"tokens.py: {path} at {commit[:7]}: {result.stderr.strip()}")
+    return result.stdout
 
 
 def declarations(block):
@@ -184,11 +200,12 @@ def generate(commit):
 
 def main():
     commit = pinned_commit()
+    ensure(commit)
     text = generate(commit)
     if sys.argv[1:] == ["--check"]:
-        head = subprocess.run(["git", "-C", str(WEB), "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
-        if head and head != commit:
-            print(f"tokens.py: note: apron-web is at {head}, the pin is {commit}; review the design changes and move the pin")
+        head = git("rev-parse", "origin/main").stdout.strip()
+        if head and head != commit and git("merge-base", "--is-ancestor", commit, head).returncode == 0:
+            print(f"tokens.py: note: apron-web's origin/main is at {head}, the pin is {commit}; review the design changes and move the pin")
         if not OUT.exists() or OUT.read_text() != text:
             sys.exit("tokens.py: Tokens.swift differs from tokens.css at the pinned commit; run tools/design/tokens.py")
         print(f"tokens.py: Tokens.swift matches apron-web {commit[:7]}")

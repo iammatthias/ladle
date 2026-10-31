@@ -461,15 +461,16 @@ clone), which is only a worked example.
 
 ## Design
 
-Ladle follows apron-web (`~/Developer/forks/apron-server-go/.apron-web`),
+Ladle follows apron-web (the clone at `~/Developer/forks/apron-web`, its `origin/main`),
 translated through the HIG. Its narrow layout (under 720 px) is the iPhone reference; its wide
 layout (960 px and wider) is the iPad split view.
 
 - Tokens are generated, never copied: `tools/design/tokens.py` reads `tokens.css` and
-  `rail.css` at the apron-web commit in `tools/design/UPSTREAM` and writes
+  `rail.css` at the apron-web commit in `tools/design/UPSTREAM` (from the clone above, or
+  `APRON_WEB`; it fetches the clone's origin when the pin is missing) and writes
   `Ladle/Design/Tokens.swift`. `tools/design/tokens.py --check` (run by `./build.sh test`)
-  fails when the file differs from a fresh generation and says when apron-web has moved past
-  the pin. To follow a newer apron-web, review its design changes, move the pin, regenerate.
+  fails when the file differs from a fresh generation and says when apron-web's `origin/main`
+  has moved past the pin. To follow a newer apron-web, review its design changes, move the pin, regenerate.
 - Colors, grounds by depth, spacing, radii, avatar sizes, durations and easing are verbatim in
   both themes. Accent (rust) is what you can do; denim is where you can go; every status color
   carries a word or shape; the private color always comes with its lock (`Palette`'s doc).
