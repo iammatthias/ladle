@@ -7,12 +7,23 @@ struct PreferencesView: View {
     let store: SessionStore
     @State private var draft = ""
     @State private var refused = false
+    /// Appearance's custom CSS as edited, until Preferences closes.
+    @State private var editor: ThemeEditor
     @Environment(\.dismiss) private var dismiss
+
+    init(store: SessionStore) {
+        self.store = store
+        _editor = State(initialValue: ThemeEditor(settings: store.appearance))
+    }
 
     var body: some View {
         let settings = store.mediaSettings
         NavigationStack {
             Form {
+                Section {
+                    NavigationLink("Appearance") { AppearanceView(editor: editor) }
+                }
+
                 Section {
                     Picker("Load Media From", selection: Binding(get: { settings.policy }, set: { settings.update(policy: $0) })) {
                         Text("This Server and Trusted Sites").tag(MediaPolicy.trusted)
@@ -73,6 +84,8 @@ struct PreferencesView: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
+        // Closing Preferences, not moving between its screens, drops edits not applied.
+        .onDisappear { editor.close() }
     }
 
     private func add() {

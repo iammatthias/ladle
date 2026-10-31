@@ -607,6 +607,22 @@ Connection state is not a screen. It is one model, rendered in the Rooms section
 
 **Accessibility.** The tile reads its kind and its full URL, "Image, https://shazow.net/images/icon.png, not loaded", with the hint "Loads it". **Always Load from host** is a custom action.
 
+### 3.15 Appearance
+
+**Purpose.** Choose light, dark or the system's, and a theme, as apron-web's Preferences > Appearance (#174). Per device, like the web's: kept in `appearance.json` beside `servers.json`, sent nowhere.
+
+**Entry.** Preferences > **Appearance** (3.14).
+
+**Layout** (`AppearanceView`).
+
+1. **Mode.** A segmented control: **System** (the default), **Light**, **Dark**. It sets every window's style, sheets included, whatever the theme.
+2. **Theme.** Apron (the default), Ferrous, Gumball, Linocut (high contrast), and Custom, one row each with a swatch in that theme's own ground, ink, accent, link and face, and a checkmark on the one chosen. A theme applies at once, to every screen already open. The footer says what a theme sets, that Custom starts from the theme you had, and credits the fonts (Recursive for Ferrous, Nunito for Gumball, OFL 1.1).
+3. With Custom chosen, **Theme CSS** opens the CSS (`ThemeCSSView`): the same text as apron-web's Theme CSS field, in a monospaced editor of at most 4000 characters. A theme pasted from apron-web reads the same here: the same grammar, limits and messages (`ThemeCSS.parse`). An edit shows on every screen while it reads; while it doesn't, the last one that did stays on show and "Not showing yet: …" says why. **Apply** (the toolbar) keeps it; a refused Apply shows the error in the danger color and VoiceOver announces it. **Discard Changes** goes back to what is kept, and so does closing Preferences. Under the editor, "Kept, but not used on iOS: …" lists what the theme sets that Ladle has no use for (`--z-*`, `--font-emoji`, apron-web's `--pref-` widths, names tokens.css lacks) or can't read; they stay in the text. **Colors…** opens **Base Colors**: Ground, Ink, Accent and Link, each with a Light and a Dark color picker, starting from what shows. **Done** writes them into the CSS as `--base-*` declarations (`light-dark(light, dark)`, or one hex where the modes agree), replacing any there outside comments, and the palette derives from them as on the web.
+
+**What a theme can set on iOS.** Any token Ladle reads from tokens.css: every color (any CSS color syntax people write by hand: hex, `rgb()`, `hsl()`, `oklch()`, `oklab()`, named colors, `light-dark()`, `color-mix(in srgb, …)`, `var()`), the four base colors, the three faces (`--font-sans` for the interface, `--font-chat` for message text, `--font-mono` for code; a family the device lacks is skipped, as in the browser), text sizes and line heights (at the Large Dynamic Type setting, scaled from there), spacing, radii, avatar and control sizes, durations, the slide easing, opacities, the count shade and shadows. An alias follows what the theme sets: `--focus` is its accent, the hover grounds its grounds, `--selected` its ink at 8%.
+
+**Increase Contrast** still swaps the theme's `line` for its `line-strong` and its `ink-muted` for its `ink`.
+
 ## 4. Cross-cutting
 
 ### 4.1 Connection and sync, as you see them

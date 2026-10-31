@@ -1,3 +1,4 @@
+import ApronKit
 import SwiftUI
 import UIKit
 
@@ -218,6 +219,14 @@ extension View {
     }
 }
 
+extension View {
+    /// Shows `settings`' theme on every token and its mode on every window, sheets included.
+    func appearance(_ settings: AppearanceSettings) -> some View {
+        onChange(of: settings.shown, initial: true) { _, theme in ActiveTheme.shared.theme = theme }
+            .onChange(of: settings.current.mode, initial: true) { _, mode in Appearance.setMode(mode) }
+    }
+}
+
 private struct ApronStyle: ViewModifier {
     func body(content: Content) -> some View {
         content
@@ -245,12 +254,26 @@ enum Appearance {
         UINavigationBar.appearance().standardAppearance = bar
         UINavigationBar.appearance().scrollEdgeAppearance = bar
         UINavigationBar.appearance().compactAppearance = bar
-        let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+
         for bar in windows.flatMap({ navigationBars(in: $0) }) {
             bar.standardAppearance = UINavigationBar.appearance().standardAppearance
             bar.scrollEdgeAppearance = UINavigationBar.appearance().scrollEdgeAppearance
             bar.compactAppearance = UINavigationBar.appearance().compactAppearance
         }
+    }
+
+    /// Light, dark, or the system's, on every window: what apron-web's `data-theme` does.
+    static func setMode(_ mode: ThemeMode) {
+        let style: UIUserInterfaceStyle = switch mode {
+        case .system: .unspecified
+        case .light: .light
+        case .dark: .dark
+        }
+        for window in windows { window.overrideUserInterfaceStyle = style }
+    }
+
+    private static var windows: [UIWindow] {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
     }
 
     private static func navigationBars(in view: UIView) -> [UINavigationBar] {

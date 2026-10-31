@@ -14,6 +14,8 @@ public final class SessionStore {
     public let reminders: Reminders
     /// Where media loads from, on every server, kept beside `servers.json`.
     public let mediaSettings: MediaSettings
+    /// The theme and mode on this device, kept beside `servers.json`.
+    public let appearance: AppearanceSettings
     /// Every room's composer draft, kept beside `servers.json`, its files in `Staged`.
     public let drafts: Drafts
     /// Whether anyone attends the app, which every session tells its server (§4.5 `idle`).
@@ -34,6 +36,7 @@ public final class SessionStore {
         reminders = Reminders(store: serverStore.map { FileReminderStore(directory: $0.directory) } ?? InMemoryReminderStore(),
                               notifier: notifier)
         mediaSettings = MediaSettings(directory: serverStore?.directory)
+        appearance = AppearanceSettings(directory: serverStore?.directory)
         if let directory = serverStore?.directory {
             drafts = Drafts(store: FileDraftStore(directory: directory), staging: directory.appending(path: "Staged", directoryHint: .isDirectory))
             drafts.pruneStaging()

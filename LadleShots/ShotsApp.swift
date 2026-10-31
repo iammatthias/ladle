@@ -27,6 +27,7 @@ enum Screen: String, CaseIterable {
     case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline", serverPane = "server-pane", serverPaneDemo = "server-pane-demo", mentionChip = "mention-chip"
     case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing", rolePicker = "role-picker", roleChip = "role-chip"
     case muted, paused, youPaused = "you-paused", limited
+    case appearance, appearanceCustom = "appearance-custom"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .youPaused }
@@ -59,24 +60,28 @@ enum Renderer {
         let store = await PreviewFixtures.makeStore()
         guard let home = store.session(for: PreviewFixtures.homeID) else { exit(1) }
 
-        var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool, theme: PremadeTheme?)] = []
+        var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool, look: Look?)] = []
         for screen in Screen.allCases where screen != .limited {
-            shots.append((screen, .dark, false, nil))
-            shots.append((screen, .light, false, nil))
+            shots.append((screen, .dark, false, Look.seeded(screen)))
+            shots.append((screen, .light, false, Look.seeded(screen)))
         }
         shots.append((.timeline, .dark, true, nil))
-        // The busy room in each premade theme but Apron, which every other shot is in.
-        for theme in PremadeTheme.all.dropFirst() {
-            shots.append((.timeline, .dark, false, theme))
-            shots.append((.timeline, .light, false, theme))
+        // The busy room in each premade theme but Apron, which every other shot is in, and in the
+        // custom CSS of the custom Appearance shot.
+        for look in PremadeTheme.all.dropFirst().map(Look.premade) + [Look.custom] {
+            shots.append((.timeline, .dark, false, look))
+            shots.append((.timeline, .light, false, look))
         }
+        // The busy room drawn in Apron and then given Linocut without being made again: what a
+        // theme chosen in Preferences does to the screens already open.
+        shots.append((.timeline, .dark, false, Look.switched))
         // Last, since the waits it asks for hold home back for the shots after it.
         shots.append((.limited, .dark, false, nil))
         shots.append((.limited, .light, false, nil))
 
         let only = ProcessInfo.processInfo.environment["LADLE_SHOTS_ONLY"]
         for shot in shots {
-            let theme = shot.theme.map { "-\($0.id)" } ?? ""
+            let theme = shot.look?.label.map { "-\($0)" } ?? ""
             let name = "ladle-\(shot.screen.rawValue)\(theme)-\(shot.large ? "ax3" : shot.style == .dark ? "dark" : "light").png"
             if let only, !name.contains(only) { continue }
             let size = shot.screen.isPad ? pad : phone
@@ -84,7 +89,8 @@ enum Renderer {
             scene.sizeRestrictions?.maximumSize = size
             scene.sizeRestrictions?.minimumSize = size
             scene.windows.first?.overrideUserInterfaceStyle = shot.style
-            ActiveTheme.shared.theme = shot.theme.flatMap { PremadeTheme.resolved[$0.id] } ?? .apron
+            store.appearance.update(shot.look?.preferences ?? .default)
+            ActiveTheme.shared.theme = shot.look?.drawnIn ?? store.appearance.shown
             await seedReminder(shot.screen == .reminder, in: store, home: home)
             await seedPause(shot.screen.isPaused, home: home)
             if shot.screen == .limited { await seedWaits(home: home) }
@@ -96,6 +102,10 @@ enum Renderer {
                 .apronStyle()
                 .id(UUID())))
             try? await Task.sleep(for: .milliseconds(shot.screen.isPad ? 2500 : 1500))
+            if shot.look?.drawnIn != nil {
+                ActiveTheme.shared.theme = store.appearance.shown
+                try? await Task.sleep(for: .milliseconds(1000))
+            }
             capture(scene, to: directory.appending(path: name))
         }
         writeContrast(to: directory.appending(path: "contrast.json"))
@@ -104,6 +114,10 @@ enum Renderer {
 
     static func view(_ screen: Screen, store: SessionStore, home: ServerSession, staged: [StagedFile]) -> AnyView {
         switch screen {
+        case .appearance:
+            AnyView(NavigationStack { AppearanceView(editor: ThemeEditor(settings: store.appearance)) })
+        case .appearanceCustom:
+            AnyView(NavigationStack { ThemeCSSView(editor: ThemeEditor(settings: store.appearance)) })
         case .firstRun:
             AnyView(NavigationStack {
                 ServerListView(store: SessionStore(serverStore: nil, tokens: InMemoryTokenStore()), open: { _ in }, connecting: .constant(nil))
@@ -277,6 +291,50 @@ enum Renderer {
             window.drawHierarchy(in: window.bounds, afterScreenUpdates: true)
         }
         try? image.pngData()?.write(to: url)
+    }
+
+    /// A theme a shot is taken in, other than the saved Apron, and what its file name says.
+    struct Look {
+        var label: String?
+        var preferences: AppearancePreferences
+        /// Drawn in this first, then given `preferences`' theme without being made again.
+        var drawnIn: ResolvedTheme?
+
+        static func premade(_ theme: PremadeTheme) -> Look { Look(label: theme.id, preferences: AppearancePreferences(theme: theme.id)) }
+
+        static let custom = Look(label: "custom", preferences: AppearancePreferences(theme: AppearancePreferences.custom, customCSS: customCSS))
+        static let switched = Look(label: "switched-linocut", preferences: AppearancePreferences(theme: "linocut"), drawnIn: .apron)
+
+        /// The Appearance shots: Ferrous chosen, and Custom with its CSS open.
+        static func seeded(_ screen: Screen) -> Look? {
+            switch screen {
+            case .appearance: Look(preferences: AppearancePreferences(theme: "ferrous"))
+            case .appearanceCustom: Look(preferences: custom.preferences)
+            default: nil
+            }
+        }
+
+        /// A custom theme as someone might paste it from apron-web: base colors, a face, a radius,
+        /// and two tokens iOS has no use for.
+        static let customCSS = """
+        :root {
+        \t/* Interface */
+        \t--font-sans: ui-rounded, var(--font-sans-system);
+        \t/* Messages */
+        \t--font-chat: var(--font-sans);
+        \t/* Code, embeds and commands */
+        \t--font-mono: var(--font-mono-system);
+        \t/* Sea glass */
+        \t--base-ground: light-dark(#eef6f3, #10201c);
+        \t--base-ink: light-dark(#14302a, #dcefe9);
+        \t--base-accent: light-dark(#0f6b5c, #5fd3bd);
+        \t--base-link: light-dark(#235a9c, #8cbcf0);
+        \t--radius-md: 14px;
+        \t--z-menu: 9;
+        \t--font-emoji: "Noto Color Emoji";
+        }
+
+        """
     }
 
     /// WCAG 2 contrast of the text tokens on the grounds they sit on, per mode, for each premade

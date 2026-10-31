@@ -31,6 +31,7 @@ struct RootView: View {
         }
         .background(Palette.chrome)
         .apronStyle()
+        .appearance(store.appearance)
         .sheet(item: $connecting) { request in
             ConnectView(store: store, record: request.record, prefill: request.prefill) { id in
                 if request.record == nil { show(id, request.place) }

@@ -436,8 +436,17 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
 | Preferences dialog with Profile, Notifications, Appearance, Media, History | #23, #171, #177 | missing | | Ladle has a Settings.bundle page with Show Link Previews only. |
-| Theme: light, dark, or system | #23 | missing | | Ladle follows the system. Add an override. |
-| Fonts for interface, chat, and code (experimental) | #23 | missing | | Web marks it experimental, to become themes. |
+| Mode: light, dark, or system, over any theme | #23, #174 | has | `Kit/Appearance.swift` (`ThemeMode`), `Servers/AppearanceView.swift`, `Design/Apron.swift` (`Appearance.setMode`) | Every window's style, sheets included. |
+| Premade themes: Apron, Ferrous, Gumball, Linocut (high contrast), with previews | #174 | has | `Kit/WebTokens.swift` (generated from `THEMES`), `Kit/Themes.swift`, `Servers/AppearanceView.swift` | Read by the same parser as custom CSS; each row has a swatch in its colors and face. A theme redraws every open screen (`ActiveTheme`). |
+| Base colors derive the palette (`--base-ground`, `--base-ink`, `--base-accent`, `--base-link`) | #174 | has | `Kit/ThemeCSS.swift` (`deriveTokens`) | Port of `theme-colors.ts`, held to the web's own output (`ThemeTests`, `tools/design/theme-goldens.py`). |
+| Aliases follow the theme (`--focus`, the hover grounds, `--selected`, the presence colors) | #174 | has | `Kit/ResolvedTheme.swift` | `var()` read against the theme first. |
+| Custom theme CSS: Apply, Discard, live preview while it reads, errors | #174 | has | `Kit/ThemeCSS.swift` (`parse`), `Kit/Appearance.swift` (`ThemeEditor`), `Servers/AppearanceView.swift` (`ThemeCSSView`) | `parseThemeCss`'s grammar, limits and messages; a theme pasted from apron-web reads the same. Tokens iOS has no use for stay in the text and are listed as not used on iOS. |
+| Custom starts from the theme chosen before, the first time | #174 | has | `Kit/Appearance.swift` (`choosing`) | |
+| Base colors from color pickers | | has | `Servers/AppearanceView.swift` (`BaseColorsView`), `Kit/Appearance.swift` (`ThemeBases`) | Ladle's addition: writes the same `--base-*` CSS. |
+| Theme fonts: interface, messages, code (`--font-sans`, `--font-chat`, `--font-mono`) | #23, #174 | has | `Kit/ThemeFonts.swift`, `Design/Fonts.swift`, `Ladle/Fonts` | Recursive and Nunito bundled from the web's files (OFL 1.1, `tools/design/fonts.py`); first available family, scaled with Dynamic Type. Installed fonts work too. |
+| Appearance kept per device | #174 | has | `Kit/Appearance.swift` (`AppearanceSettings`) | `appearance.json` beside `servers.json`, as the web's `apron.appearance` in this browser. |
+| Fonts saved before themes become a custom theme | #174 | N/A-iOS | | Ladle never kept font fields. |
+| Browser chrome (`theme-color`) takes the theme's ground | #174 | N/A-iOS | | iOS has no page chrome; the navigation bars take the theme's grounds and face. |
 | Settings kept on device, applied across tabs | bh | N/A-iOS | | One app process. |
 
 ## 24. Permissions, settings, and limits
@@ -540,7 +549,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 28. **External sign-in and email extras.** External sign-in through `ASWebAuthenticationSession`. Add email to an account. Handle link `state` and the "Sign in or Add it" dialog with its warning. The "add a sign-in" nudge. M.
 29. **`iframe` and `html` embeds.** A paused `iframe` with Load live view in a sandboxed `WKWebView`, and sanitized `html`, with the media gate's `srcset`, `background`, and `ping` rules. L.
 30. **Client-side commands.** Handle `/nick`, `/join`, `/leave`, `/topic`, `/kick`, and `/invite` locally, as the web does, and give a failed command's draft back. S.
-31. **Appearance.** A light, dark, or system theme override. A font choice, which the web marks experimental. S.
+31. ~~**Appearance.**~~ Done (`Kit/Appearance.swift`, `Kit/ResolvedTheme.swift`, `Servers/AppearanceView.swift`): mode, the premade themes, custom theme CSS and the theme fonts, as apron-web #174.
 32. **Export and archive.** Export loaded chats as `.jsonl`, with Include private rooms, and open an export read-only from Files. M.
 33. **Presence details.** An unknown status as a dashed placeholder with its value, the full status sort order, foldable member sections, and the `member_count` note. S.
 34. **Composer details.** Standard emoji `:shortcode` autocomplete, mention chips in the field, and hardware-keyboard ↑ ↓ Tab Enter in every picker. S.

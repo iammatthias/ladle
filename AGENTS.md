@@ -363,7 +363,14 @@ clone), which is only a worked example.
     `light-dark()`, `color-mix(in srgb, …)`, the named colors, `px`, `ms`/`s`, percentages,
     numbers, `cubic-bezier()` and `0 Ypx Bpx <color>` shadows. `ResolvedTheme` is every token
     Ladle applies (`WebTokens.applied`) in both modes; a value it can't read keeps tokens.css's
-    and joins `notShown` with the web-only and unknown names.
+    and joins `notShown` with the web-only and unknown names. `ThemeFonts` is its three faces,
+    each a `FontFamily` list. `Appearance.swift`, as apron-web's `AppearanceSettings`:
+    `AppearancePreferences` (mode, theme id or `custom`, the custom CSS; `init(saved:)` is
+    `decodeAppearance`, `choosing` is `chooseTheme`), `AppearanceSettings` (owned by
+    `SessionStore`, kept in `appearance.json` beside `servers.json`; `shown` is the saved theme
+    or a `preview`), `ThemeEditor` (the custom CSS as edited while Preferences is open: live
+    preview, Apply, Discard, `close`), and `ThemeBases`, which writes the four `--base-*`
+    declarations into the CSS for the color pickers.
   - `ServerPane` (`ServerPane.swift`): `ServerSession.pane`, the server pane's facts as
     apron-web's ServerPane: name, host, description, the connection in words with a tone,
     "Signed in as Ada (guest)", the address, and "Apron 9".
@@ -400,7 +407,7 @@ clone), which is only a worked example.
   `Rooms/MuteMenu.swift` (`MuteActions`: Mute Room or Thread's submenu, or Unmute, in a row's
   context menu and the room's ⋯ menu; `MutedBell`), a muted row's bell-off and quiet count, the
   header's bell-off button, the profile bar's paused line, and You's Pause notifications;
-  `Servers/` (the server list and iPad rail, `PreferencesView`: the media policy and trusted sites, from the list's toolbar and the rail's foot, `ConnectView`: add a server and sign in in one
+  `Servers/` (the server list and iPad rail, `PreferencesView`: the media policy and trusted sites, from the list's toolbar and the rail's foot, `AppearanceView`: the mode, the themes with swatches, `ThemeCSSView` (the custom CSS) and `BaseColorsView` (the color pickers); `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, `RateLimitNotice` and Send's countdown over the composer while a wait holds it back, composer with the
   mention list, the custom emoji `:` list, the `#` room list and the command list (`CommandSuggestions`: usage and
   summary, scrolling past five rows; picking fills `/name ` and keeps the keyboard up), reaction picker (custom emoji by category first),
@@ -528,7 +535,7 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the room list and You while paused, and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; the busy room in Ferrous, Gumball and Linocut (`ladle-timeline-<theme>-<mode>`); and the iPad
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the room list and You while paused, and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; the busy room in Ferrous, Gumball, Linocut and a custom CSS theme (`ladle-timeline-<theme>-<mode>`), and drawn in Apron then given Linocut in place (`ladle-timeline-switched-linocut-dark`: a new theme redraws open screens); Appearance with Ferrous chosen, and the custom theme's CSS with its "not used on iOS" line; and the iPad
 split view at 1180x820 pt (regular width) in dark and light, on the busy room and on the random room with its typing line. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with

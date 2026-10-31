@@ -175,7 +175,7 @@ extension CharacterSet {
     static let jsWhitespace = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\u{FEFF}"))
 }
 
-extension String {
+public extension String {
     /// The first `count` UTF-16 code units, as JavaScript's `slice(0, count)`.
     init(utf16Prefix string: String, _ count: Int) {
         let units = Array(string.utf16.prefix(count))
