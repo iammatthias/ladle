@@ -416,7 +416,8 @@ The reply drag mirrors in right-to-left layouts ([right-to-left]).
 | `iframe`, `html` | A fallback card with **Open in Browser** for `url`. Not rendered inline in v1 (5.8). |
 | `format: "markdown"` | CommonMark with GitHub tables and strikethrough, as apron-web's markdown-it (`html: false`, `breaks: true`): headings, paragraphs, quotes with a rule at their edge, ordered and bulleted lists, code blocks, rules, and tables. Raw HTML shows as text. A typed line break is kept. Code blocks and tables scroll sideways inside the message, so a wide one never widens the row. Text follows Dynamic Type. Links, mentions, room chips and custom emoji are never drawn inside code. Each image (`![alt](url)`) is a block of its own under the media gate (3.14): the image at its shape, a Load tile naming its alt text and host, or, on a scheme that cannot load, its alt text. A linked image shows as its link. The same rendering covers notices, the server description and the welcome. Room and thread descriptions in rows read as one line per block. |
 | `format: "plain"` | The text as written, one paragraph, with bare links, mentions and custom emoji |
-| Membership records | Not shown in the timeline in v1. Room info shows members. |
+| Membership records | Join and leave lines, as apron-web's (#170): consecutive records with nothing else between them (a day pill counts) make one quiet centered line, netted per user ("Ada and Bob joined · Carol left"; past three names, "Ada, Bob, and 4 others"). Someone who joins and leaves within a run, as a guest passing through, is in neither list, so churn stays quiet. A record of 21 joins or more is the baseline a server logs before it drops history, not news, and gets no line. An add by someone else is a join. VoiceOver reads every name and the time. |
+| A room record with a new `title` | "Room renamed to “Ops”" or "Thread renamed to “Deploy”" at its `log_id`, or "… name cleared". A description edit makes no line. |
 
 ### 3.6 Thread
 
@@ -768,7 +769,6 @@ Ladle overrides no standard shortcut ([keyboards]: "Respect standard keyboard sh
 | Message search | The protocol has no search request. Ladle could only search what it holds, which would look complete and not be. |
 | Moving messages and select mode | Rare on a phone, and the web client covers it. Ladle shows moves correctly. |
 | Direct messages from a profile (private rooms named for members) | Needs member pickers and private-room naming rules. Private rooms you are in already show up. |
-| Membership lines ("Ada joined") | Guest churn would add noise. Room info shows the members. |
 | Edit history (`prev_log_id`) | Rarely needed. "Edited" is enough. |
 | A browsable emoji picker | The system emoji keyboard covers any emoji (3.9). |
 | An app-wide settings screen | Nothing app-wide needs a setting. Appearance and text size follow the system ([settings]: "Respect people's systemwide settings"). |

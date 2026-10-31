@@ -28,7 +28,9 @@ clone), which is only a worked example.
   - `Records` and `ReplayStore`: the four record stores (room records by `room_id`, message
     snapshots by `message_id`, reaction sets by `(message_id, user_id)`, memberships by
     `(room_id, user_id)`) under the replay rule, member-list seeding as of a position, re-homing
-    on moves, and the README's logical projection. `ext` stays a `JSONValue`.
+    on moves, and the README's logical projection. `ext` stays a `JSONValue`. It also logs every
+    membership record (`membershipLog(of:)`, dropped below the retention floor) and every room
+    record's title (`renames(of:)`) it sees, superseded or not, for the timeline's lines.
   - `TextDirection`: what users write takes its direction from its first strong letter (§3.5.2).
     Names, room titles, descriptions, the server's title and message text show without
     U+202A–U+202E (stored and sent as written); a name or preview set among the app's own
@@ -244,10 +246,15 @@ clone), which is only a worked example.
     by `0` or their next message there, and forgotten on disconnect. `TypingLine` words it: the
     wide line ("Several people are typing…") and the phone subtitle ("3 people are typing…").
   - `Timeline` (`Timeline.swift`): what a room's timeline shows, in order (`TimelineItem`: day
-    pills, messages, the New line, thread cards at the thread's creation position, and queued
+    pills, messages, the New line, thread cards at the thread's creation position, join and
+    leave lines and rename lines at their `log_id`s, as apron-web's `buildRoomTimeline`, and queued
     messages), mention counts, member sections (online, then offline, each by name),
     `Presence` (§4.5.1), `MediaItem`s for the media viewer, and the `MessageSnapshot` reads
     the views use (`date`, `isEdited`, `plainText`, `mentionIDs`).
+  - `MembershipLines` (`MembershipLines.swift`): apron-web's `membership.ts` (#170).
+    `MembershipRecord.isBaseline` is 21 joins or more at once; `net` comes to who joined and left
+    over a run, per user from their first entry to their last; `list` and `summary` word it ("Ada,
+    Bob, and 4 others joined · Carol left"); `rename` words a title change.
   - `MessageRowModel` (`MessageRowModel.swift`): what a message's row shows, worked out once:
     the text, mentions marked `MentionKey` (`MessageText.attributed(…mentions:you:)`: each
     mentioned user's `@name` or `@user_id` outside links) for the app to draw as chips,
@@ -540,7 +547,7 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the room list and Preferences > Notifications while paused (`ladle-notifications-paused`), and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; the busy room in Ferrous, Gumball, Linocut and a custom CSS theme (`ladle-timeline-<theme>-<mode>`), and drawn in Apron then given Linocut in place (`ladle-timeline-switched-linocut-dark`: a new theme redraws open screens); Preferences' sections and History; Appearance with Ferrous chosen, and the custom theme's CSS with its "not used on iOS" line; and the iPad
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the Release thread's rename line (and Dev's join line in the busy room), the room list and Preferences > Notifications while paused (`ladle-notifications-paused`), and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; the busy room in Ferrous, Gumball, Linocut and a custom CSS theme (`ladle-timeline-<theme>-<mode>`), and drawn in Apron then given Linocut in place (`ladle-timeline-switched-linocut-dark`: a new theme redraws open screens); Preferences' sections and History; Appearance with Ferrous chosen, and the custom theme's CSS with its "not used on iOS" line; and the iPad
 split view at 1180x820 pt (regular width) in dark and light, on the busy room and on the random room with its typing line. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with

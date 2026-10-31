@@ -400,6 +400,12 @@ struct TimelineView: View {
                 .padding(.leading, Tokens.Space.s4 + Tokens.AvatarSize.md + Tokens.Space.s3)
                 .padding(.trailing, Tokens.Space.s4)
                 .padding(.top, Tokens.Space.s2)
+        case .members(let line):
+            let words = session.words(line)
+            SystemLine(text: words.text, date: line.date, spoken: words.full)
+        case .renamed(let rename):
+            SystemLine(text: MembershipLines.rename(rename.title, thread: session.store.room(roomID)?.parentRoomID != nil),
+                       date: Date(timeIntervalSince1970: (Double(rename.logID.text) ?? 0) / 1000))
         case .pending(let pending):
             PendingRow(session: session, pending: pending)
                 .padding(.horizontal, Tokens.Space.s4)
@@ -690,6 +696,27 @@ struct ThreadCard: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Thread \(session.title(of: threadID))" + (unread > 0 ? ", \(unread) new" : ""))
         .accessibilityHint("Opens the thread")
+    }
+}
+
+/// The web's quiet SystemLine: who joined and left, or a rename, centered between the rows with
+/// no avatar and no actions. Its time, which the web shows on hover, is read by VoiceOver, with
+/// every name when the line counted some.
+struct SystemLine: View {
+    let text: String
+    let date: Date
+    var spoken: String?
+
+    var body: some View {
+        Text(text)
+            .apText(.sm)
+            .foregroundStyle(Palette.inkMuted)
+            .multilineTextAlignment(.center)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, Tokens.Space.s4)
+            .padding(.top, Tokens.Space.s2)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel("\(spoken ?? text), \(date.formatted(.dateTime.hour().minute()))")
     }
 }
 

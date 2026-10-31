@@ -232,8 +232,8 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | `@&role` as a role chip that reads `@role` and opens nothing, never in code, also in reply quotes and previews | #181 | has | `Kit/MessageText.swift` (`RoleMentionKey`), `Kit/MessageText+Plain.swift`, `Timeline/MessageRow.swift` (`styled`) | Any role, known or not. Denim on denim-soft with a dotted denim rule in place of the web's 1 px ring, which a run of `Text` cannot draw. |
 | A message mentions you only when `body.mentions` lists you, never for a role you hold | #181 | has | `Kit/Timeline.swift` (`mentions`), `Kit/MessageRowModel.swift` | Badges, the tint and mention counts follow the list, as the web and push do. |
 | Bidi overrides dropped, text isolated in its own direction | #138 | has | `Kit/TextDirection.swift` | |
-| Join and leave lines ("Ada and Bob joined · Carol left") | #170 | missing | | UX.md 4.8 left it out for guest churn. |
-| Rename lines ("Room renamed to Ops") | #170 | missing | | |
+| Join and leave lines ("Ada and Bob joined · Carol left"), netted per run, 21-join baseline skipped, an add shown as a join | #170, bh | has | `Kit/MembershipLines.swift`, `Kit/ReplayStore.swift` (`membershipLog`), `Kit/Timeline.swift` (`timelineItems`), `Timeline/TimelineView.swift` (`SystemLine`) | Live and from history. VoiceOver reads every name and the time, which the web shows on hover. |
+| Rename lines ("Room renamed to “Ops”", "Thread name cleared") in rooms and threads | #170 | has | `Kit/ReplayStore.swift` (`renames`), `Kit/MembershipLines.swift` (`rename`) | |
 | System senders as quiet lines; `~private`, `~room`, `~server` as notice cards | bh | has | `Timeline/TimelineView.swift` (`Callout`), `Kit/MessageMenu.swift` (`NoticeMenu`) | |
 | Transient notices for the session, never stored | bh | has | `Kit/ServerSession.swift` (`notices`) | |
 | Welcome notice in the first room | bh | partial | `Servers/ConnectView.swift` | The welcome shows in the Connect sheet, not in the first room. |
@@ -533,7 +533,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 9. **Room header.** Pin the Description under the header with expand and dismiss. Add Edit room or thread (`room_set` title and description) and Copy link to the room to the ⋯ menu (Mute is there). M.
 10. **Private rooms and direct messages.** Create a room with Private. Add New private conversation with a people picker. Add Message on the profile card. Add a Private section with faces. Name untitled private rooms for their members. Add the intro card, the "You were added" banner, and the private room limit. L.
 11. **Kept view and local history.** Cache rooms and recent messages on disk so a relaunch shows them at once. Keep history with Retention, delete it on sign-out, and page older messages from the device first. L.
-12. **Join, leave, and rename lines.** Show them in the timeline, netted per user, with the 20-user baseline rule. S.
+12. ~~**Join, leave, and rename lines.**~~ Done (`Kit/MembershipLines.swift`): netted per run, baselines of 21 joins skipped, adds as joins and renames in rooms and threads (#170).
 13. **Open at the New divider.** Land on the divider instead of the latest message. Needs a device to verify the scroll. S.
 14. **Member management.** Add member with a people picker, Remove from room with a confirm, and the member row menu (Profile, Direct message, Remove). M.
 15. **Select mode.** Select several messages, move them to a thread or a new thread, add authors to the thread, and copy them as a Markdown log with quotes, cut marks, and reactions. M.

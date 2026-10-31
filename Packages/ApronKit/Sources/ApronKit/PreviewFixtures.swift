@@ -137,7 +137,15 @@ public enum PreviewFixtures {
              mentions: mentions, embeds: embeds, prevRoom: movedFrom)
     }
 
-    private static func history(_ roomID: String, _ lines: [Line]) -> JSONValue {
+    /// A membership record at `second` seconds past the start, as history replays one (§4.2.2).
+    private static func membership(_ roomID: String, at second: Int, _ members: [(String, Bool)]) -> JSONValue {
+        [
+            "log_id": .string(String(start + Int64(second) * 1000)), "room_id": .string(roomID),
+            "members": .array(members.map { user, joined in ["user": people[user] ?? ["user_id": .string(user), "name": .string(user)], "joined": .bool(joined)] }),
+        ]
+    }
+
+    private static func history(_ roomID: String, _ lines: [Line], memberships: [JSONValue] = [], rooms: [JSONValue] = []) -> JSONValue {
         var messages: [JSONValue] = []
         var reactions: [JSONValue] = []
         for line in lines {
@@ -172,7 +180,7 @@ public enum PreviewFixtures {
         }
         let latest = lines.map { $0.editedAt ?? $0.minute }.max().map(message) ?? message(0)
         return [
-            "messages": .array(messages), "reactions": .array(reactions), "more": false,
+            "messages": .array(messages), "reactions": .array(reactions), "memberships": .array(memberships), "rooms": .array(rooms), "more": false,
             "first_log_id": .string(message(lines.first?.minute ?? 0)), "last_log_id": .string(latest),
             "latest_log_id": .string(latest), "history_log_id": .string(message(lines.first?.minute ?? 0)),
         ]
@@ -247,9 +255,9 @@ public enum PreviewFixtures {
     """
 
     private static func room(_ id: String, _ title: String, parent: String? = nil, members: [String],
-                             description: String? = nil, isPrivate: Bool = false) -> JSONValue {
+                             description: String? = nil, isPrivate: Bool = false, logID: String? = nil) -> JSONValue {
         var room: [String: JSONValue] = [
-            "room_id": .string(id), "log_id": .string(parent == nil ? message(-600) : id), "title": .string(title),
+            "room_id": .string(id), "log_id": .string(logID ?? (parent == nil ? message(-600) : id)), "title": .string(title),
             "members": .array(members.map { ["user_id": .string($0)] }),
         ]
         if let parent { room["parent_room_id"] = .string(parent) }
@@ -260,6 +268,8 @@ public enum PreviewFixtures {
 
     /// The Release thread opens off #general after minute 8.
     private static let releaseThread = String(start + 8 * 60_000 + 45_000)
+    /// The thread renamed from "Release", whose timeline shows the rename.
+    public static let releaseThreadID = releaseThread
     private static let iconThread = String(start + 3 * 60_000 + 45_000)
 
     /// The thread whose messages link to a message, a thread and a private room's unloaded
@@ -302,7 +312,7 @@ public enum PreviewFixtures {
             "joined": [
                 room("general", "general", members: ["sam", "ada", "bram", "chiara", "dev", "eunji"]),
                 room(releaseThread, "Release 0.2", parent: "general", members: ["sam", "ada", "bram"],
-                     description: "Ship Friday, then freeze"),
+                     description: "Ship Friday, then freeze", logID: String(start + 16 * 60_000 + 30_000)),
                 room("design", "design", members: ["sam", "ada", "eunji"], description: "Icons, type and color"),
                 room(iconThread, "Icon sketches", parent: "design", members: ["sam", "eunji"]),
                 room("random", "random", members: ["sam", "ada", "bram", "chiara"]),
@@ -314,12 +324,21 @@ public enum PreviewFixtures {
             "users": .array(people.keys.sorted().map { people[$0]! }),
         ],
         histories: [
-            "general": history("general", general),
+            // A guest who came and went nets out; Dev's join shows before the message moved in.
+            "general": history("general", general, memberships: [
+                membership("general", at: 19 * 60 + 10, [("guest_4", true)]),
+                membership("general", at: 19 * 60 + 20, [("dev", true)]),
+                membership("general", at: 19 * 60 + 30, [("guest_4", false)]),
+            ]),
+            // Started as "Release", renamed once the version was known.
             releaseThread: history(releaseThread, [
                 line(10, "ada", "Checklist: version bump, origin check on both servers, passkey AASA file, release notes."),
                 line(17, "bram", "AASA is live on home. Demo still serves the old app ID.", reactions: ["👀": ["ada"]]),
                 line(18, "ada", "I'll fix demo tonight."),
                 line(19, "dev", "Release notes draft is in the doc."),
+            ], rooms: [
+                ["room_id": .string(releaseThread), "log_id": .string(releaseThread), "parent_room_id": "general", "title": "Release",
+                 "description": "Ship Friday, then freeze"],
             ]),
             "design": history("design", [
                 line(-40, "eunji", "Three takes on the app icon: a ladle in profile, a ladle from above, and just the bowl."),

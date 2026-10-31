@@ -1,13 +1,16 @@
 import Foundation
 
 /// What a timeline shows, in order: day dividers, messages, the New line, a card per thread at
-/// the point the thread was created, and queued messages last.
+/// the point the thread was created, join and leave lines, rename lines, and queued messages last.
 public enum TimelineItem: Identifiable, Sendable {
     /// `continues` is true when the previous row is the same author within five minutes.
     case message(MessageSnapshot, continues: Bool)
     case day(Date)
     case unreadLine
     case thread(roomID: String)
+    /// Consecutive membership records netted out (`MembershipLines`).
+    case members(MembershipLine)
+    case renamed(RoomRename)
     case pending(ServerSession.PendingMessage)
 
     public var id: String {
@@ -16,34 +19,99 @@ public enum TimelineItem: Identifiable, Sendable {
         case .day(let date): "day-\(date.timeIntervalSince1970)"
         case .unreadLine: "unread"
         case .thread(let roomID): "thread-" + roomID
+        case .members(let line): "members-" + line.firstLogID.text
+        case .renamed(let rename): "renamed-" + rename.logID.text
         case .pending(let pending): "pending-" + pending.id
         }
     }
 }
 
+/// A join and leave line: who a run of membership records comes to. It is keyed by the run's
+/// first record, so it stays put as later ones join the run, and shows the last one's time.
+public struct MembershipLine: Hashable, Sendable {
+    public var firstLogID: LogID
+    public var lastLogID: LogID
+    public var joined: [UserObject]
+    public var left: [UserObject]
+
+    public var date: Date { Date(timeIntervalSince1970: (Double(lastLogID.text) ?? 0) / 1000) }
+}
+
 extension ServerSession {
-    /// A thread is placed after the last message older than its creation: its `room_id` when that
-    /// is a log position, else its record's `log_id`.
+    /// The timeline as apron-web's `buildRoomTimeline`. A thread's card sits after the last message
+    /// older than its creation: its `room_id` when that is a log position, else its record's
+    /// `log_id`. Membership records and renames sit at their `log_id`s among the messages and
+    /// cards, each after a day pill when the day changes. Records with nothing else between them
+    /// (a day pill counts) make one line, netted per user; one that nets to nothing leaves no line
+    /// and does not break a sender's run. Baseline records are skipped.
     public func timelineItems(_ roomID: String, lineBefore: LogID?, calendar: Calendar = .current) -> [TimelineItem] {
-        let threads = threadIDs(in: roomID)
-            .compactMap { id in (LogID(id) ?? store.room(id)?.logID).map { (position: $0, roomID: id) } }
-            .sorted { $0.position < $1.position }
+        enum Event {
+            case thread(String)
+            case rename(RoomRename)
+            case membership(MembershipRecord)
+            /// At one position a card goes first, then a rename, then a membership, as on the web.
+            var rank: Int {
+                switch self {
+                case .thread: 0
+                case .rename: 1
+                case .membership: 2
+                }
+            }
+        }
+        let threads = threadIDs(in: roomID).compactMap { id in (LogID(id) ?? store.room(id)?.logID).map { ($0, Event.thread(id)) } }
+        let renames = store.renames(of: roomID).map { ($0.logID, Event.rename($0)) }
+        let memberships = store.membershipLog(of: roomID).filter { !$0.isBaseline }.map { ($0.logID, Event.membership($0)) }
+        let events = (threads + renames + memberships).sorted { $0.0 < $1.0 || ($0.0 == $1.0 && $0.1.rank < $1.1.rank) }
+
         var items: [TimelineItem] = []
-        var pendingThreads = threads[...]
         var previous: MessageSnapshot?
         var day: Date?
+        var run: [MembershipRecord] = []
+        var runDay: Date?
+        func date(_ id: LogID) -> Date { Date(timeIntervalSince1970: (Double(id.text) ?? 0) / 1000) }
+        func push(day start: Date) {
+            guard start != day else { return }
+            closeRun()
+            items.append(.day(start))
+            day = start
+            previous = nil
+        }
+        func closeRun() {
+            guard let first = run.first, let last = run.last, let start = runDay else { return }
+            let net = MembershipLines.net(run)
+            run = []
+            guard !net.joined.isEmpty || !net.left.isEmpty else { return }
+            push(day: start)
+            items.append(.members(MembershipLine(firstLogID: first.logID, lastLogID: last.logID, joined: net.joined, left: net.left)))
+            previous = nil
+        }
+        var pending = events[...]
+        func pushGap(before: LogID?) {
+            while let (position, event) = pending.first, before.map({ position < $0 }) ?? true {
+                pending.removeFirst()
+                let start = calendar.startOfDay(for: date(position))
+                switch event {
+                case .membership(let record):
+                    if !run.isEmpty, runDay != start { closeRun() }
+                    if run.isEmpty { runDay = start }
+                    run.append(record)
+                case .rename(let rename):
+                    closeRun()
+                    push(day: start)
+                    items.append(.renamed(rename))
+                    previous = nil
+                case .thread(let id):
+                    closeRun()
+                    push(day: start)
+                    items.append(.thread(roomID: id))
+                    previous = nil
+                }
+            }
+        }
         for message in timeline(roomID) {
-            while let thread = pendingThreads.first, thread.position < message.messageID {
-                items.append(.thread(roomID: thread.roomID))
-                pendingThreads.removeFirst()
-                previous = nil
-            }
-            let start = calendar.startOfDay(for: message.date)
-            if start != day {
-                items.append(.day(start))
-                day = start
-                previous = nil
-            }
+            pushGap(before: message.messageID)
+            closeRun()
+            push(day: calendar.startOfDay(for: message.date))
             if message.messageID == lineBefore {
                 items.append(.unreadLine)
                 previous = nil
@@ -54,9 +122,15 @@ extension ServerSession {
             items.append(.message(message, continues: continues))
             previous = message
         }
-        items += pendingThreads.map { .thread(roomID: $0.roomID) }
+        pushGap(before: nil)
+        closeRun()
         items += outbox.filter { $0.roomID == roomID }.map(TimelineItem.pending)
         return items
+    }
+
+    /// A join and leave line as the timeline says it, each user named as rows name them.
+    public func words(_ line: MembershipLine) -> (text: String, full: String?) {
+        MembershipLines.summary(joined: line.joined.map(displayName(for:)), left: line.left.map(displayName(for:)))
     }
 
     public func threadIDs(in roomID: String) -> [String] {

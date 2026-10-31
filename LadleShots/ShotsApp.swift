@@ -28,6 +28,7 @@ enum Screen: String, CaseIterable {
     case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing", rolePicker = "role-picker", roleChip = "role-chip"
     case muted, paused, notificationsPaused = "notifications-paused", limited
     case appearance, appearanceCustom = "appearance-custom", preferences, history
+    case threadRenamed = "thread-renamed"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -216,6 +217,9 @@ enum Renderer {
                                  field: DraftField(mode: .reply(LogID("1793092500000")!), text: "On it. Here's the 20 pt one at 3x"),
                                  files: Array(staged.prefix(1)))))
             })
+        case .threadRenamed:
+            // The Release thread's rename, and in #general (the busy room) Dev's join.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.releaseThreadID, reminders: store.reminders, drafts: Drafts()) })
         case .typing:
             // Ada and Bram typing: the header's subtitle on a phone.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.typingRoomID, reminders: store.reminders, drafts: Drafts()) })

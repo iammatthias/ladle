@@ -21,6 +21,8 @@ final class TimelineTests: XCTestCase {
             case .day(let date): "day \(Int(date.timeIntervalSince1970))"
             case .unreadLine: "New"
             case .thread(let roomID): "thread " + session.title(of: roomID)
+            case .members(let line): session.words(line).text
+            case .renamed(let rename): "renamed " + rename.title
             case .pending(let pending): "pending " + pending.text
             }
         }
@@ -31,7 +33,7 @@ final class TimelineTests: XCTestCase {
         let general = home.timeline("general")
         let items = home.timelineItems("general", lineBefore: general[10].messageID, calendar: utc)
         XCTAssertEqual(names(items, in: home), ["day 1793059200", "ada", "bram", "sam", "chiara", "ada", "eunji", "bram",
-                                               "thread Release 0.2", "chiara", "ada", "sam", "New", "eunji", "bram", "dev"])
+                                               "thread Release 0.2", "chiara", "ada", "sam", "New", "eunji", "bram", "Dev joined", "dev"])
         XCTAssertEqual(items.map(\.id).prefix(3), ["day-1793059200.0", "1793091600000", "1793091660000"])
         XCTAssertEqual(items[8].id, "thread-1793092125000")
         XCTAssertEqual(items[12].id, "unread")

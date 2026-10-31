@@ -16,6 +16,12 @@ public struct ReplayStore: Sendable, Equatable {
     private var members: [String: MemberState] = [:]
     /// Each room's retention floor (§4.3): the lowest `log_id` it still keeps. Never lowered.
     private var floors: [String: LogID] = [:]
+    /// Every membership record seen, superseded or not, by room in `log_id` order: what the
+    /// timeline's join and leave lines are read from (`MembershipRecord`).
+    private var membershipLogs: [String: [MembershipRecord]] = [:]
+    /// Every room record's title seen, superseded or not, by room and `log_id`: what renames are
+    /// read from.
+    private var roomTitles: [String: [LogID: String]] = [:]
 
     private struct MemberEntry: Hashable, Sendable {
         var user: UserObject
@@ -39,13 +45,33 @@ public struct ReplayStore: Sendable, Equatable {
     /// under the replay rule, except that a room's member list is seeded with its record.
     public mutating func apply(_ records: Records) {
         for (record, delivery) in records.rooms {
+            if let logID = record.logID, roomTitles[record.roomID]?[logID] == nil {
+                roomTitles[record.roomID, default: [:]][logID] = record.title?.stringValue ?? ""
+            }
             put(room: record)
             if let list = delivery.members { seedMembers(of: record.roomID, with: list, asOf: delivery.latestLogID) }
         }
         for snapshot in records.messages { put(message: snapshot) }
         for snapshot in records.embedded { put(message: snapshot) }
         for set in records.reactions { put(reaction: set) }
-        for membership in records.memberships { put(membership: membership) }
+        for membership in records.memberships {
+            log(membership)
+            put(membership: membership)
+        }
+    }
+
+    /// Keeps a membership in its room's log at its `log_id`; a repeat is ignored.
+    private mutating func log(_ membership: Membership) {
+        var log = membershipLogs[membership.roomID] ?? []
+        let index = log.firstIndex { membership.logID < $0.logID } ?? log.count
+        let entry = MembershipRecord.Entry(user: membership.user, joined: membership.joined)
+        if index > 0, log[index - 1].logID == membership.logID {
+            guard !log[index - 1].entries.contains(where: { $0.user.userID == membership.user.userID }) else { return }
+            log[index - 1].entries.append(entry)
+        } else {
+            log.insert(MembershipRecord(logID: membership.logID, entries: [entry]), at: index)
+        }
+        membershipLogs[membership.roomID] = log
     }
 
     /// Returns whether the record replaced the stored one.
@@ -111,6 +137,7 @@ public struct ReplayStore: Sendable, Equatable {
     public mutating func raiseFloor(of roomID: String, to floor: LogID) {
         guard floors[roomID].map({ $0 < floor }) ?? true else { return }
         floors[roomID] = floor
+        membershipLogs[roomID]?.removeAll { $0.logID < floor }
         for messageID in homes[roomID] ?? [] where messages[messageID]!.logID < floor {
             messages[messageID] = nil
             reactions[messageID] = nil
@@ -119,6 +146,19 @@ public struct ReplayStore: Sendable, Equatable {
     }
 
     public func floor(of roomID: String) -> LogID? { floors[roomID] }
+
+    /// The room's membership records, by `log_id`.
+    public func membershipLog(of roomID: String) -> [MembershipRecord] { membershipLogs[roomID] ?? [] }
+
+    /// The room's title changes, by `log_id`: each logged room record whose title differs from
+    /// the one before it among those seen, as apron-web's `roomRenames`. History compaction may
+    /// drop records, so a rename between two unseen ones is missed.
+    public func renames(of roomID: String) -> [RoomRename] {
+        let titles = (roomTitles[roomID] ?? [:]).sorted { $0.key < $1.key }
+        return zip(titles, titles.dropFirst()).compactMap { previous, current in
+            current.value == previous.value ? nil : RoomRename(logID: current.key, title: current.value, previous: previous.value)
+        }
+    }
 
     private mutating func unhome(_ messageID: LogID, from roomID: String) {
         homes[roomID]?.remove(messageID)
