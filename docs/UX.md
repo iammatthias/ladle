@@ -193,7 +193,7 @@ Rooms stay in title order with `codePointLess`. They do not move by recency. **J
 |---|---|---|
 | Leading swipe | **Mark as Read** (`checkmark.message`), full swipe allowed | Context menu |
 | Trailing swipe | **Leave** (destructive, `rectangle.portrait.and.arrow.right`), then **Mute** (`bell.slash`, a dialog of how long) or **Unmute** (`bell`) | Context menu, the room's ⋯ menu |
-| Long-press | Context menu: **Mute Room** or **Mute Thread** (a submenu: For 1 hour, For 2 hours, For 8 hours, each with "until 15:42", and Until I unmute) or **Unmute** with when it ends, New Thread, Leave (last, destructive). Mark as Read, Copy Link and Room Info are not built yet. | Room's ⋯ menu |
+| Long-press | Context menu: **Mark as Read** (through the newest loaded message, else the room's `latest_log_id`), **Copy Link**, **Mute Room** or **Mute Thread** (a submenu: For 1 hour, For 2 hours, For 8 hours, each with "until 15:42", and Until I unmute) or **Unmute** with when it ends, New Thread, Leave (last, destructive). Room Info is not built yet. | Room's ⋯ menu |
 
 **Mute** (§4.5 `status {room_id, mute}`, capability `status`, signed in) silences a room and its threads on all your devices, as apron-web's `roomMuteChoices`: `mute` goes as the seconds left or `true`. Nothing changes until the server's `status` comes back, on every device; a refusal shows its words in the banner. A timed mute ends here at its time, and the server's `mute: false` later agrees. Unmute in a muted room's thread unmutes the room.
 | Pull to refresh | None. Rooms are live over the socket. [progress-indicators] says "Don't make people responsible for initiating every update." | n/a |
@@ -340,7 +340,7 @@ The HIG has no Live Text or scanning page. The `live-text` page returned 404, so
 
 **Layout.**
 
-- **Top.** Back, the title (one line), and a subtitle with the first line of the description or "8 members" (`navigationSubtitle`). The trailing group holds **Threads** (`bubble.left.and.text.bubble.right`, badged with the count of threads with news) and **Room Info** (`info.circle`). That is at most two items ([toolbars]: "Prioritize only the most important items"). As built: **Members** (`person.2`) and the ⋯ menu (`ellipsis`), which holds **Mute Room** or **Mute Thread** (the row's submenu, 3.1) or **Unmute** with when it ends ("until 14:30", "until you unmute"; in a thread silenced by its room, **Unmute Room**), then Join or Leave. While muted, a `bell.slash` button left of Members says so and unmutes, as apron-web's RoomHeader; VoiceOver reads "Muted, until you unmute".
+- **Top.** Back, the title (one line), and a subtitle with the first line of the description or "8 members" (`navigationSubtitle`). The trailing group holds **Threads** (`bubble.left.and.text.bubble.right`, badged with the count of threads with news) and **Room Info** (`info.circle`). That is at most two items ([toolbars]: "Prioritize only the most important items"). As built: **Members** (`person.2`) and the ⋯ menu (`ellipsis`), which holds, in apron-web's order, **Copy Link to Room** (the web form; "Link copied" shows under the title for two seconds), **Show Description** once the pinned description is put away, **Mute Room** or **Mute Thread** (the row's submenu, 3.1) or **Unmute** with when it ends ("until 14:30", "until you unmute"; in a thread silenced by its room, **Unmute Room**), then **Edit Room** or **Edit Thread** (title and Markdown description, `room_set`; offered to whoever may write, the server's refusal shown in the form), then Join or Leave. Under the bar, a line says what the web's header subtitle says: who is typing (on iPhone), a thread's replies, or, once its pinned description is put away, a room's first line of description. Under that, the room's or thread's description is pinned (three lines, a tap opens the rest, × puts it away by server and room until the description changes, across launches). While muted, a `bell.slash` button left of Members says so and unmutes, as apron-web's RoomHeader; VoiceOver reads "Muted, until you unmute".
 - **Middle.** Messages, oldest at top, anchored to the bottom.
 - **Bottom, floating.** The status pill (4.1), centered above the composer, and **Jump to Latest** (`arrow.down`, with a count of new messages below the fold) at the trailing edge. Who is typing, as apron-web shows it: on iPhone a centered denim line under the navigation bar ("Ada is typing…", "2 people are typing…"), the web's header subtitle kept out of the bar so the centered title never moves; on iPad a line above the composer with three bobbing dots ("Ada and Bram are typing…", "Several people are typing…"), whose row stays while nobody is, when the server has `activity`. Your own typing, relayed from your other devices, never shows. Someone shows until their seconds run out (at most 300 s), their next message there, or their `typing: 0`.
 - **Bottom, fixed.** The reply or edit banner, the mention suggestions, and the composer (3.7), on the keyboard layout guide ([virtual-keyboards]).
@@ -425,12 +425,7 @@ The reply drag mirrors in right-to-left layouts ([right-to-left]).
 
 A thread is a room with `parent_room_id`, so it uses 3.5 with these differences.
 
-**Threads list.** It is pushed from the room's **Threads** button.
-
-- It has two sections. **Joined** puts unread threads first, then orders by newest `log_id`. **Other threads** comes from `room_list {parent_room_id, filter: "not_joined"}`, has no counts, and is muted.
-- A row shows the title, the description line, and an unread count or dot.
-- **New Thread** (`plus`) is in the bottom toolbar.
-- Swipe actions: Leave on joined threads, Join on others.
+**Threads list.** As built, threads list in the rooms list under their room, as apron-web's sidebar (3.1, "Threads under a room"), not on a pushed screen: joined ones by activity, Inactive, then Other Threads with when each was last active. A row shows the title, the description line, its latest message and an unread count. New Thread is in the room row's menu. Swipe actions: Leave on joined threads, Join on others.
 
 **Thread timeline.** The title is the thread title, and the subtitle is "in #General". Tap the subtitle to go to the parent room.
 

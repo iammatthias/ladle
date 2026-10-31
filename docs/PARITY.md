@@ -125,7 +125,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Private room named for its members ("Dev, Mira", "You") | #123 | missing | `Kit/ServerSession.swift` (`title`) | An untitled room shows its `room_id`. |
 | Other Rooms section with member count and Join | #74 | partial | `Rooms/RoomListView.swift` (`BrowseRoomsView`) | A Browse sheet, not a section. No member count or description. A tap on a row does not open it to read. |
 | News from other rooms on the phone's back button | #84 | partial | `Servers/ServerListView.swift` | The server list shows unread per server. The room's back button has no tag. |
-| Room row context menu | | partial | `Rooms/RoomListView.swift` (`roomActions`) | Mute or Unmute, New Thread, Join, Leave; Mute and Unmute on the swipe too. No Copy Link or Mark as Read. |
+| Room row context menu | | has | `Rooms/RoomListView.swift` (`roomActions`), `Kit/RoomHeader.swift` (`markAllRead`, `link(to:)`) | Mark as Read, Copy Link, Mute or Unmute, New Thread, Join, Leave; Mark as Read on the leading swipe, Mute and Unmute on the trailing one. Mark as Read reads through the newest loaded message, else the room's `latest_log_id`. apron-web marks a room read as you read it and has no row menu; this is Ladle's own. |
 | Leave by swipe | | has | `Rooms/RoomListView.swift` (`swipeActions`) | |
 | Sidebar resize and collapse by drag or arrow keys | #59, #62 | N/A-iOS | | `NavigationSplitView` owns the column. |
 
@@ -146,7 +146,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Read a thread without joining it | #102 | has | `Kit/ServerSession.swift` (`open`) | |
 | Thread card in the room feed, with description and latest message | #87, #103 | has | `Timeline/TimelineView.swift` (`ThreadCard`) | |
 | Thread card shows unread and private | #103 | has | `Timeline/TimelineView.swift` (`ThreadCard`) | |
-| Start thread dialog: title and CommonMark Description | #71 | has | `Rooms/RoomFormSheet.swift` | A sheet; "Enter a thread title." without one. New Room takes a description too. |
+| Start thread dialog: title and CommonMark Description | #71 | has | `Rooms/RoomFormSheet.swift` | A sheet; "Enter a thread title." without one; titles stop at 120 characters, as the web's field. New Room and Edit take a description too. |
 | Start thread from a message, with quote as Description, first reply links back | bh | has | `Kit/Threads.swift` (`ThreadStart`, `startThread`, `thread(startedFrom:in:)`), `Kit/MessageMenu.swift` (`startsThread`), `Timeline/TimelineView.swift` | Title from the first line (60 code points), the text quoted (500, fences closed, plain text escaped). The thread opens with its composer replying to the message. A thread already started from it opens instead. A private room's members are not added to a thread started in it (gap 10). |
 | Thread opens at its latest reply, pages older on scroll | #91, shazow/apron#33 | has | `Kit/ServerSession.swift` (`loadOlder`) | |
 | "N+ replies" on threads with older replies | bh | has | `Kit/Threads.swift` (`replyWords`), `Timeline/TimelineView.swift` (`banner`) | The open thread's subtitle line under the bar; typing takes its place on iPhone. |
@@ -159,12 +159,12 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
 | Header title with lock for private | bh | has | `Timeline/TimelineView.swift` toolbar | |
-| Pinned Description under the header, three lines, expand, × to put away | #91, #94, #117 | missing | | Description shows only in the rooms list. |
-| Description button to pin it again | #117 | missing | | |
+| Pinned Description under the header, three lines, expand, × to put away | #91, #94, #117 | has | `Timeline/TimelineView.swift` (`PinnedDescription`), `Kit/HiddenDescriptions.swift` | A tap opens the rest and folds it. Put away by server and `room_id` as a fingerprint of its text (apron-web's FNV-1a), so an edit pins it again; the newest 200, in `hidden-descriptions.json`, across launches. Once put away, a room's first line is the header's subtitle (`HeaderLine.topic`). |
+| Description button to pin it again | #117 | has | `Timeline/TimelineView.swift` (⋯ menu, Show Description) | In the ⋯ menu, as the bar has room for two buttons. |
 | ⋯ menu: Search local history | #137, #166 | missing | | |
-| ⋯ menu: Copy link to room or thread | #112 | missing | `Timeline/TimelineView.swift` | Copy Link exists for messages only. |
+| ⋯ menu: Copy link to room or thread | #112 | has | `Timeline/TimelineView.swift`, `Kit/RoomHeader.swift` (`link(to:)`) | The web form; "Link copied" under the title for two seconds. |
 | ⋯ menu: Mute and Unmute room or thread (bell-off button while muted) | #125 | has | `Rooms/MuteMenu.swift`, `Timeline/TimelineView.swift`, `Kit/ServerSession+Mutes.swift` | For 1, 2 or 8 hours or until unmuted; a thread muted with its room unmutes the room. Rows show the bell-off and stay quiet. |
-| ⋯ menu: Edit room or thread (title, description) | bh | missing | | Kit's `room_set` creates only. |
+| ⋯ menu: Edit room or thread (title, description) | bh | has | `Kit/RoomHeader.swift` (`editRoom`, `mayEdit`), `Rooms/RoomFormSheet.swift` | Offered with `rooms` to whoever may write, as the web; the server decides who may edit what ("Only an admin may edit the general room") and its words show in the form. Both fields go on a save, an emptied one left out, which clears it. |
 | ⋯ menu: Leave, after asking | bh | has | `Timeline/TimelineView.swift` | |
 | Join button in the header of an unjoined room or thread | bh | has | `Timeline/TimelineView.swift` (`Join Room`) | Inside the ⋯ menu. |
 | Members toggle | bh | has | `Timeline/TimelineView.swift` (`Members`, ⇧⌘M) | |
@@ -533,7 +533,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 6. **Notifications and push.** Local alerts for other rooms while open, then APNs push through a §4.9.2 relay. Add Notify me about scopes, the per-device switch, the first-mention offer, the app badge, tap to open, closing notifications once read, and a test notification. Push, never polling. L.
 7. ~~**Mute and pause.**~~ Done (`Kit/ServerSession+Mutes.swift`, `Rooms/MuteMenu.swift`, Preferences > Notifications' Pause, `Profile/PauseSection.swift`). Muted rooms not notifying waits for item 6, since Ladle does not notify yet.
 8. ~~**Threads.**~~ Done (`Kit/Threads.swift`, `Rooms/RoomFormSheet.swift`): Start Thread from a message, Description on New Thread, Other Threads with last active times, joined threads by activity under the open room and those with news elsewhere, "Untitled", "N+ replies". Adding a private room's members to its new thread waits for item 10.
-9. **Room header.** Pin the Description under the header with expand and dismiss. Add Edit room or thread (`room_set` title and description) and Copy link to the room to the ⋯ menu (Mute is there). M.
+9. ~~**Room header.**~~ Done (`Kit/RoomHeader.swift`, `Kit/HiddenDescriptions.swift`): the pinned Description with expand and dismiss, Show Description, Edit room or thread, Copy Link in the ⋯ menu, and Copy Link and Mark as Read on a row. Search local history waits for item 16.
 10. **Private rooms and direct messages.** Create a room with Private. Add New private conversation with a people picker. Add Message on the profile card. Add a Private section with faces. Name untitled private rooms for their members. Add the intro card, the "You were added" banner, and the private room limit. L.
 11. **Kept view and local history.** Cache rooms and recent messages on disk so a relaunch shows them at once. Keep history with Retention, delete it on sign-out, and page older messages from the device first. L.
 12. ~~**Join, leave, and rename lines.**~~ Done (`Kit/MembershipLines.swift`): netted per run, baselines of 21 joins skipped, adds as joins and renames in rooms and threads (#170).

@@ -13,6 +13,12 @@ struct TimelineView: View {
     @State private var highlighted: LogID?
     /// Every room's kept draft; this room's is the composer's unless an edit is open.
     let drafts: Drafts
+    /// The descriptions put away with their ×.
+    let hidden: HiddenDescriptions
+    /// Copy Link copied: "Link copied" under the title for two seconds.
+    @State private var copied = false
+    @State private var descriptionOpen = false
+    @State private var editingRoom = false
     /// An open edit, which sits beside the kept draft and is never kept, as apron-web's editor.
     @State private var editing: ComposerDraft?
     @State private var problem: String?
@@ -43,17 +49,28 @@ struct TimelineView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
 
-    init(session: ServerSession, roomID: String, reminders: Reminders, drafts: Drafts, place: Binding<ApronLink?> = .constant(nil),
-         showingMembers: Bool = false) {
+    init(session: ServerSession, roomID: String, reminders: Reminders, hidden: HiddenDescriptions, drafts: Drafts,
+         place: Binding<ApronLink?> = .constant(nil), showingMembers: Bool = false) {
         self.session = session
         self.roomID = roomID
         self.drafts = drafts
+        self.hidden = hidden
         _place = place
         _reminding = State(initialValue: MessageReminders(session: session, reminders: reminders))
         _showingMembers = State(initialValue: showingMembers)
     }
 
     private var draftKey: DraftKey { DraftKey(server: session.record.id, roomID: roomID) }
+
+    /// The room's or thread's description, pinned under the header until its × puts it away, and
+    /// again once it is edited, as apron-web's.
+    private var pinnedDescription: String? {
+        session.roomDescription(roomID).flatMap { hidden.isHidden(draftKey, description: $0) ? nil : $0 }
+    }
+
+    private var descriptionPutAway: Bool {
+        session.roomDescription(roomID).map { hidden.isHidden(draftKey, description: $0) } ?? false
+    }
 
     /// What the composer writes: the open edit, else this room's kept draft. Ending the edit (a
     /// draft that is no longer one) brings the kept draft back.
@@ -175,6 +192,15 @@ struct TimelineView: View {
                 // The link back is its first reply: the thread opens replying to the message.
                 drafts[DraftKey(server: session.record.id, roomID: thread)].field.mode = .reply(request.message.messageID)
                 startedThread = thread
+            }
+        }
+        .sheet(isPresented: $editingRoom) {
+            RoomFormSheet(kind: session.store.room(roomID)?.parentRoomID == nil ? .room : .thread, mode: .edit,
+                          title: session.editableTitle(of: roomID), description: session.roomDescription(roomID) ?? "") { title, description in
+                // Unchanged, it only closes, as the web's editor.
+                guard title != session.editableTitle(of: roomID).trimmingCharacters(in: .whitespacesAndNewlines)
+                    || description != (session.roomDescription(roomID) ?? "").trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+                try await session.editRoom(roomID, title: title, description: description)
             }
         }
         .sheet(item: $profile) { request in
@@ -312,7 +338,17 @@ struct TimelineView: View {
                 .keyboardShortcut("m", modifiers: [.command, .shift])
             if session.status == .signedIn, session.server?.has("rooms") == true || session.mayMute {
                 Menu("Room", systemImage: "ellipsis") {
+                    let noun = session.store.room(roomID)?.parentRoomID == nil ? "Room" : "Thread"
+                    if let link = session.link(to: roomID) {
+                        Button("Copy Link to \(noun)", systemImage: "link") { copyLink(link) }
+                    }
+                    if descriptionPutAway {
+                        Button("Show Description", systemImage: "text.alignleft") { hidden.show(draftKey) }
+                    }
                     MuteActions(session: session, roomID: roomID, perform: perform)
+                    if session.mayEdit(roomID) {
+                        Button("Edit \(noun)", systemImage: "pencil") { editingRoom = true }
+                    }
                     if session.server?.has("rooms") == true {
                         if session.joinedRoomIDs.contains(roomID) {
                             Button("Leave Room", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leaving = true }
@@ -330,27 +366,33 @@ struct TimelineView: View {
     private var banner: some View {
         let state = ConnectionState(session.status)
         VStack(spacing: Tokens.Space.s2) {
-            // On a phone, who is typing is the header's subtitle, in denim, as the web's RoomHeader:
-            // a line under the bar, so the centered title never moves when it comes and goes.
-            if sizeClass == .compact, let typing = TypingLine.subtitle(session.typingNames(in: roomID)) {
-                Text(typing)
+            // The header's subtitle, as the web's RoomHeader, as a line under the bar so the centered
+            // title never moves: on a phone who is typing, in denim; a thread's replies; or a room's
+            // description's first line once its pinned description is put away.
+            let typing = sizeClass == .compact ? TypingLine.subtitle(session.typingNames(in: roomID)) : nil
+            if let line = session.headerLine(roomID, typing: typing, copied: copied, descriptionPutAway: descriptionPutAway) {
+                Group {
+                    if case .topic(let topic) = line {
+                        EmojiText(text: descriptionText(topic, session.emojiCatalog), catalog: session.emojiCatalog, role: .sm)
+                    } else {
+                        Text(line.text)
+                    }
+                }
                     .apText(.sm)
-                    .foregroundStyle(Palette.denim)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, Tokens.Space.s1)
-                    .background(Palette.timeline)
-                    .accessibilityAddTraits(.updatesFrequently)
-            } else if let replies = session.replyWords(in: roomID) {
-                // A thread's header subtitle, as the web's: "12+ replies" while older ones are still to load.
-                Text(replies)
-                    .apText(.sm)
-                    .foregroundStyle(Palette.inkMuted)
+                    .foregroundStyle(line == .copied || typing != nil ? Palette.denim : Palette.inkMuted)
                     .monospacedDigit()
                     .lineLimit(1)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, Tokens.Space.s1)
                     .background(Palette.timeline)
+                    .accessibilityAddTraits(typing != nil ? .updatesFrequently : [])
+            }
+            if let description = pinnedDescription {
+                PinnedDescription(text: description, thread: session.store.room(roomID)?.parentRoomID != nil, session: session,
+                                  open: $descriptionOpen) {
+                    hidden.hide(draftKey, description: description)
+                    descriptionOpen = false
+                }
             }
             if let message = session.unavailableMessage {
                 Callout(title: session.serverName) { Text(message) }
@@ -482,6 +524,16 @@ struct TimelineView: View {
         if menu.editable {
             Button("Edit", systemImage: "pencil") { editing = ComposerDraft(field: DraftField(editing: message, in: session)) }
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
+        }
+    }
+
+    /// Copies the room's link; "Link copied" shows under the title for two seconds.
+    private func copyLink(_ link: URL) {
+        UIPasteboard.general.url = link
+        copied = true
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            copied = false
         }
     }
 
@@ -745,6 +797,52 @@ struct ThreadCard: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Thread \(session.title(of: threadID))" + (unread > 0 ? ", \(unread) new" : ""))
         .accessibilityHint("Opens the thread")
+    }
+}
+
+/// The web's ThreadDescription: a room's or thread's description pinned under the header, its
+/// Markdown rendered as a message's. It previews three lines; a tap opens the rest and folds it
+/// again, and × puts it away.
+struct PinnedDescription: View {
+    let text: String
+    let thread: Bool
+    let session: ServerSession
+    @Binding var open: Bool
+    let dismiss: () -> Void
+
+    var body: some View {
+        HStack(alignment: .top, spacing: Tokens.Space.s2) {
+            Image(systemName: "text.alignleft").imageScale(.small).foregroundStyle(Palette.inkMuted).padding(.top, Tokens.Space.s2 + 3)
+                .accessibilityHidden(true)
+            Group {
+                if open {
+                    MessageBlocksView(blocks: MessageText.markdown(text, emoji: session.emojiCatalog),
+                                      catalog: session.emojiCatalog, role: .ui, gate: session.mediaGate, settings: session.mediaSettings)
+                } else {
+                    // Three lines, its blocks a line each, as the web's preview cuts it.
+                    EmojiText(text: descriptionText(text, session.emojiCatalog), catalog: session.emojiCatalog, role: .ui)
+                        .apText(.ui)
+                        .foregroundStyle(Palette.ink)
+                        .lineLimit(3)
+                }
+            }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.vertical, Tokens.Space.s2)
+                .contentShape(Rectangle())
+                .onTapGesture { open.toggle() }
+                .accessibilityAction(named: open ? "Show less of the description" : "Show the whole description") { open.toggle() }
+            Button("Hide Description", systemImage: "xmark", action: dismiss)
+                .labelStyle(.iconOnly)
+                .buttonStyle(GhostButtonStyle())
+                .accessibilityLabel("Hide description")
+        }
+        .padding(.leading, Tokens.Space.s3)
+        .padding(.vertical, Tokens.Space.s1)
+        .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
+        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.line))
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(thread ? "Thread description" : "Room description")
+        .task(id: session.server?.emojiCatalogURL) { await session.loadEmojiCatalog(for: text) }
     }
 }
 

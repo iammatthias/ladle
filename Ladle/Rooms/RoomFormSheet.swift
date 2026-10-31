@@ -22,6 +22,8 @@ struct RoomFormSheet: View {
     @State private var error: String?
     @FocusState private var titleFocused: Bool
 
+    static let titleLimit = 120
+
     private var noun: String { kind == .thread ? "thread" : "room" }
     private var heading: String {
         switch (mode, kind) {
@@ -38,6 +40,8 @@ struct RoomFormSheet: View {
                     TextField("Title", text: $title)
                         .focused($titleFocused)
                         .submitLabel(.next)
+                        // The web's field takes 120 characters.
+                        .onChange(of: title) { if title.count > Self.titleLimit { title = String(title.prefix(Self.titleLimit)) } }
                 } header: {
                     if let subtitle { Text(subtitle) }
                 } footer: {

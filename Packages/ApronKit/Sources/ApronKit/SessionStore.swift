@@ -18,6 +18,8 @@ public final class SessionStore {
     public let appearance: AppearanceSettings
     /// Every room's composer draft, kept beside `servers.json`, its files in `Staged`.
     public let drafts: Drafts
+    /// The room and thread descriptions put away with their ×, kept beside `servers.json`.
+    public let hiddenDescriptions: HiddenDescriptions
     /// Whether anyone attends the app, which every session tells its server (§4.5 `idle`).
     public let attention: Attention
 
@@ -37,6 +39,7 @@ public final class SessionStore {
                               notifier: notifier)
         mediaSettings = MediaSettings(directory: serverStore?.directory)
         appearance = AppearanceSettings(directory: serverStore?.directory)
+        hiddenDescriptions = HiddenDescriptions(directory: serverStore?.directory)
         if let directory = serverStore?.directory {
             drafts = Drafts(store: FileDraftStore(directory: directory), staging: directory.appending(path: "Staged", directoryHint: .isDirectory))
             drafts.pruneStaging()
@@ -78,11 +81,13 @@ public final class SessionStore {
         await sessions[record.id]?.update(record)
     }
 
-    /// Stops the session and forgets the server, its token, its reminders and its drafts.
+    /// Stops the session and forgets the server, its token, its reminders, its drafts and the
+    /// descriptions put away there.
     public func remove(_ id: UUID) async {
         await sessions.removeValue(forKey: id)?.stop()
         await reminders.removeAll(server: id)
         drafts.removeAll(server: id)
+        hiddenDescriptions.removeAll(server: id)
         records.removeAll { $0.id == id }
         try? tokens.setToken(nil, for: id)
         save()

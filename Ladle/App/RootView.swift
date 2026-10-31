@@ -97,7 +97,7 @@ struct RootView: View {
                         }
                     case .room(let id, let room):
                         if let session = store.session(for: id) {
-                            TimelineView(session: session, roomID: room, reminders: store.reminders, drafts: store.drafts, place: $place)
+                            TimelineView(session: session, roomID: room, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: store.drafts, place: $place)
                                 .resolvingLinks(from: session)
                                 .environment(\.openRoom, OpenRoomAction { path.append(.room(id, $0)) })
                                 .onAppear { serverID = id.uuidString; roomID = room }
@@ -222,7 +222,7 @@ struct SplitLayout: View {
         } detail: {
             NavigationStack {
                 if let session, let roomID {
-                    TimelineView(session: session, roomID: roomID, reminders: store.reminders, drafts: store.drafts, place: $place, showingMembers: true)
+                    TimelineView(session: session, roomID: roomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: store.drafts, place: $place, showingMembers: true)
                         .resolvingLinks(from: session)
                         .id(roomID)
                         .environment(\.openRoom, OpenRoomAction { self.roomID = $0 })

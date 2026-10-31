@@ -262,6 +262,14 @@ clone), which is only a worked example.
     five, quiet three days to the hour, no news; the open thread keeps the side it was opened on)
     and Other Threads (three, "N more…"), elsewhere only joined threads with news. `LastActive` words "4d", "9w", "2y"; `replyWords` "12+ replies";
     `title(of:)` is "Untitled" for a thread without a title (`isUntitled`).
+  - The room header (`RoomHeader.swift`, `HiddenDescriptions.swift`), as apron-web's RoomHeader and
+    RoomEditor: `headerLine` is the subtitle under the bar ("Link copied", typing on a phone,
+    "12+ replies", or a put-away description's first line); `editRoom` sends `room_set` with
+    `room_id` and both fields, an emptied one left out (a save replaces every client field);
+    `mayEdit` is `rooms` and `mayWrite`, the server deciding the rest; `link(to:)` is Copy Link's
+    web link; `markAllRead` reads a room through `readMark(of:)`. `HiddenDescriptions`, owned by
+    `SessionStore` (`hidden-descriptions.json`, newest 200, dropped with the server), keeps each
+    description put away by `DraftKey` as apron-web's FNV-1a fingerprint, so an edit pins it again.
   - `MembershipLines` (`MembershipLines.swift`): apron-web's `membership.ts` (#170).
     `MembershipRecord.isBaseline` is 21 joins or more at once; `net` comes to who joined and left
     over a run, per user from their first entry to their last; `list` and `summary` word it ("Ada,
@@ -425,7 +433,7 @@ clone), which is only a worked example.
   the room list's title or, on iPad, its server head, with Edit Profile, Connect to Another
   Server… and Disconnect, which signs out of that server),
   `Rooms/RoomFormSheet.swift` (the web's RoomForm: title and Markdown description for New Room,
-  New Thread and Start Thread), `FoldHeading` and the `fixedNow` environment value (the renderer
+  New Thread, Start Thread and Edit Room or Thread), `PinnedDescription` in `Timeline/TimelineView.swift`, `FoldHeading` and the `fixedNow` environment value (the renderer
   pins the rooms list's clock to `PreviewFixtures.now`) in `Rooms/RoomListView.swift`,
     `Rooms/MuteMenu.swift` (`MuteActions`: Mute Room or Thread's submenu, or Unmute, in a row's
   context menu and the room's ⋯ menu; `MutedBell`), a muted row's bell-off and quiet count, the
@@ -561,7 +569,7 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the Release thread's rename line (and Dev's join line in the busy room), the Start Thread form on Bram's message, #general's threads in the room list (five joined, Inactive folded, Other Threads with "4d", "9w", "2y" and "1 more…"), and Inactive unfolded with its untitled thread open, the room list and Preferences > Notifications while paused (`ladle-notifications-paused`), and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; the busy room in Ferrous, Gumball, Linocut and a custom CSS theme (`ladle-timeline-<theme>-<mode>`), and drawn in Apron then given Linocut in place (`ladle-timeline-switched-linocut-dark`: a new theme redraws open screens); Preferences' sections and History; Appearance with Ferrous chosen, and the custom theme's CSS with its "not used on iOS" line; and the iPad
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the Release thread's rename line (and Dev's join line in the busy room), the Start Thread form on Bram's message, #general's threads in the room list (five joined, Inactive folded, Other Threads with "4d", "9w", "2y" and "1 more…"), and Inactive unfolded with its untitled thread open, the kitchen's pinned description (the emoji shot), put away (its first line under the title), and Edit Room, the room list and Preferences > Notifications while paused (`ladle-notifications-paused`), and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; the busy room in Ferrous, Gumball, Linocut and a custom CSS theme (`ladle-timeline-<theme>-<mode>`), and drawn in Apron then given Linocut in place (`ladle-timeline-switched-linocut-dark`: a new theme redraws open screens); Preferences' sections and History; Appearance with Ferrous chosen, and the custom theme's CSS with its "not used on iOS" line; and the iPad
 split view at 1180x820 pt (regular width) in dark and light, on the busy room and on the random room with its typing line. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with

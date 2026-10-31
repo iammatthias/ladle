@@ -90,6 +90,34 @@ final class RoomsIntegrationTests: XCTestCase {
         XCTAssertEqual(bob.replyWords(in: thread), "1 reply")
     }
 
+    /// Edit Thread saves its title and description with `room_set`, keeping what did not change
+    /// and clearing what was emptied; the server refuses what the user may not edit, in its words.
+    func testEditingAThreadSavesTitleAndDescriptionAndTheServerDecidesWhoMay() async throws {
+        let server = try await started()
+        let ada = try await connected(server)
+        try await ada.signIn(.guest(name: nil))
+        let created = try await ada.createRoom(title: "Deploy", description: "Tonight", parentRoomID: "general")
+        let thread = try XCTUnwrap(created)
+        try await waitFor("thread") { ada.roomDescription(thread) == "Tonight" }
+        XCTAssertTrue(ada.mayEdit(thread))
+
+        try await ada.editRoom(thread, title: "Deploy 0.2", description: ada.roomDescription(thread) ?? "")
+        try await waitFor("renamed") { ada.title(of: thread) == "Deploy 0.2" }
+        XCTAssertEqual(ada.roomDescription(thread), "Tonight", "the description goes too, so it stays")
+        XCTAssertEqual(ada.store.renames(of: thread).map(\.title), ["Deploy 0.2"])
+
+        try await ada.editRoom(thread, title: "Deploy 0.2", description: "  ")
+        try await waitFor("description cleared") { ada.roomDescription(thread) == nil }
+        XCTAssertEqual(ada.title(of: thread), "Deploy 0.2")
+
+        do {
+            try await ada.editRoom("general", title: "Lobby", description: "")
+            XCTFail("a guest may not edit general")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.message, "Only an admin may edit the general room")
+        }
+    }
+
     /// apron-web #170: an add is a join, and a rename shows in the room, live and from history.
     func testAddsJoinsLeavesAndRenamesShowAsLinesLiveAndFromHistory() async throws {
         let server = try await started()

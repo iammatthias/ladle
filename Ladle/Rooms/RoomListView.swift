@@ -210,6 +210,9 @@ struct RoomListView: View {
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
         .swipeActions(edge: .leading) {
+            if session.unreadCount(in: roomID) > 0, session.status == .signedIn {
+                Button("Mark as Read", systemImage: "checkmark.message") { Task { await session.markAllRead(roomID) } }.tint(Palette.denim)
+            }
             if isThread, !session.joinedRoomIDs.contains(roomID), session.server?.has("rooms") == true, session.mayWrite {
                 Button("Join", systemImage: "plus.circle") { perform { try await session.join(roomID) } }.tint(Palette.denim)
             }
@@ -236,6 +239,11 @@ struct RoomListView: View {
 
     @ViewBuilder
     private func roomActions(_ roomID: String, isThread: Bool) -> some View {
+        Button("Mark as Read", systemImage: "checkmark.message") { Task { await session.markAllRead(roomID) } }
+            .disabled(session.status != .signedIn || session.readMark(of: roomID) == nil)
+        if let link = session.link(to: roomID) {
+            Button("Copy Link", systemImage: "link") { UIPasteboard.general.url = link }
+        }
         MuteActions(session: session, roomID: roomID, perform: perform)
         if session.server?.has("rooms") == true, session.status == .signedIn {
             if session.joinedRoomIDs.contains(roomID) {
