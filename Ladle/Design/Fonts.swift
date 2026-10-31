@@ -37,42 +37,76 @@ enum BundledFonts {
         return true
     }()
 
-    /// A face for one family of a theme's list at a size and weight, or nil when the device
-    /// lacks it.
-    static func font(_ family: FontFamily, size: CGFloat, weight: Font.Weight) -> UIFont? {
+    /// A face for one family of a theme's list at a size and weight, italic or not, or nil when
+    /// the device lacks it.
+    static func font(_ family: FontFamily, size: CGFloat, weight: Font.Weight, italic: Bool = false) -> UIFont? {
+        guard let descriptor = upright(family, size: size, weight: weight) else { return nil }
+        let upright = UIFont(descriptor: descriptor, size: size)
+        return italic ? UIFont(descriptor: italicized(descriptor, upright), size: size) : upright
+    }
+
+    /// The upright face's descriptor, the bundled faces' with their cascade.
+    private static func upright(_ family: FontFamily, size: CGFloat, weight: Font.Weight) -> UIFontDescriptor? {
         switch family {
-        case .system: return .systemFont(ofSize: size, weight: weight.ui)
-        case .systemMono: return .monospacedSystemFont(ofSize: size, weight: weight.ui)
-        case .rounded: return designed(.rounded, size: size, weight: weight)
-        case .serif: return designed(.serif, size: size, weight: weight)
+        case .system: return UIFont.systemFont(ofSize: size, weight: weight.ui).fontDescriptor
+        case .systemMono: return UIFont.monospacedSystemFont(ofSize: size, weight: weight.ui).fontDescriptor
+        case .rounded: return UIFont.systemFont(ofSize: size, weight: weight.ui).fontDescriptor.withDesign(.rounded)
+        case .serif: return UIFont.systemFont(ofSize: size, weight: weight.ui).fontDescriptor.withDesign(.serif)
         case .named(let name):
             if let bundled = families[name.lowercased()] {
                 _ = registered
                 let ext = variable(bundled.ext, weight: weight)
                 let descriptor = variable(bundled.main, weight: weight).addingAttributes([.cascadeList: [ext]])
-                let font = UIFont(descriptor: descriptor, size: size)
-                return font.familyName == bundled.main ? font : nil
+                return UIFont(descriptor: descriptor, size: size).familyName == bundled.main ? descriptor : nil
             }
             guard let installed = installedFamily(name) else { return nil }
-            let descriptor = UIFontDescriptor(fontAttributes: [.family: installed, .traits: [UIFontDescriptor.TraitKey.weight: weight.ui]])
-            return UIFont(descriptor: descriptor, size: size)
+            return UIFontDescriptor(fontAttributes: [.family: installed, .traits: [UIFontDescriptor.TraitKey.weight: weight.ui]])
+        }
+    }
+
+    /// `font-style: italic` in a face, as `Italic.choose` decides from what the face carries: its
+    /// italic cut, its `ital` axis, or the browser's synthetic oblique as a shear in the font's
+    /// matrix, on the cascade's fonts too.
+    private static func italicized(_ descriptor: UIFontDescriptor, _ font: UIFont) -> UIFontDescriptor {
+        let cut = CTFontCreateCopyWithSymbolicTraits(font, 0, nil, .traitItalic, .traitItalic)
+        let hasItalicFace = cut.map { CTFontGetSymbolicTraits($0).contains(.traitItalic) } ?? false
+        let axes = (CTFontCopyVariationAxes(font) as? [[CFString: Any]] ?? []).compactMap { axis -> FontAxis? in
+            guard let code = axis[kCTFontVariationAxisIdentifierKey] as? Int,
+                  let minimum = axis[kCTFontVariationAxisMinimumValueKey] as? Double,
+                  let maximum = axis[kCTFontVariationAxisMaximumValueKey] as? Double else { return nil }
+            return FontAxis(tag: FontAxis.tag(code), minimum: minimum, maximum: maximum)
+        }
+        switch Italic.choose(hasItalicFace: hasItalicFace, axes: axes) {
+        case .face:
+            return descriptor.withSymbolicTraits(descriptor.symbolicTraits.union(.traitItalic)) ?? descriptor
+        case .axis(let tag, let value):
+            let key = UIFontDescriptor.AttributeName(rawValue: kCTFontVariationAttribute as String)
+            var variation = descriptor.fontAttributes[key] as? [Int: Double] ?? [:]
+            variation[FontAxis.code(tag)] = value
+            return descriptor.addingAttributes([key: variation])
+        case .oblique(let skew):
+            let shear = CGAffineTransform(a: 1, b: 0, c: skew, d: 1, tx: 0, ty: 0)
+            let cascade = (descriptor.fontAttributes[.cascadeList] as? [UIFontDescriptor] ?? []).map { $0.addingAttributes([.matrix: shear]) }
+            return descriptor.addingAttributes(cascade.isEmpty ? [.matrix: shear] : [.matrix: shear, .cascadeList: cascade])
         }
     }
 
     /// The first family of a theme's list the device has (the system face when it has none), as
     /// a SwiftUI font and its line height. The system faces stay SwiftUI's own, as before themes.
-    static func font(_ list: [FontFamily], size: CGFloat, weight: Font.Weight, mono: Bool) -> (font: Font, lineHeight: CGFloat) {
+    static func font(_ list: [FontFamily], size: CGFloat, weight: Font.Weight, italic: Bool = false, mono: Bool) -> (font: Font, lineHeight: CGFloat) {
         for family in list {
             switch family {
             case .system:
-                return (.system(size: size, weight: weight), UIFont.systemFont(ofSize: size, weight: weight.ui).lineHeight)
+                let font = Font.system(size: size, weight: weight)
+                return (italic ? font.italic() : font, UIFont.systemFont(ofSize: size, weight: weight.ui).lineHeight)
             case .systemMono:
-                return (.system(size: size, weight: weight, design: .monospaced), UIFont.systemFont(ofSize: size, weight: weight.ui).lineHeight)
+                let font = Font.system(size: size, weight: weight, design: .monospaced)
+                return (italic ? font.italic() : font, UIFont.systemFont(ofSize: size, weight: weight.ui).lineHeight)
             default:
-                if let font = font(family, size: size, weight: weight) { return (Font(font), font.lineHeight) }
+                if let font = font(family, size: size, weight: weight, italic: italic) { return (Font(font), font.lineHeight) }
             }
         }
-        return font([mono ? .systemMono : .system], size: size, weight: weight, mono: mono)
+        return font([mono ? .systemMono : .system], size: size, weight: weight, italic: italic, mono: mono)
     }
 
     /// The theme's own face for UIKit text that SwiftUI doesn't draw (the navigation bar's
@@ -95,16 +129,11 @@ enum BundledFonts {
         return found
     }
 
-    private static func designed(_ design: UIFontDescriptor.SystemDesign, size: CGFloat, weight: Font.Weight) -> UIFont? {
-        UIFont.systemFont(ofSize: size, weight: weight.ui).fontDescriptor.withDesign(design).map { UIFont(descriptor: $0, size: size) }
-    }
-
     /// A variable font's descriptor at a weight on its `wght` axis (400 to 700 or 800 here).
     private static func variable(_ family: String, weight: Font.Weight) -> UIFontDescriptor {
-        let wght = 0x7767_6874
-        return UIFontDescriptor(fontAttributes: [
+        UIFontDescriptor(fontAttributes: [
             .family: family,
-            UIFontDescriptor.AttributeName(rawValue: kCTFontVariationAttribute as String): [wght: weight.axis],
+            UIFontDescriptor.AttributeName(rawValue: kCTFontVariationAttribute as String): [FontAxis.code("wght"): weight.axis],
         ])
     }
 }

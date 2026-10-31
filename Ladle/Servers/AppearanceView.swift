@@ -19,9 +19,9 @@ struct AppearanceView: View {
                 .pickerStyle(.segmented)
                 .listRowBackground(Palette.raised)
             } header: {
-                Text("Mode")
+                Text("Mode").formHeader()
             } footer: {
-                Text("System follows your device's light or dark setting.")
+                Text("System follows your device's light or dark setting.").formFooter()
             }
 
             Section {
@@ -41,9 +41,9 @@ struct AppearanceView: View {
                     }
                 }
             } header: {
-                Text("Theme")
+                Text("Theme").formHeader()
             } footer: {
-                Text("Fonts and other design tokens, over either mode. The first time, Custom starts from the theme you had. Ferrous is set in Recursive and Gumball in Nunito, both under the SIL Open Font License 1.1.")
+                Text("Fonts and other design tokens, over either mode. The first time, Custom starts from the theme you had. Ferrous is set in Recursive and Gumball in Nunito, both under the SIL Open Font License 1.1.").formFooter()
             }
         }
         .scrollContentBackground(.hidden)
@@ -94,7 +94,7 @@ struct ThemeCSSView: View {
                     .accessibilityLabel("Theme CSS")
                     .listRowBackground(Palette.raised)
             } footer: {
-                Text("Edits show as you type; Apply keeps them. Only `--token: value;` declarations are read, colors can be `light-dark(light, dark)`, and nothing loads with `url()`. A theme from apron-web's Preferences pastes in as it is.")
+                Text("Edits show as you type; Apply keeps them. Only `--token: value;` declarations are read, colors can be `light-dark(light, dark)`, and nothing loads with `url()`. A theme from apron-web's Preferences pastes in as it is.").formFooter()
             }
             if !editor.themeError.isEmpty || !editor.draftError.isEmpty || !unused.isEmpty {
                 Section {
@@ -198,9 +198,9 @@ struct BaseColorsView: View {
             ColorPicker("Light", selection: binding(key, .light), supportsOpacity: false)
             ColorPicker("Dark", selection: binding(key, .dark), supportsOpacity: false)
         } header: {
-            Text(title)
+            Text(title).formHeader()
         } footer: {
-            Text(note)
+            Text(note).formFooter()
         }
         .listRowBackground(Palette.raised)
     }

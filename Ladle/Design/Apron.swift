@@ -134,6 +134,7 @@ extension EnvironmentValues {
 private struct RoleText: ViewModifier {
     let role: TextRole
     let weight: Font.Weight
+    let italic: Bool
     let mono: Bool
     @Environment(\.fixedTypeSize) private var fixed
     @Environment(\.dynamicTypeSize) private var dynamic
@@ -141,20 +142,55 @@ private struct RoleText: ViewModifier {
 
     func body(content: Content) -> some View {
         let scale = TypeTable.scale(role.style, at: fixed ?? dynamic)
-        let size = role.size * scale
-        let face = mono ? .mono : environmentFace
-        let font = BundledFonts.font(ActiveTheme.shared.theme.fonts.list(face), size: size, weight: weight, mono: face == .mono)
+        let textFace = mono ? .mono : environmentFace
+        let face = RoleFace(list: ActiveTheme.shared.theme.fonts.list(textFace), size: role.size * scale, weight: weight, mono: textFace == .mono)
+        let font = face.font(italic: italic)
         content
             .font(font.font)
             .lineSpacing(max(0, role.leading * scale - font.lineHeight))
             .tracking(role == .caps ? 0.6 : 0)
             .textCase(role == .caps ? .uppercase : nil)
+            .environment(\.roleFace, face)
     }
 }
 
+/// The face, size and weight the nearest `apText` set, for runs inside it that take a variant.
+struct RoleFace {
+    let list: [FontFamily]
+    let size: CGFloat
+    let weight: Font.Weight
+    let mono: Bool
+
+    func font(weight: Font.Weight? = nil, italic: Bool = false) -> (font: Font, lineHeight: CGFloat) {
+        BundledFonts.font(list, size: size, weight: weight ?? self.weight, italic: italic, mono: mono)
+    }
+
+    /// Markdown's emphasis in this face: `*after*` italic and `**Friday**` bold, as the web's `em`
+    /// and `strong`. SwiftUI's own emphasis finds no italic cut or bold in a face without them
+    /// (Recursive and Nunito are one upright variable font each, SF Rounded has no italic), so
+    /// each run gets its font here (`Italic`). Code keeps the mono face.
+    func emphasized(_ text: AttributedString) -> AttributedString {
+        var out = text
+        for (intent, range) in text.runs[\.inlinePresentationIntent] {
+            guard let intent, !intent.contains(.code) else { continue }
+            let italic = intent.contains(.emphasized), strong = intent.contains(.stronglyEmphasized)
+            guard italic || strong else { continue }
+            out[range].font = font(weight: strong ? .bold : weight, italic: italic).font
+            // Left on, SwiftUI remakes a system face (SF Rounded) from its traits and drops the slant.
+            let rest = intent.subtracting([.emphasized, .stronglyEmphasized])
+            out[range].inlinePresentationIntent = rest.isEmpty ? nil : rest
+        }
+        return out
+    }
+}
+
+extension EnvironmentValues {
+    @Entry var roleFace: RoleFace?
+}
+
 extension View {
-    func apText(_ role: TextRole, _ weight: Font.Weight = .regular, mono: Bool = false) -> some View {
-        modifier(RoleText(role: role, weight: weight, mono: mono))
+    func apText(_ role: TextRole, _ weight: Font.Weight = .regular, italic: Bool = false, mono: Bool = false) -> some View {
+        modifier(RoleText(role: role, weight: weight, italic: italic, mono: mono))
     }
 
     /// Pads a control to the 44 pt minimum target (`--touch-target`) without changing its look.

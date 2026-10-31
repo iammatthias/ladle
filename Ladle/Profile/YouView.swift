@@ -120,9 +120,9 @@ struct YouView: View {
                 Button("Revert", role: .cancel) { form.revert() }.disabled(saving)
             }
         } header: {
-            Text("Display Name")
+            Text("Display Name").formHeader()
         } footer: {
-            Text("User ID assigned by server: \(Text("@" + you.userID).monospaced())").textSelection(.enabled)
+            Text("User ID assigned by server: \(Text("@" + you.userID).monospaced())").textSelection(.enabled).formFooter()
         }
     }
 
@@ -137,9 +137,11 @@ struct YouView: View {
                 Text("Bio")
                 Spacer()
                 Text("\(Bio.length(form.bio))/\(Bio.maxLength)")
+                    .fontWeight(.regular)
                     .monospacedDigit()
                     .foregroundStyle(form.bioIsOver ? Palette.danger : Palette.inkMuted)
             }
+            .formHeader()
         }
     }
 
@@ -176,9 +178,9 @@ struct YouView: View {
                     .listRowInsets(EdgeInsets(top: Tokens.Space.s2, leading: Tokens.Space.s4, bottom: Tokens.Space.s2, trailing: Tokens.Space.s4))
             }
         } header: {
-            Text("Status")
+            Text("Status").formHeader()
         } footer: {
-            Text(StatusChoice.hint(for: current))
+            Text(StatusChoice.hint(for: current)).formFooter()
         }
     }
 
@@ -202,10 +204,10 @@ struct YouView: View {
                 Button("Sign Out", role: .destructive) { signingOut = true }
             }
         } header: {
-            Text("Sign-in")
+            Text("Sign-in").formHeader()
         } footer: {
             if let you = session.you {
-                Text("Signed in to \(TextDirection.isolated(session.serverName)) as \(TextDirection.isolated(session.displayName(for: you))).")
+                Text("Signed in to \(TextDirection.isolated(session.serverName)) as \(TextDirection.isolated(session.displayName(for: you))).").formFooter()
             }
         }
     }

@@ -129,7 +129,7 @@ private struct NotificationsPreferences: View {
                     Button("Open Settings") { openURL(settings) }
                 }
             } footer: {
-                Text("Ladle notifies you of the reminders you set with Remind Me. Alerts for messages and mentions while it is closed need push (§4.9), which Ladle doesn't have yet.")
+                Text("Ladle notifies you of the reminders you set with Remind Me. Alerts for messages and mentions while it is closed need push (§4.9), which Ladle doesn't have yet.").formFooter()
             }
             .listRowBackground(Palette.raised)
             ForEach(sessions(store, server).filter(\.mayMute), id: \.record.id) { session in
@@ -171,9 +171,9 @@ private struct MediaPreferences: View {
                 .pickerStyle(.inline)
                 .labelsHidden()
             } header: {
-                Text("Load Media From")
+                Text("Load Media From").formHeader()
             } footer: {
-                Text("Loading an image, a video or an avatar tells the site that hosts it that you are reading. Under This Server and Trusted Sites, media from anywhere else waits for a tap, and avatars and custom emoji from elsewhere don't show.")
+                Text("Loading an image, a video or an avatar tells the site that hosts it that you are reading. Under This Server and Trusted Sites, media from anywhere else waits for a tap, and avatars and custom emoji from elsewhere don't show.").formFooter()
             }
 
             Section {
@@ -199,9 +199,9 @@ private struct MediaPreferences: View {
                         .apText(.sm).foregroundStyle(Palette.danger)
                 }
             } header: {
-                Text("Trusted Sites")
+                Text("Trusted Sites").formHeader()
             } footer: {
-                Text("Your trusted sites apply on every server. Always Load on a waiting image adds its site here. Under Any Site they stay listed for when you switch back.")
+                Text("Your trusted sites apply on every server. Always Load on a waiting image adds its site here. Under Any Site they stay listed for when you switch back.").formFooter()
             }
 
             let named = serverSites
@@ -211,9 +211,9 @@ private struct MediaPreferences: View {
                         LabeledContent(server.name, value: server.sites.joined(separator: ", "))
                     }
                 } header: {
-                    Text("Trusted by Your Servers")
+                    Text("Trusted by Your Servers").formHeader()
                 } footer: {
-                    Text("Each server's own address and the sites it names for its media load on that server only.")
+                    Text("Each server's own address and the sites it names for its media load on that server only.").formFooter()
                 }
             }
         }
@@ -267,7 +267,7 @@ private struct HistoryPreferences: View {
             } footer: {
                 Text(settings.retention == .off
                      ? "Signing out deletes stored history. Ladle still keeps the last day of each room, up to 150 messages, so it opens at once."
-                     : "Signing out deletes stored history.")
+                     : "Signing out deletes stored history.").formFooter()
             }
             .listRowBackground(Palette.raised)
             Section {
@@ -277,16 +277,16 @@ private struct HistoryPreferences: View {
                 }
                 if let exportNote { Text(exportNote).apText(.sm).foregroundStyle(Palette.inkMuted) }
             } header: {
-                Text("Export Chats")
+                Text("Export Chats").formHeader()
             } footer: {
                 Text(signedIn.isEmpty ? "Sign in to a server to export what Ladle has loaded and kept of it."
-                     : "Saves what Ladle has loaded and kept of a server as a .jsonl file, to share or keep. Private rooms go only when included.")
+                     : "Saves what Ladle has loaded and kept of a server as a .jsonl file, to share or keep. Private rooms go only when included.").formFooter()
             }
             .listRowBackground(Palette.raised)
             Section {
                 Button("Open an Export…") { importing = true }
             } footer: {
-                Text("Reads a .jsonl file saved here or from apron-web, read-only, without signing in to its server.")
+                Text("Reads a .jsonl file saved here or from apron-web, read-only, without signing in to its server.").formFooter()
             }
             .listRowBackground(Palette.raised)
         }

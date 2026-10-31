@@ -45,17 +45,17 @@ struct RoomFormSheet: View {
                         // The web's field takes 120 characters.
                         .onChange(of: title) { if title.count > Self.titleLimit { title = String(title.prefix(Self.titleLimit)) } }
                 } header: {
-                    if let subtitle { Text(subtitle) }
+                    if let subtitle { Text(subtitle).formHeader() }
                 } footer: {
-                    if isPrivate { Text("Private, like its room: only the room’s members see it.") }
+                    if isPrivate { Text("Private, like its room: only the room’s members see it.").formFooter() }
                 }
                 Section {
                     TextField("Description", text: $description, axis: .vertical)
                         .lineLimit(4 ... 12)
                 } header: {
-                    Text("Description")
+                    Text("Description").formHeader()
                 } footer: {
-                    Text(mode == .edit ? "Markdown" : "Markdown, optional")
+                    Text(mode == .edit ? "Markdown" : "Markdown, optional").formFooter()
                 }
                 if let privateChoice {
                     Section {
@@ -65,7 +65,7 @@ struct RoomFormSheet: View {
                         .tint(Palette.private)
                         .disabled(saving)
                     } footer: {
-                        Text("Only members see it, and members add others.")
+                        Text("Only members see it, and members add others.").formFooter()
                     }
                 }
                 if let error {

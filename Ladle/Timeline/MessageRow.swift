@@ -121,7 +121,7 @@ struct MessageRow: View {
         }
         if let room = message.prevRoomID {
             Text("Moved from \(Text(TextDirection.isolated(session.title(of: room))).foregroundStyle(Palette.denim))")
-                .apText(.sm).italic().foregroundStyle(Palette.inkMuted)
+                .apText(.sm, italic: true).foregroundStyle(Palette.inkMuted)
                 .padding(.top, Tokens.Space.s1)
         }
         if !row.cards.isEmpty {
@@ -231,7 +231,7 @@ struct ReplyQuote: View {
                     Text(session.displayName(for: quoted.from)).fontWeight(.medium).foregroundStyle(Palette.ink)
                     Text(previewText(quoted.body)).lineLimit(1)
                 } else {
-                    Text(missing).italic()
+                    Text(missing).apText(.ui, italic: true)
                 }
             }
             .apText(.ui)

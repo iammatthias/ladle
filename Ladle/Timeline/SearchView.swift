@@ -50,7 +50,7 @@ struct SearchView: View {
                         }
                     }
                 } footer: {
-                    Text(session.searchNote)
+                    Text(session.searchNote).formFooter()
                 }
                 .listRowBackground(Palette.raised)
                 Section {

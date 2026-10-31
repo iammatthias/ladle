@@ -34,9 +34,9 @@ struct NewPrivateSheet: View {
                             .onChange(of: name) { if name.count > RoomFormSheet.titleLimit { name = String(name.prefix(RoomFormSheet.titleLimit)) } }
                             .disabled(saving)
                     } header: {
-                        Text("Name")
+                        Text("Name").formHeader()
                     } footer: {
-                        Text("Optional")
+                        Text("Optional").formFooter()
                     }
                 }
                 if let error {
@@ -103,7 +103,7 @@ struct NewPrivateSheet: View {
                 Text("and \(mine.count - Self.fullShown) more").apText(.sm).foregroundStyle(Palette.inkMuted)
             }
         } header: {
-            Text("Your private rooms, quietest first")
+            Text("Your private rooms, quietest first").formHeader()
         }
     }
 

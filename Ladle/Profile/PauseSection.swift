@@ -41,10 +41,10 @@ struct PauseSection: View {
                     .listRowInsets(EdgeInsets(top: Tokens.Space.s2, leading: Tokens.Space.s4, bottom: Tokens.Space.s2, trailing: Tokens.Space.s4))
             }
         } header: {
-            Text(header.map { "Pause Notifications on \($0)" } ?? "Pause Notifications")
+            Text(header.map { "Pause Notifications on \($0)" } ?? "Pause Notifications").formHeader()
         } footer: {
             if session.pause == nil {
-                Text("Silence notifications on all your devices for a while. Only you see it.")
+                Text("Silence notifications on all your devices for a while. Only you see it.").formFooter()
             }
         }
         .listRowBackground(Palette.raised)

@@ -139,6 +139,20 @@ struct GhostButtonStyle: ButtonStyle {
     }
 }
 
+extension View {
+    /// A form section's header in the theme's interface face, as the web's field label
+    /// (`.ap-fieldlabel`: `--text-sm`, 600, `--ink` in a dialog), not the system face a `Section`
+    /// header otherwise takes.
+    func formHeader() -> some View {
+        apText(.sm, .semibold).foregroundStyle(Palette.ink).textCase(nil)
+    }
+
+    /// A form section's footer, as the web's form hint (`.ap-form-hint`: `--text-sm`, `--ink-muted`).
+    func formFooter() -> some View {
+        apText(.sm).foregroundStyle(Palette.inkMuted)
+    }
+}
+
 /// A list section's head, as the web's sidebar sections: small, semibold, ink-muted.
 struct SectionHead: View {
     let title: String

@@ -82,9 +82,12 @@ enum Renderer {
             shots.append((.timeline, .dark, false, look))
             shots.append((.timeline, .light, false, look))
         }
-        // Highlighted code and inline code in a theme whose code face is not SF Mono.
-        shots.append((.markdown, .dark, false, Look.premade(PremadeTheme.all.first { $0.id == "ferrous" }!)))
-        shots.append((.markdown, .light, false, Look.premade(PremadeTheme.all.first { $0.id == "ferrous" }!)))
+        // Highlighted code, inline code in a code face that is not SF Mono, and emphasis in the
+        // faces with no italic cut (Recursive, Nunito, SF Rounded), drawn oblique.
+        for look in PremadeTheme.all.filter({ $0.id == "ferrous" || $0.id == "gumball" }).map(Look.premade) + [Look.custom] {
+            shots.append((.markdown, .dark, false, look))
+            shots.append((.markdown, .light, false, look))
+        }
         // The busy room drawn in Apron and then given Linocut without being made again: what a
         // theme chosen in Preferences does to the screens already open.
         shots.append((.timeline, .dark, false, Look.switched))

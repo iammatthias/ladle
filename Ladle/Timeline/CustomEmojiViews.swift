@@ -48,11 +48,12 @@ struct EmojiText: View {
     @Environment(\.fixedTypeSize) private var fixed
     @Environment(\.dynamicTypeSize) private var dynamic
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.roleFace) private var face
 
     var body: some View {
         let size = ScaledRole.size(role, at: fixed ?? dynamic)
         let font = UIFont.systemFont(ofSize: size)
-        let text = inMonoFace(text, size: ScaledRole.size(.ui, at: fixed ?? dynamic))
+        let text = inMonoFace(face?.emphasized(self.text) ?? self.text, size: ScaledRole.size(.ui, at: fixed ?? dynamic))
         var out = Text("")
         var spoken = ""
         for (key, range) in text.runs[CustomEmojiKey.self] {

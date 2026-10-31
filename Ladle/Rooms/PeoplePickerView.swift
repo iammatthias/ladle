@@ -36,7 +36,7 @@ struct PeoplePickerSections: View {
                 .focused($focused)
                 .disabled(disabled)
         } header: {
-            Text(label)
+            Text(label).formHeader()
         }
         .onAppear { focused = !disabled }
         if listed {
