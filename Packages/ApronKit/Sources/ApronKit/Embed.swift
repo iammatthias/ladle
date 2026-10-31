@@ -101,78 +101,52 @@ public enum LinkPlayer: Hashable, Sendable {
 }
 
 extension OpenGraph {
-    /// The player for a link card: the video, else the audio, when `policy` lets the client load
-    /// it. Only `http(s)` media plays, so an inline `data:` image never stands in for a sound.
-    /// Nil keeps the image card.
-    public func player(policy: MediaPolicy) -> LinkPlayer? {
+    /// The player for a link card: the video, else the audio, when `gate` loads it. Only
+    /// `http(s)` media plays, so an inline `data:` image never stands in for a sound. Nil keeps
+    /// the image card.
+    public func player(gate: MediaGate) -> LinkPlayer? {
         func playable(_ media: Media?) -> Media? {
-            guard let media, ["http", "https"].contains(media.url.scheme?.lowercased()), policy.allowsMedia(media.url) else { return nil }
+            guard let media, ["http", "https"].contains(media.url.scheme?.lowercased()), gate.allows(media.url) else { return nil }
             return media
         }
-        let picture = image.flatMap { policy.allowsMedia($0.url) ? $0 : nil }
+        let picture = image.flatMap { gate.allows($0.url) ? $0 : nil }
         if let video = playable(video) { return .video(video, poster: picture) }
         if let audio = playable(audio) { return .audio(audio, cover: picture) }
         return nil
+    }
+
+    /// What waits for a tap under a card that has no player, as apron-web's EmbedCard: the
+    /// video, else the audio, else the image when it does not show. A video that waits says so
+    /// even when its image shows.
+    public func ask(gate: MediaGate) -> CardAsk? {
+        guard player(gate: gate) == nil else { return nil }
+        for (kind, media) in [(CardAsk.Kind.video, video), (.audio, audio), (.image, image)] {
+            if let media, case .ask(let ask) = gate.decide(media.url) { return CardAsk(kind: kind, media: media, ask: ask) }
+        }
+        return nil
+    }
+}
+
+/// A link card's media that waits for a tap (`OpenGraph.ask(gate:)`).
+public struct CardAsk: Hashable, Sendable {
+    public enum Kind: Hashable, Sendable { case video, audio, image }
+    public var kind: Kind
+    public var media: OpenGraph.Media
+    public var ask: MediaAsk
+
+    /// What the tile names: the kind, an image by its `alt`.
+    public var what: String {
+        switch kind {
+        case .video: "Video"
+        case .audio: "Audio"
+        case .image: media.alt ?? "Image"
+        }
     }
 }
 
 extension MessageSnapshot {
     /// The body's embeds in display order; entries without a string `kind` are skipped.
     public var embedList: [Embed] { body?["embeds"]?.arrayValue?.compactMap(Embed.init) ?? [] }
-}
-
-/// Which URLs a client may load as media for one server (§4.8.1, §4.8.5, §4.8.6): the chat
-/// server's own HTTP origin, the origins `ext:media` names (EXT.md §6), and small inline images.
-/// Links a click opens are not limited by it.
-public struct MediaPolicy: Hashable, Sendable {
-    /// The server's HTTP origin, from its WebSocket URL (`wss://h/ws` gives `https://h`).
-    public var origin: String?
-    public var trustedOrigins: Set<String>
-
-    public init(serverURL: URL, server: ServerInfo?) {
-        origin = Self.httpOrigin(of: serverURL)
-        trustedOrigins = Set(MediaLimits(server: server)?.origins ?? [])
-    }
-
-    /// `og` media and hosted files: the server's origin, or one it names for its media.
-    public func allowsMedia(_ url: URL) -> Bool {
-        if Self.isSmallDataImage(url) { return true }
-        guard let candidate = Self.origin(of: url) else { return false }
-        return candidate == origin || trustedOrigins.contains(candidate)
-    }
-
-    /// Avatars (§4.8.6): what `allowsMedia` allows, and any `https:` image.
-    public func allowsAvatar(_ url: URL) -> Bool {
-        allowsMedia(url) || url.scheme?.lowercased() == "https"
-    }
-
-    static func httpOrigin(of serverURL: URL) -> String? {
-        guard var components = URLComponents(url: serverURL, resolvingAgainstBaseURL: false) else { return nil }
-        switch components.scheme?.lowercased() {
-        case "wss", "https": components.scheme = "https"
-        case "ws", "http": components.scheme = "http"
-        default: return nil
-        }
-        components.path = ""
-        components.query = nil
-        components.fragment = nil
-        return components.url.flatMap(origin(of:))
-    }
-
-    /// `scheme://host[:port]`, lowercased, without a default port.
-    static func origin(of url: URL) -> String? {
-        guard let scheme = url.scheme?.lowercased(), ["http", "https"].contains(scheme), let host = url.host()?.lowercased(), !host.isEmpty
-        else { return nil }
-        let defaultPort = scheme == "https" ? 443 : 80
-        let shownHost = host.contains(":") ? "[\(host)]" : host
-        guard let port = url.port, port != defaultPort else { return "\(scheme)://\(shownHost)" }
-        return "\(scheme)://\(shownHost):\(port)"
-    }
-
-    static func isSmallDataImage(_ url: URL) -> Bool {
-        let text = url.absoluteString
-        return text.count <= 65_536 && dataImageURL(.string(text)) != nil
-    }
 }
 
 /// An `http` or `https` URL from a JSON string.

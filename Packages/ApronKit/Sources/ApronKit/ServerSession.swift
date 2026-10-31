@@ -139,6 +139,11 @@ public final class ServerSession {
     @ObservationIgnored private var connectionNumber = 0
     /// The catalog URLs asked for, fetched or failed: none is fetched twice.
     @ObservationIgnored var emojiCatalogsAsked: Set<URL> = []
+    /// The current catalog as the gate last let it show, which `emojiCatalog` reuses while
+    /// neither changes.
+    @ObservationIgnored var gatedEmojiCatalog: (url: URL, gate: MediaGate, shown: EmojiCatalog)?
+    /// The viewer's media choices, shared with every other server's session.
+    public let mediaSettings: MediaSettings
 
     /// What to call this server: the name the user gave it, else the server's `title` (§3.1),
     /// else its host. Shown with the host where the user picks a server, so a server can't pass
@@ -152,8 +157,7 @@ public final class ServerSession {
 
     /// The server's `avatar` (§3.1), where avatars may load from.
     public var serverAvatarURL: URL? {
-        guard let avatar = server?.avatar, let url = URL(string: avatar), mediaPolicy.allowsAvatar(url) else { return nil }
-        return url
+        server?.avatar.flatMap { URL(string: $0) }.flatMap { mediaGate.decide($0, for: .avatar).url }
     }
 
     /// Whether this account signed in with scheme `guest`.
@@ -178,8 +182,9 @@ public final class ServerSession {
     private var runTask: Task<Void, Never>?
 
     public init(record: ServerRecord, tokens: any TokenStore, positions: any ReadPositionStore = InMemoryReadPositionStore(),
-                environment: Environment = .live) {
+                mediaSettings: MediaSettings = MediaSettings(), environment: Environment = .live) {
         self.record = record
+        self.mediaSettings = mediaSettings
         self.tokens = tokens
         self.positions = positions
         self.environment = environment

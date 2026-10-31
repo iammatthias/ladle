@@ -9,8 +9,9 @@ extension ServerSession {
     /// Whether `/avatar` with an upload can set this user's avatar (§4.8.6).
     public var canSetAvatar: Bool { canAttach && server?.has("command") == true }
 
-    /// Which URLs this server's embeds and avatars may load from.
-    public var mediaPolicy: MediaPolicy { MediaPolicy(serverURL: record.url, server: server) }
+    /// Where this server's media, avatars and custom emoji may load from, under the viewer's
+    /// choices: the one place a media URL is decided.
+    public var mediaGate: MediaGate { mediaSettings.gate(serverURL: record.url, server: server) }
 
     /// What the server says it takes (EXT.md §6), or nil when it says nothing.
     public var mediaLimits: MediaLimits? { MediaLimits(server: server) }
@@ -18,8 +19,7 @@ extension ServerSession {
     /// The user's avatar (§4.8.6) from the kept user object, when the policy lets it load.
     public func avatarURL(of userID: String) -> URL? {
         let value = users.user(userID)?["avatar"]
-        guard let url = webURL(value) ?? dataImageURL(value), mediaPolicy.allowsAvatar(url) else { return nil }
-        return url
+        return (webURL(value) ?? dataImageURL(value)).flatMap { mediaGate.decide($0, for: .avatar).url }
     }
 
     /// Sets this user's avatar from an image: a `/avatar` command with one `upload` embed, then

@@ -12,6 +12,8 @@ public final class SessionStore {
     public private(set) var saveError: String?
     /// Reminders about messages on every server, kept beside `servers.json`.
     public let reminders: Reminders
+    /// Where media loads from, on every server, kept beside `servers.json`.
+    public let mediaSettings: MediaSettings
 
     private let serverStore: ServerStore?
     private let tokens: any TokenStore
@@ -26,6 +28,7 @@ public final class SessionStore {
         positions = serverStore.map { FileReadPositionStore(directory: $0.directory) } ?? InMemoryReadPositionStore()
         reminders = Reminders(store: serverStore.map { FileReminderStore(directory: $0.directory) } ?? InMemoryReminderStore(),
                               notifier: notifier)
+        mediaSettings = MediaSettings(directory: serverStore?.directory)
         self.environment = environment
     }
 
@@ -67,7 +70,7 @@ public final class SessionStore {
 
     @discardableResult
     private func startSession(for record: ServerRecord) -> ServerSession {
-        let session = ServerSession(record: record, tokens: tokens, positions: positions, environment: environment)
+        let session = ServerSession(record: record, tokens: tokens, positions: positions, mediaSettings: mediaSettings, environment: environment)
         session.onRecordChange = { [weak self] changed in self?.accountChanged(changed) }
         sessions[record.id] = session
         session.start()

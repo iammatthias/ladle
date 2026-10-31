@@ -4,7 +4,7 @@ import SwiftUI
 import UIKit
 
 /// Loads embed media and files over HTTP: images decoded at the size they show, and files
-/// saved under their names for Quick Look. Callers check `MediaPolicy`
+/// saved under their names for Quick Look. Callers ask `MediaGate`
 /// first; this never decides what may load. No cookies go out, and the URL cache is the app's.
 @MainActor
 final class MediaLoader {

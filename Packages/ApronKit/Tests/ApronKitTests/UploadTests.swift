@@ -40,7 +40,7 @@ final class EmbedTests: XCTestCase {
     }
 }
 
-final class MediaPolicyTests: XCTestCase {
+final class MediaGateTests: XCTestCase {
     private func server(_ ext: JSONValue? = nil, capabilities: [JSONValue] = ["embed:upload"]) -> ServerInfo? {
         var params: [String: JSONValue] = ["apron": 9, "auth": ["guest"], "capabilities": .array(capabilities)]
         if let ext { params["ext"] = ext }
@@ -48,59 +48,147 @@ final class MediaPolicyTests: XCTestCase {
     }
 
     func testALinkCardPlaysOGVideoThenAudioOnlyWhereThePolicyAllowsIt() throws {
-        let policy = MediaPolicy(serverURL: URL(string: "wss://chat.example/ws")!, server: server())
+        let gate = MediaGate(serverURL: URL(string: "wss://chat.example/ws")!, server: server())
         func og(_ fields: JSONValue) throws -> OpenGraph { try XCTUnwrap(OpenGraph(fields)) }
         let image: JSONValue = ["url": "https://chat.example/f/p/thumb", "width": 640, "height": 360]
         let video: JSONValue = ["url": "https://chat.example/f/p/v.mp4", "type": "video/mp4", "width": 640, "height": 360]
         let audio: JSONValue = ["url": "https://chat.example/f/p/a.m4a", "type": "audio/mp4"]
 
-        guard case .video(let played, let poster)? = try og(["image": image, "video": video, "audio": audio]).player(policy: policy) else {
+        guard case .video(let played, let poster)? = try og(["image": image, "video": video, "audio": audio]).player(gate: gate) else {
             return XCTFail("video wins over audio")
         }
         XCTAssertEqual(played.aspectRatio, 640.0 / 360.0)
         XCTAssertEqual(poster?.url.absoluteString, "https://chat.example/f/p/thumb")
 
-        guard case .audio(let sound, let cover)? = try og(["image": image, "audio": audio]).player(policy: policy) else {
+        guard case .audio(let sound, let cover)? = try og(["image": image, "audio": audio]).player(gate: gate) else {
             return XCTFail("audio without video")
         }
         XCTAssertEqual(sound.url.absoluteString, "https://chat.example/f/p/a.m4a")
         XCTAssertNotNil(cover)
 
-        XCTAssertNil(try og(["image": image]).player(policy: policy), "an image alone stays the image card")
+        XCTAssertNil(try og(["image": image]).player(gate: gate), "an image alone stays the image card")
         let elsewhere: JSONValue = ["url": "https://cdn.example/v.mp4"]
-        XCTAssertNil(try og(["image": image, "video": elsewhere]).player(policy: policy), "other origins do not load")
-        XCTAssertEqual(try og(["image": image, "audio": audio, "video": elsewhere]).player(policy: policy),
+        XCTAssertNil(try og(["image": image, "video": elsewhere]).player(gate: gate), "other origins do not load")
+        XCTAssertEqual(try og(["image": image, "audio": audio, "video": elsewhere]).player(gate: gate),
                        .audio(try XCTUnwrap(OpenGraph.Media(audio)), cover: try XCTUnwrap(OpenGraph.Media(image))), "an unplayable video falls back to the audio")
-        guard case .video(_, let none)? = try og(["video": video, "image": ["url": "https://cdn.example/p.jpg"]]).player(policy: policy) else {
+        guard case .video(_, let none)? = try og(["video": video, "image": ["url": "https://cdn.example/p.jpg"]]).player(gate: gate) else {
             return XCTFail("video without an allowed poster")
         }
         XCTAssertNil(none)
         let inline = "data:image/png;base64,AAAA"
-        XCTAssertNil(try og(["video": ["url": .string(inline)]]).player(policy: policy), "an inline image is no player")
+        XCTAssertNil(try og(["video": ["url": .string(inline)]]).player(gate: gate), "an inline image is no player")
     }
 
     func testMediaLoadsFromTheServersOwnOriginAndTheOnesItNames() {
-        let policy = MediaPolicy(serverURL: URL(string: "wss://chat.example/ws")!, server: server())
-        XCTAssertEqual(policy.origin, "https://chat.example")
-        XCTAssertTrue(policy.allowsMedia(URL(string: "https://chat.example/files/e1/s")!))
-        XCTAssertTrue(policy.allowsMedia(URL(string: "https://CHAT.example:443/files/e1/s")!))
-        XCTAssertFalse(policy.allowsMedia(URL(string: "http://chat.example/files/e1/s")!))
-        XCTAssertFalse(policy.allowsMedia(URL(string: "https://tracker.example/pixel.png")!))
-        XCTAssertTrue(policy.allowsMedia(URL(string: "data:image/png;base64,iVBORw0KGgo=")!))
-        XCTAssertTrue(policy.allowsAvatar(URL(string: "https://gravatar.example/a.png")!))
-        XCTAssertFalse(policy.allowsAvatar(URL(string: "http://elsewhere.example/a.png")!))
+        let gate = MediaGate(serverURL: URL(string: "wss://chat.example/ws")!, server: server())
+        XCTAssertEqual(gate.origin, "https://chat.example")
+        XCTAssertTrue(gate.allows(URL(string: "https://chat.example/files/e1/s")!))
+        XCTAssertTrue(gate.allows(URL(string: "https://CHAT.example:443/files/e1/s")!))
+        XCTAssertFalse(gate.allows(URL(string: "http://chat.example/files/e1/s")!))
+        XCTAssertFalse(gate.allows(URL(string: "https://tracker.example/pixel.png")!))
+        XCTAssertTrue(gate.allows(URL(string: "data:image/png;base64,iVBORw0KGgo=")!))
 
-        let local = MediaPolicy(serverURL: URL(string: "ws://127.0.0.1:8080/ws")!, server: server())
-        XCTAssertTrue(local.allowsMedia(URL(string: "http://127.0.0.1:8080/files/e1/s")!))
-        XCTAssertFalse(local.allowsMedia(URL(string: "http://127.0.0.1:9090/files/e1/s")!))
+        let local = MediaGate(serverURL: URL(string: "ws://127.0.0.1:8080/ws")!, server: server())
+        XCTAssertTrue(local.allows(URL(string: "http://127.0.0.1:8080/files/e1/s")!))
+        XCTAssertFalse(local.allows(URL(string: "http://127.0.0.1:9090/files/e1/s")!))
 
         let named = server(["media": ["origins": ["https://media.chat.example", "https://x.example/path", "http://evil.example", "http://localhost:9000"]]],
                            capabilities: ["embed:upload", "ext:media"])
-        let bucket = MediaPolicy(serverURL: URL(string: "wss://chat.example/ws")!, server: named)
-        XCTAssertEqual(bucket.trustedOrigins, ["https://media.chat.example", "http://localhost:9000"])
-        XCTAssertTrue(bucket.allowsMedia(URL(string: "https://media.chat.example/f/1")!))
-        XCTAssertFalse(MediaPolicy(serverURL: URL(string: "wss://chat.example/ws")!, server: server(named?.ext)).allowsMedia(URL(string: "https://media.chat.example/f/1")!),
+        let bucket = MediaGate(serverURL: URL(string: "wss://chat.example/ws")!, server: named)
+        XCTAssertEqual(bucket.serverOrigins, ["https://media.chat.example", "http://localhost:9000"])
+        XCTAssertTrue(bucket.allows(URL(string: "https://media.chat.example/f/1")!))
+        XCTAssertTrue(bucket.allows(URL(string: "https://media.chat.example/a.png")!, for: .avatar))
+        XCTAssertFalse(MediaGate(serverURL: URL(string: "wss://chat.example/ws")!, server: server(named?.ext)).allows(URL(string: "https://media.chat.example/f/1")!),
                        "origins count only with capability ext:media")
+    }
+
+    func testMediaFromElsewhereWaitsForATapUnderTrustedAndLoadsUnderAny() {
+        let serverURL = URL(string: "wss://chat.example/ws")!
+        let image = URL(string: "https://shazow.net/images/icon.png")!
+        let trusted = MediaGate(serverURL: serverURL, server: server())
+        XCTAssertEqual(trusted.decide(image), .ask(MediaAsk(url: image, host: "shazow.net", origin: "https://shazow.net")))
+        XCTAssertEqual(trusted.decide(URL(string: "http://plain.example:8080/a.png")!),
+                       .ask(MediaAsk(url: URL(string: "http://plain.example:8080/a.png")!, host: "plain.example:8080", origin: nil)),
+                       "Always Load only for https")
+        XCTAssertEqual(trusted.decide(URL(string: "javascript:alert(1)")!), .hidden)
+        XCTAssertEqual(trusted.decide(URL(string: "ftp://files.example/a.png")!), .hidden)
+
+        let mine = MediaGate(serverURL: serverURL, server: server(), viewerOrigins: ["https://shazow.net"])
+        XCTAssertEqual(mine.decide(image), .load(image), "a site the viewer trusts")
+        XCTAssertEqual(mine.decide(URL(string: "https://other.example/a.png")!), .ask(MediaAsk(URL(string: "https://other.example/a.png")!)))
+
+        let once = MediaGate(serverURL: serverURL, server: server(), loadedOnce: [image])
+        XCTAssertEqual(once.decide(image), .load(image), "Load loads that one URL")
+        XCTAssertEqual(once.decide(URL(string: "https://shazow.net/images/other.png")!),
+                       .ask(MediaAsk(URL(string: "https://shazow.net/images/other.png")!)), "and nothing else on its site")
+
+        let any = MediaGate(serverURL: serverURL, server: server(), policy: .any)
+        XCTAssertEqual(any.decide(image), .load(image))
+        XCTAssertEqual(any.decide(URL(string: "http://plain.example/a.png")!), .load(URL(string: "http://plain.example/a.png")!))
+        XCTAssertEqual(any.decide(URL(string: "data:text/html;base64,PGI+")!), .hidden)
+    }
+
+    func testAvatarsAndCustomEmojiFromElsewhereShowOnlyFromTrustedSitesOrUnderAny() {
+        let serverURL = URL(string: "wss://chat.example/ws")!
+        let gravatar = URL(string: "https://gravatar.example/a.png")!
+        let inline = URL(string: "data:image/png;base64,iVBORw0KGgo=")!
+        let trusted = MediaGate(serverURL: serverURL, server: server())
+        XCTAssertEqual(trusted.decide(gravatar, for: .avatar), .hidden, "never asks, and does not show")
+        XCTAssertEqual(trusted.decide(URL(string: "https://chat.example/files/a")!, for: .avatar), .load(URL(string: "https://chat.example/files/a")!))
+        XCTAssertEqual(trusted.decide(inline, for: .avatar), .load(inline))
+        XCTAssertEqual(MediaGate(serverURL: serverURL, server: server(), loadedOnce: [gravatar]).decide(gravatar, for: .avatar), .hidden,
+                       "Load is for the timeline")
+        XCTAssertEqual(MediaGate(serverURL: serverURL, server: server(), viewerOrigins: ["https://gravatar.example"]).decide(gravatar, for: .avatar),
+                       .load(gravatar))
+
+        let any = MediaGate(serverURL: serverURL, server: server(), policy: .any, viewerOrigins: ["https://gravatar.example"])
+        XCTAssertEqual(any.decide(gravatar, for: .avatar), .load(gravatar))
+        XCTAssertEqual(any.decide(URL(string: "http://elsewhere.example/a.png")!, for: .avatar), .hidden, "only https from elsewhere")
+    }
+
+    func testALinkCardAsksForItsVideoEvenWhenItsImageShows() throws {
+        let gate = MediaGate(serverURL: URL(string: "wss://chat.example/ws")!, server: server())
+        func og(_ fields: JSONValue) throws -> OpenGraph { try XCTUnwrap(OpenGraph(fields)) }
+        let image: JSONValue = ["url": "https://chat.example/f/p/thumb"]
+        let video = URL(string: "https://youtube.example/v.mp4")!
+        let asked = try og(["image": image, "video": ["url": .string(video.absoluteString)]]).ask(gate: gate)
+        XCTAssertEqual(asked?.what, "Video")
+        XCTAssertEqual(asked?.kind, .video)
+        XCTAssertEqual(asked?.ask.url, video)
+        XCTAssertEqual(try og(["image": ["url": "https://cdn.example/p.jpg", "alt": "A dog"]]).ask(gate: gate)?.what, "A dog")
+        XCTAssertNil(try og(["image": image]).ask(gate: gate), "nothing waits when the image shows")
+        XCTAssertNil(try og(["image": image, "video": ["url": "https://chat.example/v.mp4"]]).ask(gate: gate), "a player shows instead")
+    }
+
+    @MainActor
+    func testTheViewersSitesAreReadAsHttpsOriginsKeptAndRestored() throws {
+        XCTAssertEqual(MediaSettings.parseOrigins("cdn.example\nhttps://img.example/a/b.png, http://plain.example  cdn.example:443 ftp://x.example nonsense:/ \n"),
+                       ["https://cdn.example", "https://img.example"])
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let settings = MediaSettings(directory: directory)
+        XCTAssertEqual(settings.policy, .trusted)
+        XCTAssertTrue(settings.add("https://cdn.example/a.png img.example"))
+        XCTAssertFalse(settings.add("CDN.example"), "each site once")
+        settings.trust("https://shazow.net")
+        settings.trust("http://plain.example")
+        XCTAssertEqual(settings.origins, ["https://cdn.example", "https://img.example", "https://shazow.net"])
+        settings.remove("https://img.example")
+        settings.update(policy: .any)
+        settings.loadOnce(URL(string: "https://x.example/a.png")!)
+
+        let again = MediaSettings(directory: directory)
+        XCTAssertEqual(again.policy, .any)
+        XCTAssertEqual(again.origins, ["https://cdn.example", "https://shazow.net"], "the sites stay listed under Any Site")
+        XCTAssertEqual(again.loadedOnce, [], "Load lasts one launch")
+
+        for (saved, policy) in [("all", MediaPolicy.any), ("server", .trusted), ("everything", .trusted)] {
+            try Data(#"{"policy": "\#(saved)", "origins": ["https://kept.example", "http://x.example", 7]}"#.utf8)
+                .write(to: directory.appending(path: "media-settings.json"))
+            let old = MediaSettings(directory: directory)
+            XCTAssertEqual(old.policy, policy)
+            XCTAssertEqual(old.origins, ["https://kept.example"])
+        }
     }
 
     func testTheMostSpecificPatternGivesAFilesLimits() throws {
@@ -450,11 +538,17 @@ final class UploadSessionTests: XCTestCase {
         XCTAssertTrue(session.uploadProgress.isEmpty)
     }
 
-    func testAvatarURLsFollowTheMediaPolicy() async throws {
+    func testAvatarURLsFollowTheMediaGate() async throws {
         await socket.deliver(["method": "user", "params": ["you": ["user_id": "ada", "avatar": "https://chat.example/files/e9/s"]]])
         await eventually("avatar") { session.avatarURL(of: "ada") != nil }
         await socket.deliver(["method": "user", "params": ["new": ["user_id": "bob", "avatar": "http://elsewhere.example/b.png"]]])
-        await eventually("bob kept") { session.users.user("bob") != nil }
+        await socket.deliver(["method": "user", "params": ["new": ["user_id": "cy", "avatar": "https://gravatar.example/c.png"]]])
+        await eventually("cy kept") { session.users.user("cy") != nil }
         XCTAssertNil(session.avatarURL(of: "bob"))
+        XCTAssertNil(session.avatarURL(of: "cy"), "not from a site nobody trusts")
+        session.mediaSettings.trust("gravatar.example")
+        XCTAssertEqual(session.avatarURL(of: "cy")?.absoluteString, "https://gravatar.example/c.png")
+        session.mediaSettings.update(policy: .any, origins: [])
+        XCTAssertNil(session.avatarURL(of: "bob"), "http from elsewhere never")
     }
 }

@@ -146,12 +146,12 @@ public struct MediaItem: Identifiable, Hashable, Sendable {
 extension ServerSession {
     /// Every loadable image upload in a room, oldest first, as the web's viewer pages them.
     public func mediaItems(in roomID: String) -> [MediaItem] {
-        let policy = mediaPolicy
+        let gate = mediaGate
         return timeline(roomID).flatMap { message in
             message.embedList.enumerated().compactMap { index, embed -> MediaItem? in
-                guard case .image(let image) = embed.upload, policy.allowsMedia(image.url) else { return nil }
+                guard case .image(let image) = embed.upload, gate.allows(image.url) else { return nil }
                 return MediaItem(id: MediaItem.id(message, index), media: image.url,
-                                 original: embed.url.flatMap { policy.allowsMedia($0) ? $0 : nil },
+                                 original: embed.url.flatMap { gate.allows($0) ? $0 : nil },
                                  name: embed.name ?? "Image", alt: image.alt, sender: displayName(for: message.from), date: message.date)
             }
         }

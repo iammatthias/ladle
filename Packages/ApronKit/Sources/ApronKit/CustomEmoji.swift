@@ -41,21 +41,21 @@ public struct CustomEmoji: Hashable, Sendable {
 }
 
 /// A server's catalog of custom emoji, by key. Decoded entry by entry: a key that isn't one, or an
-/// entry whose `url` may not load as an avatar would (§4.8.6), is left out, and a field of the
-/// wrong type is left out on its own.
+/// entry without an `http(s)` or inline image `url`, is left out, and a field of the wrong type is
+/// left out on its own. Where the images may load from is the gate's to say (`gated(by:)`).
 public struct EmojiCatalog: Hashable, Sendable {
     public private(set) var emoji: [String: CustomEmoji] = [:]
 
-    public init(json: JSONValue, policy: MediaPolicy) {
+    public init(json: JSONValue) {
         for (key, entry) in json.objectValue ?? [:] {
-            guard CustomEmoji.isKey(key), let url = Self.image(entry["url"], policy) else { continue }
+            guard CustomEmoji.isKey(key), let url = Self.image(entry["url"]) else { continue }
             let width = entry["width"]?.doubleValue.flatMap { $0 > 0 ? $0 : nil }
             let height = entry["height"]?.doubleValue.flatMap { $0 > 0 ? $0 : nil }
             emoji[key] = CustomEmoji(
                 key: key, url: url,
                 alt: Self.text(entry["alt"]),
                 aspectRatio: width.flatMap { width in height.map { width / $0 } },
-                staticURL: Self.image(entry["static_url"], policy),
+                staticURL: Self.image(entry["static_url"]),
                 category: Self.text(entry["category"]),
                 tags: (entry["tags"]?.arrayValue ?? []).compactMap(Self.text),
                 hidden: entry["hidden"]?.boolValue == true
@@ -90,9 +90,21 @@ public struct EmojiCatalog: Hashable, Sendable {
         return ranked.enumerated().sorted { ($0.element.rank, $0.offset) < ($1.element.rank, $1.offset) }.prefix(limit).map(\.element.emoji)
     }
 
-    private static func image(_ value: JSONValue?, _ policy: MediaPolicy) -> URL? {
-        guard let text = value?.stringValue, let url = URL(string: text), policy.allowsAvatar(url) else { return nil }
-        return url
+    /// The emoji whose image `gate` lets load as an avatar would (§4.8.6), each still copy only
+    /// where it may load too.
+    public func gated(by gate: MediaGate) -> EmojiCatalog {
+        var out = self
+        out.emoji = emoji.compactMapValues { emoji in
+            guard gate.allows(emoji.url, for: .avatar) else { return nil }
+            var shown = emoji
+            shown.staticURL = emoji.staticURL.flatMap { gate.allows($0, for: .avatar) ? $0 : nil }
+            return shown
+        }
+        return out
+    }
+
+    private static func image(_ value: JSONValue?) -> URL? {
+        webURL(value) ?? dataImageURL(value)
     }
 
     private static func text(_ value: JSONValue?) -> String? {

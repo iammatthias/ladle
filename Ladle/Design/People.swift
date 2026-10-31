@@ -84,7 +84,7 @@ struct Avatar: View {
     let userID: String
     var presence: Presence?
     var size = Size.md
-    /// The user's avatar (§4.8.6), already checked by `MediaPolicy`; the initials show until it
+    /// The user's avatar (§4.8.6), already decided by `MediaGate`; the initials show until it
     /// loads, and stay when it doesn't.
     var image: URL?
 

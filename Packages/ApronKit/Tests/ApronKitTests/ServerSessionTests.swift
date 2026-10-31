@@ -234,6 +234,8 @@ final class ServerSessionTests: XCTestCase {
         await eventually("greeted") { session.server != nil }
         XCTAssertEqual(session.serverName, "Apron Demo")
         XCTAssertEqual(session.server?.description, "The *public* demo")
+        XCTAssertNil(session.serverAvatarURL, "an avatar on a site nobody trusts does not show")
+        session.mediaSettings.trust("https://cdn.example")
         XCTAssertEqual(session.serverAvatarURL, URL(string: "https://cdn.example/icon.png"))
 
         var named = record

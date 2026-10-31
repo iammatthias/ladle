@@ -10,6 +10,7 @@ struct ServerListView: View {
     let open: (UUID) -> Void
     @Binding var connecting: ConnectRequest?
     @State private var removing: ServerRecord?
+    @State private var preferences = false
 
     var body: some View {
         List {
@@ -48,8 +49,14 @@ struct ServerListView: View {
         .navigationTitle("Servers")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            Button("Add Server", systemImage: "plus") { connecting = ConnectRequest() }
+            ToolbarItem(placement: .topBarLeading) {
+                Button("Preferences", systemImage: "gearshape") { preferences = true }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button("Add Server", systemImage: "plus") { connecting = ConnectRequest() }
+            }
         }
+        .sheet(isPresented: $preferences) { PreferencesView(store: store) }
         .removeServerDialog(store: store, removing: $removing)
     }
 }
@@ -122,6 +129,7 @@ struct ServerRail: View {
     let open: (UUID) -> Void
     @Binding var connecting: ConnectRequest?
     @State private var removing: ServerRecord?
+    @State private var preferences = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -144,8 +152,20 @@ struct ServerRail: View {
             }
             .padding(.vertical, Tokens.Space.s3)
         }
+        .safeAreaInset(edge: .bottom) {
+            Button { preferences = true } label: {
+                Image(systemName: "gearshape")
+                    .foregroundStyle(Palette.inkMuted)
+                    .frame(width: Tokens.Size.railW, height: Tokens.Size.touchTarget)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Preferences")
+            .padding(.bottom, Tokens.Space.s2)
+        }
         .frame(width: Tokens.Size.railW)
         .background(Palette.rail)
+        .sheet(isPresented: $preferences) { PreferencesView(store: store) }
         .removeServerDialog(store: store, removing: $removing)
     }
 

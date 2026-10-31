@@ -69,7 +69,7 @@ public struct MediaLimits: Hashable, Sendable {
 
     /// An exact `https:` origin, or `http:` on a loopback host; nothing else.
     private static func origin(_ text: String?) -> String? {
-        guard let text, let url = URL(string: text), let origin = MediaPolicy.origin(of: url), origin == text.lowercased() else { return nil }
+        guard let text, let url = URL(string: text), let origin = MediaGate.origin(of: url), origin == text.lowercased() else { return nil }
         let host = url.host()?.lowercased() ?? ""
         let local = ["localhost", "127.0.0.1", "::1"].contains(host)
         return url.scheme?.lowercased() == "https" || local ? origin : nil

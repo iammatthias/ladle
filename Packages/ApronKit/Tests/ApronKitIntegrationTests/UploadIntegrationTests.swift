@@ -74,8 +74,8 @@ final class UploadIntegrationTests: XCTestCase {
         XCTAssertEqual(media.type, "image/png")
         XCTAssertEqual([media.width, media.height], [320, 180])
         let url = try XCTUnwrap(embed.url)
-        XCTAssertTrue(session.mediaPolicy.allowsMedia(url), "\(url) is the server's own origin")
-        XCTAssertTrue(session.mediaPolicy.allowsMedia(media.url))
+        XCTAssertTrue(session.mediaGate.allows(url), "\(url) is the server's own origin")
+        XCTAssertTrue(session.mediaGate.allows(media.url))
         try await waitFor("the write finished") { session.uploadProgress.isEmpty }
         XCTAssertTrue(session.outbox.isEmpty)
 

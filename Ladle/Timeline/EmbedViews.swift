@@ -18,13 +18,13 @@ struct EmbedView: View {
         if let upload = embed.upload {
             UploadEmbedView(session: session, embed: embed, upload: upload, mediaID: mediaID)
         } else {
-            EmbedCard(embed: embed, policy: session.mediaPolicy)
+            EmbedCard(embed: embed, gate: session.mediaGate, settings: session.mediaSettings)
         }
     }
 }
 
-/// Media loads only under the server's `MediaPolicy`; anything else shows as a file card whose
-/// link opens outside the app.
+/// Media loads as the server's `MediaGate` decides: media it holds back waits in a
+/// `MediaAskTile`, and media it refuses shows as a file card whose link opens outside the app.
 struct UploadEmbedView: View {
     let session: ServerSession
     let embed: Embed
@@ -35,30 +35,49 @@ struct UploadEmbedView: View {
     static let maxWidth: CGFloat = 320
 
     var body: some View {
-        let policy = session.mediaPolicy
+        let gate = session.mediaGate
         let name = embed.name ?? "File"
         switch upload {
         case .pending:
             PendingUploadCard(name: name, progress: embed.embedID.flatMap { session.uploadProgress[$0] })
-        case .image(let media) where policy.allowsMedia(media.url):
-            Button { openMedia(mediaID) } label: {
-                RemoteImage(url: media.url)
-                    .aspectRatio(media.aspectRatio ?? 4 / 3, contentMode: .fit)
-                    .frame(maxWidth: Self.maxWidth, maxHeight: Tokens.Size.embedMaxH, alignment: .leading)
-                    .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.lg))
-                    .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.lg).strokeBorder(Palette.line))
+        case .image(let media):
+            switch gate.decide(media.url) {
+            case .load(let url):
+                Button { openMedia(mediaID) } label: {
+                    RemoteImage(url: url)
+                        .aspectRatio(media.aspectRatio ?? 4 / 3, contentMode: .fit)
+                        .frame(maxWidth: Self.maxWidth, maxHeight: Tokens.Size.embedMaxH, alignment: .leading)
+                        .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.lg))
+                        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.lg).strokeBorder(Palette.line))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(media.alt ?? name)
+                .accessibilityAddTraits(.isImage)
+                .accessibilityHint("Opens the image full screen")
+            case .ask(let ask):
+                MediaAskTile(ask: ask, what: media.alt ?? name, aspect: media.aspectRatio, settings: session.mediaSettings)
+            case .hidden:
+                fileCard(gate)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(media.alt ?? name)
-            .accessibilityAddTraits(.isImage)
-            .accessibilityHint("Opens the image full screen")
-        case .video(let media) where policy.allowsMedia(media.url):
-            VideoTile(url: media.url, name: name, aspect: media.aspectRatio)
-        case .audio(let media) where policy.allowsMedia(media.url):
-            AudioCard(url: media.url, name: name)
-        default:
-            FileCard(name: name, url: embed.url, loadable: embed.url.map(policy.allowsMedia) ?? false)
+        case .video(let media):
+            switch gate.decide(media.url) {
+            case .load(let url): VideoTile(url: url, name: name, aspect: media.aspectRatio)
+            case .ask(let ask): MediaAskTile(ask: ask, what: name, symbol: "play.rectangle", aspect: media.aspectRatio, settings: session.mediaSettings)
+            case .hidden: fileCard(gate)
+            }
+        case .audio(let media):
+            switch gate.decide(media.url) {
+            case .load(let url): AudioCard(url: url, name: name)
+            case .ask(let ask): MediaAskTile(ask: ask, what: name, symbol: "waveform", settings: session.mediaSettings)
+            case .hidden: fileCard(gate)
+            }
+        case .file:
+            fileCard(gate)
         }
+    }
+
+    private func fileCard(_ gate: MediaGate) -> some View {
+        FileCard(name: embed.name ?? "File", url: embed.url, loadable: embed.url.map { gate.allows($0) } ?? false)
     }
 }
 
@@ -317,11 +336,18 @@ struct AudioCard: View {
 /// is the link; tapping it opens `url` in the browser.
 struct EmbedCard: View {
     let embed: Embed
-    let policy: MediaPolicy
+    let gate: MediaGate
+    let settings: MediaSettings
 
     var body: some View {
         if let og = embed.og {
-            openGraph(og)
+            VStack(alignment: .leading, spacing: Tokens.Space.s2) {
+                openGraph(og)
+                if let asked = og.ask(gate: gate) {
+                    MediaAskTile(ask: asked.ask, what: asked.what, symbol: MediaAskTile.symbol(asked.kind),
+                                 aspect: asked.media.aspectRatio, settings: settings)
+                }
+            }
         } else if let url = embed.url {
             LinkButton(url: url) { fallback }
         } else {
@@ -330,7 +356,7 @@ struct EmbedCard: View {
     }
 
     private func openGraph(_ og: OpenGraph) -> some View {
-        let player = og.player(policy: policy)
+        let player = og.player(gate: gate)
         return LinkCard(site: og.siteName, title: og.title ?? embed.title ?? embed.url?.absoluteString ?? embed.kind,
                         description: og.description, link: embed.url, playsPicture: player != nil) {
             switch player {
@@ -344,7 +370,7 @@ struct EmbedCard: View {
                         .padding(.horizontal, Tokens.Space.s3)
                 }
             case nil:
-                if let image = og.image, policy.allowsMedia(image.url) { picture(image) }
+                if let image = og.image, gate.allows(image.url) { picture(image) }
             }
         }
     }

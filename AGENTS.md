@@ -37,7 +37,7 @@ clone), which is only a worked example.
   - `CustomEmoji`, `EmojiCatalog`, `EmojiKeys` (EXTENSIONS.md `ext:emoji`): `ServerInfo.emojiCatalogURL`
     is `ext.emoji.catalog_url` under the capability, only `https:`, loopback `http:` or
     `data:application/json`. `EmojiCatalog` decodes entry by entry: a bad key, or a `url` that
-    `MediaPolicy.allowsAvatar` refuses, drops the entry, a bad field drops alone; `offered`
+    is not `http(s)` or an inline image drops the entry, a bad field drops alone; `ServerSession.emojiCatalog` is the fetched catalog `gated(by:)` the session's `MediaGate` (an emoji whose image may not load shows as its key and leaves the picker), and a catalog the gate refuses is not fetched until it allows it; `offered`
     leaves out `hidden` ones, by category then key (the catalog's order does not survive
     `JSONValue`), and `search` ranks name matches before `alt` and tag matches. `EmojiKeys`
     scans text left to right as the spec says; `MessageText` marks each key the catalog has
@@ -152,9 +152,16 @@ clone), which is only a worked example.
   - `SessionStore`: every server's session, the saved list, and account persistence.
   - Uploads (§4.8.3, §4.8.4, §4.8.6), as apron-web does them. `Embed` parses an embed once;
     its `upload` is pending until `url`, then an image, video or audio from `og`, or a file.
-    `MediaPolicy` loads media only from the server's own HTTP origin (from its WebSocket URL),
-    the origins `ext:media` names, and small `data:image` URLs; avatars may also be any
-    `https:` image. `MediaLimits` reads `ext:media` (EXTENSIONS.md): `upload`, `avatar` and `emoji`,
+    `MediaGate` (`MediaGate.swift`) is the one place a media URL is decided, as apron-web's
+    `mediaGate`: `decide(url, for: .timeline | .avatar)` gives `.load`, `.ask(MediaAsk)` or
+    `.hidden` from the server's own HTTP origin (from its WebSocket URL), the origins `ext:media`
+    names, small `data:image` URLs (always), and the viewer's `MediaSettings`
+    (`MediaSettings.swift`: policy `trusted` or `any`, trusted sites global across servers,
+    parsed as apron-web's `parseMediaOrigins`, kept in `media-settings.json` beside
+    `servers.json`; Load's URLs for this launch). Under `trusted`, timeline media elsewhere asks,
+    and avatars and custom emoji elsewhere are hidden; under `any`, avatars and emoji elsewhere
+    load over `https:` only. `SessionStore` owns one `MediaSettings` and hands it to every
+    `ServerSession`, whose `mediaGate` reads it, so views follow a change at once. `MediaLimits` reads `ext:media` (EXTENSIONS.md): `upload`, `avatar` and `emoji`,
     each file taking the limits of its most specific pattern alone. Without the capability a
     413 or 415 on the write decides. `UploadPlan.decide` says what a file
     needs to fit the `upload` category: nothing, a still image re-encoded (JPEG, else PNG where
@@ -288,7 +295,7 @@ clone), which is only a worked example.
   Copy, Look Up, Translate and Share, since an iOS `Text` selects only all of itself and its
   long press would compete with the row's menu;
   a server added through the Connect sheet opens once its sign-in succeeds),
-  `Servers/` (the server list and iPad rail, `ConnectView`: add a server and sign in in one
+  `Servers/` (the server list and iPad rail, `PreferencesView`: the media policy and trusted sites, from the list's toolbar and the rail's foot, `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
   mention list, the custom emoji `:` list, the `#` room list and the command list (`CommandSuggestions`: usage and
   summary, scrolling past five rows; picking fills `/name ` and keeps the keyboard up), reaction picker (custom emoji by category first),
@@ -298,7 +305,7 @@ clone), which is only a worked example.
   `static_url` under Reduce Motion (Ladle draws the first frame of an animated image either
   way); message text, room and thread descriptions, the welcome and the server description
   draw custom emoji, and each fetches the catalog when its text could hold a key; `EmbedViews`:
-  `og` embeds as the web's EmbedCard (a hosted image, site, title, two lines; with `og.video` or `og.audio` that `OpenGraph.player(policy:)` allows, the card plays it inline and only its text opens the `url`), others as a
+  `og` embeds as the web's EmbedCard (a hosted image, site, title, two lines; with `og.video` or `og.audio` that `OpenGraph.player(gate:)` allows, the card plays it inline and only its text opens the `url`; media the gate holds back shows `OpenGraph.ask(gate:)` as a `MediaAskTile` under the card, a video's even when the image loads), others as a
   labeled fallback card; `FetchedLinkCard`: a fetched preview as the same card, fetched with
   LinkPresentation's `LPMetadataProvider` when the row appears, while Show Link Previews (Ladle's
   page in the Settings app, `Settings.bundle`, on by default) is on; it replaces a bare `link` embed's
@@ -307,7 +314,7 @@ clone), which is only a worked example.
   the temporary directory (cleared at launch), the camera; `VoiceRecorder`: voice notes as
   `audio/mp4`; `ReminderViews`: `ReminderBadge`, the due line and Clear on a reminded row,
   which takes an accent edge, and `ReminderDateSheet`, Custom…), `Media/` (`MediaLoader`: images decoded at their shown size and files for Quick
-  Look, no cookies; `MediaViewer`: the room's images full screen, as the web's viewer), `Design/`
+  Look, no cookies; `MediaAskTile`: media the gate holds back, Load on a tap, Always Load in its menu; `MediaViewer`: the room's images full screen, as the web's viewer), `Design/`
   (`Tokens.swift`, generated; `Apron`: colors by job, text roles, motion; `People`: avatars,
   StatusDot and RoleBadges; `Components`: the web's UnreadCount, Callout, ActionBanner, EmptyState, buttons).
   `Servers/KeychainStore.swift` is the only place a secret is persisted (generic password,

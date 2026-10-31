@@ -407,7 +407,8 @@ The reply drag mirrors in right-to-left layouts ([right-to-left]).
 | Same display name | `Name (@user_id)`, from `UserDirectory` |
 | Mention of someone else | `@user_id` in the text shows the user's current name in the mention style. An unknown ID renders as written (§A.3). Never inside code. |
 | Unknown embed kind | Render from `og` (title, description, image) if present. Otherwise a fallback card with the kind name and `url` or `text` (§3.5.2 MUST). |
-| `upload` | A pending upload (no `url`) shows a placeholder. With `og.image`, an image preview loaded only from the server's origin (§4.8.1). Otherwise a file card. Tap opens Quick Look ([file-management]). |
+| `upload` | A pending upload (no `url`) shows a placeholder. With `og.image`, `og.video` or `og.audio`, the media where Preferences lets it load (3.14), else a Load tile. Otherwise a file card. Tap opens Quick Look ([file-management]). |
+| Media from an untrusted site | A dashed tile in its place, sized from the media's aspect (120 to 200 pt tall, 320 pt wide at most): its alt text or kind, its host, and "Tap to Load". See 3.14. |
 | `stream` | While live, a "Live output" card. When finished, `text` in a monospaced block that you can expand. |
 | `iframe`, `html` | A fallback card with **Open in Browser** for `url`. Not rendered inline in v1 (5.8). |
 | `format: "markdown"` | CommonMark with raw HTML disabled (§3.5.2) |
@@ -567,6 +568,35 @@ The Keychain item is `ThisDeviceOnly`, and Ladle never shows the token, so for t
 
 Connection state is not a screen. It is one model, rendered in the Rooms section header and in the timeline status pill. Section 4.1 defines it.
 
+### 3.14 Preferences and media from other sites
+
+**Purpose.** Choose where images, video, audio, avatars and custom emoji load from. Loading one tells the site that hosts it that you are reading (§5.5). This mirrors apron-web's Preferences > Media.
+
+**Entry.** **Preferences** (`gearshape`) at the leading edge of the Servers toolbar on iPhone, and at the foot of the server rail on iPad. It opens a sheet with a grouped `Form` and **Done**.
+
+**Layout.**
+
+1. **Load Media From.** An inline picker: **This Server and Trusted Sites** (the default) or **Any Site**. The footer says what each does.
+2. **Trusted Sites.** Your sites, one row each, swipe to delete. A field takes a site as a bare host (`cdn.example`) or any URL on it, several at once separated by spaces or commas. Only `https:` with a dotted host is kept, reduced to its origin and listed once, as apron-web's `parseMediaOrigins`. Anything else shows "Enter an https site or address…" under the field.
+3. **Trusted by Your Servers.** Read-only. Each signed-in server's own origin and the origins its `ext:media` names.
+
+**Scope.** Your trusted sites are global: they are sites you trust, so they apply on every server. A server's own origins apply on that server only. The choice is kept in `media-settings.json` beside `servers.json`. Under **Any Site**, the list stays for when you switch back.
+
+**Rules** (one decision point, `MediaGate.decide(url, for:)`):
+
+| Media | This Server and Trusted Sites | Any Site |
+|---|---|---|
+| Inline `data:` image | Shows | Shows |
+| Server's origin, its `ext:media` origins | Shows | Shows |
+| A trusted site | Shows | Shows |
+| Timeline media elsewhere (uploads, link card images, video and audio, markdown images) | Load tile | Shows |
+| Avatar or custom emoji elsewhere | Initials, or the key as text. The emoji picker leaves it out. | Shows over `https:` only |
+| Custom emoji catalog elsewhere | Not fetched | Fetched over `https:` |
+
+**Load tile.** A tap is **Load**: that one URL loads, until Ladle quits. The tile's `ellipsis.circle` menu and its long press offer **Load** and, for an `https:` site, **Always Load from host**, which adds the site to Trusted Sites. A link card whose `og.video` waits shows a Video tile under the card even when its image loads, so the video is never silently dropped. A loaded image that fails (an unreachable host, a bad file) shows the `photo` glyph in its box and never spins.
+
+**Accessibility.** The tile reads "Image, from shazow.net, not loaded", with the hint "Loads it". **Always Load from host** is a custom action.
+
 ## 4. Cross-cutting
 
 ### 4.1 Connection and sync, as you see them
@@ -642,7 +672,7 @@ The session is live by default. The UI says something only when it is not live, 
 - Tokens live only in the Keychain, as one generic password per server id with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` (`KeychainStore`). [privacy] says "Store sensitive information in a keychain." They are never in `servers.json`, the message cache, logs, or state restoration.
 - Cached messages are display-only files with complete-until-first-auth protection (2.5). Sign-out and server removal delete them.
 - The camera purpose string is "Ladle uses the camera to scan sign-in QR codes, and to take photos and videos you attach to messages." It is a full sentence in sentence case, active voice, ending with a period ([privacy]: "Aim for a brief, complete sentence that's straightforward, specific, and easy to understand."). Ladle asks only when you tap Scan QR Code or take a photo or video.
-- Ladle loads `og` media, avatars, and streams only from the server's own origin (§4.8.1, §5.5). Avatars from other `https:` hosts are not loaded in v1, and initials show instead.
+- Ladle loads media where Preferences says (3.14): by default from the server's own origin, the origins it names with `ext:media`, and your trusted sites (§4.8.1, §5.5). Media in the timeline from anywhere else waits for a tap. Avatars and custom emoji from anywhere else don't load, so initials and keys show instead. `MediaGate.decide` is the one place this is decided.
 - Ladle connects to a new server only after you tap Connect (§A.4).
 - The token field is a `SecureField`. The token never appears on screen after you enter it.
 

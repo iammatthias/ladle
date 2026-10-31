@@ -18,7 +18,7 @@ final class CustomEmojiTests: XCTestCase {
         XCTAssertEqual(server.title, "Apron Demo")
         XCTAssertEqual(MediaLimits.verdict(for: "image/png", in: MediaLimits(server: server)?.emoji), .allowed(.init(maxBytes: 262_144)))
 
-        let catalog = EmojiCatalog(json: try fixture("demo-catalog"), policy: MediaPolicy(serverURL: demoURL, server: server))
+        let catalog = EmojiCatalog(json: try fixture("demo-catalog")).gated(by: MediaGate(serverURL: demoURL, server: server))
         XCTAssertEqual(catalog.emoji, [":apron:": CustomEmoji(
             key: ":apron:", url: URL(string: "https://media.apron.chat/e/nrIp9696F6rvBbltXXvS6A")!, alt: nil, aspectRatio: 1,
             staticURL: nil, category: nil, tags: [], hidden: false)])
@@ -26,8 +26,8 @@ final class CustomEmojiTests: XCTestCase {
     }
 
     func testEntriesDecodeFieldByField() {
-        let policy = MediaPolicy(serverURL: URL(string: "wss://chat.example/ws")!, server: nil)
-        let catalog = EmojiCatalog(json: [
+        let gate = MediaGate(serverURL: URL(string: "wss://chat.example/ws")!, server: nil)
+        let decoded = EmojiCatalog(json: [
             ":partyparrot:": ["url": "https://chat.example/e/p", "static_url": "https://chat.example/e/p/still",
                               "category": " Parrots ", "tags": ["party", 3, ""], "alt": "Party \u{202E}parrot"],
             ":shipit:": ["url": "https://chat.example/e/s", "width": 64, "height": 32, "alt": "Squirrel in a hat"],
@@ -38,8 +38,10 @@ final class CustomEmojiTests: XCTestCase {
             "nocolons": ["url": "https://chat.example/e/n"],
             ":bad key:": ["url": "https://chat.example/e/b"],
             ":list:": ["https://chat.example/e/l"],
-        ], policy: policy)
-        XCTAssertEqual(Set(catalog.emoji.keys), [":partyparrot:", ":shipit:", ":wide:", ":old:"])
+        ])
+        XCTAssertEqual(Set(decoded.emoji.keys), [":partyparrot:", ":shipit:", ":wide:", ":old:", ":plain-http:"])
+        let catalog = decoded.gated(by: gate)
+        XCTAssertEqual(Set(catalog.emoji.keys), [":partyparrot:", ":shipit:", ":wide:", ":old:"], "an image from elsewhere does not show")
         let parrot = catalog[":partyparrot:"]
         XCTAssertEqual(parrot?.category, "Parrots")
         XCTAssertEqual(parrot?.tags, ["party"])
@@ -97,8 +99,7 @@ final class CustomEmojiTests: XCTestCase {
     }
 
     func testKeysInTextAreMarkedOutsideCodeAndLinks() {
-        let policy = MediaPolicy(serverURL: URL(string: "wss://chat.example/ws")!, server: nil)
-        let catalog = EmojiCatalog(json: [":apron:": ["url": "https://chat.example/e/a"]], policy: policy)
+        let catalog = EmojiCatalog(json: [":apron:": ["url": "https://chat.example/e/a"]])
         let text = MessageText.attributed(["text": "Shipped :apron: `:apron:` [:apron:](https://x.example) :nope:", "format": "markdown"], emoji: catalog)
         let marked = text.runs.compactMap { run in run[CustomEmojiKey.self].map { _ in String(text[run.range].characters) } }
         XCTAssertEqual(marked, [":apron:"])
@@ -144,6 +145,34 @@ final class CustomEmojiTests: XCTestCase {
         await session.loadEmojiCatalog()
         XCTAssertEqual(session.emojiCatalog?[":apron:"]?.url.lastPathComponent, "one.json", "kept by URL")
         XCTAssertEqual(fetched.withLock { $0 }, ["one.json", "bad.json"])
+        await session.stop()
+    }
+
+    @MainActor
+    func testACatalogOrEmojiOnASiteNobodyTrustsWaitsUntilTheViewerTrustsIt() async throws {
+        let fetched = Mutex<[String]>([])
+        let socket = FakeTransport()
+        let environment = ServerSession.Environment(
+            makeTransport: { _ in socket },
+            fetchEmojiCatalog: { url in
+                fetched.withLock { $0.append(url.host() ?? "") }
+                return Data(#"{":apron:": {"url": "https://chat.example/e/a"}, ":far:": {"url": "https://emoji.example/f"}}"#.utf8)
+            }
+        )
+        let session = ServerSession(record: ServerRecord(url: URL(string: "wss://chat.example/ws")!), tokens: InMemoryTokenStore(),
+                                    environment: environment)
+        session.start()
+        await socket.deliver(["method": "server", "params": ["apron": 9, "auth": ["guest"], "capabilities": ["ext:emoji"],
+                                                             "ext": ["emoji": ["catalog_url": "https://emoji.example/c.json"]]]])
+        while session.server == nil { await Task.yield() }
+        await session.loadEmojiCatalog()
+        XCTAssertEqual(fetched.withLock { $0 }, [], "a catalog elsewhere is not fetched")
+        session.mediaSettings.trust("https://emoji.example")
+        await session.loadEmojiCatalog()
+        XCTAssertEqual(fetched.withLock { $0 }, ["emoji.example"])
+        XCTAssertEqual(Set(session.emojiCatalog?.emoji.keys ?? [:].keys), [":apron:", ":far:"])
+        session.mediaSettings.remove("https://emoji.example")
+        XCTAssertEqual(Set(session.emojiCatalog?.emoji.keys ?? [:].keys), [":apron:"], "an emoji elsewhere shows as its key")
         await session.stop()
     }
 }
