@@ -776,6 +776,36 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.joinedRoomIDs, ["general"])
     }
 
+    func testAReconnectCatchesUpTheRoomOnScreenFirst() async throws {
+        let firstSocket = FakeTransport()
+        await firstSocket.deliver(Self.greeting)
+        transports.queued.withLock { $0 = [firstSocket] }
+        session.start()
+        try await signInAsGuest(on: firstSocket)
+        try await openGeneral(on: firstSocket)
+        let open = Task { try await session.open("130") }
+        _ = await frame(firstSocket, 4)
+        await firstSocket.deliver(["id": "c5", "result": ["messages": [], "more": false, "latest_log_id": "130", "history_log_id": "130"]])
+        _ = await frame(firstSocket, 5)
+        await firstSocket.deliver(["id": "c6", "result": ["not_joined": []]])
+        try await open.value
+        session.show("general", true)
+        await firstSocket.dropFromServer()
+        await eventually("backoff") { clock.recorded.count == 1 }
+        clock.release()
+
+        let second = await transport(1)
+        _ = await frames(second, count: 2)
+        await second.deliver(["id": "c7", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await second.deliver(["id": "c8", "result": ["joined": [
+            ["room_id": "general", "log_id": "100", "latest_log_id": "106", "history_log_id": "101"],
+            ["room_id": "130", "log_id": "130", "latest_log_id": "130", "history_log_id": "130"],
+        ]]])
+        let first = await frame(second, 2)
+        XCTAssertEqual(first, #"{"id":"c9","method":"history","params":{"after":"107","limit":200,"room_id":"general"}}"#,
+                       "general is on screen, so it goes before 130")
+    }
+
     func testOwnReadCursorOnlyMovesForwardAndOthersAreIgnored() async throws {
         session.start()
         let socket = await transport(0)
