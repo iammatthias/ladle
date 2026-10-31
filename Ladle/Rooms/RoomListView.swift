@@ -540,11 +540,13 @@ struct RoomRow: View {
     }
 }
 
-/// The web's FoldHeading over a room's threads: "Other Threads · 4", which folds them away.
+/// The web's FoldHeading over a room's threads ("Other Threads · 4") or a member list section
+/// ("Offline · 1"), which folds them away.
 struct FoldHeading: View {
     let label: String
     let count: Int
     @Binding var open: Bool
+    var inset: CGFloat = RoomRow.threadInset
 
     var body: some View {
         Button { open.toggle() } label: {
@@ -554,7 +556,7 @@ struct FoldHeading: View {
                 Spacer(minLength: 0)
             }
             .foregroundStyle(Palette.inkMuted)
-            .padding(.leading, RoomRow.threadInset)
+            .padding(.leading, inset)
             .frame(minHeight: Tokens.Size.touchTarget)
             .contentShape(Rectangle())
         }

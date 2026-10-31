@@ -25,7 +25,7 @@ final class DraftFieldTests: XCTestCase {
             guard case .mentions(let found) = home.suggestions(for: DraftField(text: text), in: "general") else { return nil }
             return found.compactMap { if case .person(let person) = $0 { person.userID } else { nil } }
         }
-        XCTAssertEqual(people("Thanks @"), ["ada", "bram", "chiara", "eunji", "dev"], "online first, never you")
+        XCTAssertEqual(people("Thanks @"), ["ada", "eunji", "bram", "chiara", "dev"], "in the member list's order, never you")
         XCTAssertEqual(people("@CH"), ["chiara"], "by name, ignoring case")
         XCTAssertEqual(people("@eun"), ["eunji"])
         XCTAssertNil(people("@zed"))

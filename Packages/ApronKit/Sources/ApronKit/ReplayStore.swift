@@ -24,6 +24,8 @@ public struct ReplayStore: Sendable, Equatable {
     private var roomLogs: [String: [LogID: RoomRecord]] = [:]
     /// The newest `log_id` the server has said each room's log holds (`latest_log_id`). Never lowered.
     private var latest: [String: LogID] = [:]
+    /// Each room's `member_count` from its latest `members` listing, when that was truncated.
+    private var memberCounts: [String: Int] = [:]
 
     private struct MemberEntry: Hashable, Sendable {
         var user: UserObject
@@ -52,7 +54,10 @@ public struct ReplayStore: Sendable, Equatable {
             }
             put(room: record)
             if let latest = delivery.latestLogID { noteLatest(of: record.roomID, latest) }
-            if let list = delivery.members { seedMembers(of: record.roomID, with: list, asOf: delivery.latestLogID) }
+            if let list = delivery.members {
+                seedMembers(of: record.roomID, with: list, asOf: delivery.latestLogID)
+                memberCounts[record.roomID] = delivery.memberCount
+            }
         }
         for snapshot in records.messages { put(message: snapshot) }
         for snapshot in records.embedded { put(message: snapshot) }
@@ -226,6 +231,10 @@ public struct ReplayStore: Sendable, Equatable {
         guard let state = members[roomID] else { return nil }
         return state.entries.values.filter(\.joined).map(\.user).sorted { codePointLess($0.userID, $1.userID) }
     }
+
+    /// How many users have joined the room, when its latest listing was truncated
+    /// (`member_count`, §4.2.1); nil after a complete one.
+    public func memberCount(of roomID: String) -> Int? { memberCounts[roomID] }
 
     public struct ReactionSummary: Hashable, Sendable {
         /// The entry as compared (`ReactionEntry.key`): one per summary.

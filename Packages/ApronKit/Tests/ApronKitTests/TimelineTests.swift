@@ -62,11 +62,11 @@ final class TimelineTests: XCTestCase {
         XCTAssertFalse(home.isPrivate("general"))
     }
 
-    func testMembersAreOnlineThenOfflineEachByName() async throws {
+    func testMembersAreOnlineThenOfflineByStatusThenName() async throws {
         let home = try await home()
         let sections = home.memberSections("general")
         XCTAssertEqual(sections.map(\.title), ["Online", "Offline"])
-        XCTAssertEqual(sections.map { $0.people.map(\.userID) }, [["ada", "bram", "chiara", "eunji", "sam"], ["dev"]])
+        XCTAssertEqual(sections.map { $0.people.map(\.userID) }, [["ada", "eunji", "sam", "bram", "chiara"], ["dev"]])
         XCTAssertEqual(["ada", "bram", "chiara", "dev", "nobody"].map { home.presence(of: $0)?.label ?? "none" },
                        ["Online", "Idle", "Do not disturb", "Offline", "none"])
         XCTAssertEqual(Presence(["status": "invisible"]), .offline)

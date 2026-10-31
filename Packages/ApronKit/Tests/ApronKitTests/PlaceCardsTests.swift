@@ -57,7 +57,7 @@ final class PlaceCardsTests: XCTestCase {
         XCTAssertEqual(session.placeCards(in: text, sessions: store.liveSession(for:)), [PlaceCard(
             link: ApronLink(server: demo, room: "lobby", message: id(-15)),
             content: .message(sender: "Wren", preview: "Anyone tried the Rust server with email sign-in?"),
-            roomTitle: "lobby", memberCount: 3)])
+            roomTitle: "lobby", memberCount: 1204)], "the room's member_count, not the three listed")
         XCTAssertEqual(session.placeCards(in: text), [], "no other sessions given")
         await store.session(for: PreviewFixtures.demoID)?.stop()
         XCTAssertEqual(session.placeCards(in: text, sessions: store.liveSession(for:)), [], "a server not signed in draws none")

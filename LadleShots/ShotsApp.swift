@@ -36,6 +36,7 @@ enum Screen: String, CaseIterable {
     case newRoomPrivate = "new-room-private", privateFull = "private-full", roomsPrivate = "rooms-private"
     case addMembers = "add-members", membersPrivate = "members-private"
     case signInQRNotice = "signin-qr-notice", signInQRWarning = "signin-qr-warning", signInQRCode = "signin-qr-code"
+    case membersFolded = "members-folded", membersTruncated = "members-truncated", profileCardTruncated = "profile-card-truncated"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -109,6 +110,8 @@ enum Renderer {
             await seedReminder(shot.screen == .reminder, in: store, home: home)
             await seedPause(shot.screen.isPaused, home: home)
             UserDefaults.standard.set(shot.screen == .roomsInactive, forKey: "inactiveThreadsOpen")
+            UserDefaults.standard.set(true, forKey: "memberOnlineOpen")
+            UserDefaults.standard.set(shot.screen != .membersFolded, forKey: "memberOfflineOpen")
             if shot.screen == .limited { await seedWaits(home: home) }
             if shot.screen == .privateFull, !home.atPrivateRoomLimit { _ = try? await home.startPrivateRoom(with: []) }
             show(AnyView(view(shot.screen, store: store, home: home, staged: staged)
@@ -271,6 +274,19 @@ enum Renderer {
         case .membersPrivate:
             // Launch plan's members, with the + that adds people.
             AnyView(NavigationStack { MemberList(session: home, roomID: PreviewFixtures.addedRoomID) })
+        case .membersFolded:
+            // #general's members with Offline folded away.
+            AnyView(NavigationStack { MemberList(session: home, roomID: PreviewFixtures.busyRoomID) })
+        case .membersTruncated:
+            // The demo's lobby, listed only by its most recently active.
+            AnyView(Group { if let demo = store.session(for: PreviewFixtures.demoID) { NavigationStack { MemberList(session: demo, roomID: "lobby") } } })
+        case .profileCardTruncated:
+            // Someone the lobby's truncated listing leaves out.
+            AnyView(Group {
+                if let demo = store.session(for: PreviewFixtures.demoID) {
+                    ProfileCardView(session: demo, request: ProfileRequest(user: UserObject(["user_id": "mo", "name": "Mo"])!, roomID: "lobby"))
+                }
+            })
         case .roomsPrivate:
             // The conversation with Ada open: the Private section, each room with its faces.
             AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.directRoomID, open: { _ in }) })

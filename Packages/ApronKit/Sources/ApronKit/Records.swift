@@ -35,6 +35,9 @@ public struct RoomDelivery: Hashable, Sendable {
     public var latestLogID: LogID?
     /// A complete member list (§4.2.1), as of `latestLogID`.
     public var members: [UserObject]?
+    /// How many users have joined, when the server truncated `members` to the most recently
+    /// active (§4.2.1, `member_count`). A complete listing carries none.
+    public var memberCount: Int?
     /// The room's retention floor, from `history_log_id` (`retentionFloor`).
     public var floor: LogID?
 }
@@ -231,6 +234,7 @@ extension RoomRecord {
         var delivery = RoomDelivery()
         delivery.latestLogID = LogID(value["latest_log_id"])
         delivery.members = value["members"]?.arrayValue?.compactMap { UserObject($0) }
+        delivery.memberCount = value["member_count"]?.intValue.flatMap { $0 >= 0 ? $0 : nil }
         delivery.floor = retentionFloor(value)
         return (record, delivery)
     }

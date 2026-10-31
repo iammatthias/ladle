@@ -18,7 +18,8 @@ public struct UserProfile: Hashable, Sendable {
     public let roles: [String]
     /// Their bio, on a server that keeps one (`ext:bio`).
     public let bio: String?
-    /// "Member of General" or "Not in General", when the room's members are known.
+    /// "Member of General" or "Not in General", when the room's members are known; "Not among
+    /// the recently active members of General" when the listing was truncated (§4.2.1).
     public let membership: String?
     /// Mention puts `@name` in the composer: the composer takes text, and they are not a system
     /// identity (`~`).
@@ -42,6 +43,8 @@ extension ServerSession {
         let listed = members?.contains { users.current($0.userID) == id }
         let membership: String? = switch (roomID, listed) {
         case (let roomID?, true?): "Member of \(title(of: roomID))"
+        case (let roomID?, false?) where (store.memberCount(of: roomID) ?? 0) > members?.count ?? 0:
+            "Not among the recently active members of \(title(of: roomID))"
         case (let roomID?, false?): "Not in \(title(of: roomID))"
         default: nil
         }

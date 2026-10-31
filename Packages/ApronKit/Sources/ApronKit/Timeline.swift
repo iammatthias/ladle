@@ -152,13 +152,73 @@ extension ServerSession {
         store.room(roomID)?.description?.stringValue.flatMap { $0.isEmpty ? nil : TextDirection.withoutOverrides($0) }
     }
 
-    /// The people in a room, online first, each section by name.
-    public func memberSections(_ roomID: String) -> [(title: String, people: [UserObject])] {
+    /// The people in a room as apron-web's member list sections them: by status (online, idle,
+    /// do not disturb, unknown, offline, then none), by name within each; Online is everyone not
+    /// offline, no status included, then Offline. Without presence (no capability `status`, or
+    /// no member with a status) one Members section, which shows no heading. Empty ones go.
+    public func memberSections(_ roomID: String) -> [MemberSection] {
         let people = (store.members(of: roomID) ?? []).map { users.user($0.userID).flatMap(UserObject.init) ?? $0 }
-            .sorted { displayName(for: $0).localizedCaseInsensitiveCompare(displayName(for: $1)) == .orderedAscending }
-        let online = people.filter { (presence(of: $0.userID) ?? .offline) != .offline }
-        let offline = people.filter { (presence(of: $0.userID) ?? .offline) == .offline }
-        return [("Online", online), ("Offline", offline)].filter { !$0.1.isEmpty }
+            .sorted { a, b in
+                switch displayName(for: a).localizedCaseInsensitiveCompare(displayName(for: b)) {
+                case .orderedAscending: true
+                case .orderedDescending: false
+                case .orderedSame: codePointLess(a.userID, b.userID)
+                }
+            }
+        let shown = people.map { (person: $0, presence: presence(of: $0.userID)) }
+        guard server?.has("status") == true, shown.contains(where: { $0.presence != nil }) else {
+            return people.isEmpty ? [] : [MemberSection(key: .members, people: people)]
+        }
+        let ranked = shown.enumerated().sorted { a, b in
+            let (left, right) = (MemberSection.rank(a.element.presence), MemberSection.rank(b.element.presence))
+            return left != right ? left < right : a.offset < b.offset
+        }.map(\.element)
+        return [
+            MemberSection(key: .online, people: ranked.filter { $0.presence != .offline }.map(\.person)),
+            MemberSection(key: .offline, people: ranked.filter { $0.presence == .offline }.map(\.person)),
+        ].filter { !$0.people.isEmpty }
+    }
+
+    /// How many members the room has, as the member list's heading counts them: the server's
+    /// `member_count` when it truncated the listing, else those listed. Nil while unknown.
+    public func memberTotal(_ roomID: String) -> Int? {
+        guard let listed = store.members(of: roomID)?.count else { return nil }
+        return max(store.memberCount(of: roomID) ?? 0, listed)
+    }
+
+    /// The line over a truncated member list, as apron-web's: "Showing 3 of 240: the most
+    /// recently active". Nil when the list is the whole room.
+    public func memberListNote(_ roomID: String) -> String? {
+        guard let listed = store.members(of: roomID)?.count, let count = store.memberCount(of: roomID), count > listed else { return nil }
+        return "Showing \(listed) of \(count): the most recently active"
+    }
+}
+
+/// A section of the member list, as apron-web's `memberSections` gives one.
+public struct MemberSection: Hashable, Sendable {
+    public enum Key: String, Hashable, Sendable { case online, offline, members }
+
+    public let key: Key
+    public let people: [UserObject]
+
+    public var title: String {
+        switch key {
+        case .online: "Online"
+        case .offline: "Offline"
+        case .members: "Members"
+        }
+    }
+
+    /// apron-web's `byStatus` order; your own invisible reads as offline.
+    static func rank(_ presence: Presence?) -> Int {
+        switch presence {
+        case .online: 0
+        case .idle: 1
+        case .dnd: 2
+        case .unknown: 3
+        case .offline: 4
+        case nil: 5
+        }
     }
 }
 

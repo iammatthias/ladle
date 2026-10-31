@@ -80,7 +80,7 @@ extension ServerSession {
             content = .message(sender: displayName(for: target.from), preview: MessageText.snippet(target.body, lines: 3, max: 280))
         }
         return PlaceCard(link: link, content: content, roomTitle: title(of: roomID), isPrivate: room.isPrivate == true,
-                        isThread: room.parentRoomID != nil, memberCount: store.members(of: roomID)?.count)
+                        isThread: room.parentRoomID != nil, memberCount: memberTotal(roomID))
     }
 }
 

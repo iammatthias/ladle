@@ -280,7 +280,8 @@ public enum PreviewFixtures {
     """
 
     private static func room(_ id: String, _ title: String?, parent: String? = nil, members: [String],
-                             description: String? = nil, isPrivate: Bool = false, logID: String? = nil, latest: Int? = nil) -> JSONValue {
+                             description: String? = nil, isPrivate: Bool = false, logID: String? = nil, latest: Int? = nil,
+                             memberCount: Int? = nil) -> JSONValue {
         var room: [String: JSONValue] = [
             "room_id": .string(id), "log_id": .string(logID ?? (parent == nil ? message(-600) : id)),
             "members": .array(members.map { ["user_id": .string($0)] }),
@@ -290,6 +291,7 @@ public enum PreviewFixtures {
         if let parent { room["parent_room_id"] = .string(parent) }
         if let description { room["description"] = .string(description) }
         if isPrivate { room["private"] = true }
+        if let memberCount { room["member_count"] = .number(String(memberCount)) }
         return .object(room)
     }
 
@@ -529,12 +531,15 @@ public enum PreviewFixtures {
     /// The room where Ada and Bram are typing, held for an hour so every shot of it sees them.
     public static let typingRoomID = "random"
 
+    /// The demo's lobby lists only its three most recently active members of this many (§4.2.1).
+    public static let lobbyMemberCount = 1204
+
     private static let demo = PreviewServer.Script(
         greeting: cloudflareGreeting,
         you: ["user_id": "guest_7", "name": "Guest 7", "status": "online", "ext": ["permissions": ["write": false]]],
         roomList: [
             "joined": [
-                room("lobby", "lobby", members: ["guest_7", "host", "wren"]),
+                room("lobby", "lobby", members: ["guest_7", "host", "wren"], memberCount: lobbyMemberCount),
                 room("help", "help", members: ["guest_7", "host"]),
             ],
             "users": [

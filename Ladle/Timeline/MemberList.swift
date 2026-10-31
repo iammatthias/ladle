@@ -1,7 +1,9 @@
 import ApronKit
 import SwiftUI
 
-/// The web's MemberList: "Members n", then Online and Offline sections, each person with their
+/// The web's MemberList: "Members n" (the room's `member_count` when the listing is truncated,
+/// which a line over the list says), then Online and Offline, each a FoldHeading that folds it
+/// away and stays as left, or without presence one list with no heading; each person with their
 /// face and StatusDot, "(you)" beside you, offline people dimmed. A tap opens their profile
 /// card; a long press their menu (Profile, Direct Message, Remove from Room), as apron-web
 /// #152 and #161. The + adds people. On iPhone it is a sheet over the room; on iPad a column of
@@ -15,6 +17,8 @@ struct MemberList: View {
     @State private var removing: String?
     @State private var busy = false
     @State private var note: String?
+    @AppStorage("memberOnlineOpen") private var onlineOpen = true
+    @AppStorage("memberOfflineOpen") private var offlineOpen = true
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.openRoom) private var openRoom
@@ -22,18 +26,22 @@ struct MemberList: View {
     var body: some View {
         let sections = session.memberSections(roomID)
         List {
-            ForEach(sections, id: \.title) { section in
-                Section {
-                    ForEach(section.people, id: \.userID) { person in row(person, offline: section.title == "Offline") }
-                } header: {
-                    SectionHead(title: section.title, count: section.people.count)
-                        .textCase(nil)
-                }
-            }
             if let line = note ?? session.memberChangesRemark(in: roomID) {
-                Text(line).apText(.sm).foregroundStyle(note != nil ? Palette.danger : Palette.inkMuted)
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                noteRow(line, danger: note != nil)
+            }
+            if sections.isEmpty, session.store.members(of: roomID) != nil {
+                noteRow("No members listed.")
+            } else if let line = session.memberListNote(roomID) {
+                noteRow(line)
+            }
+            ForEach(sections, id: \.key) { section in
+                let open = section.key == .members || isOpen(section.key).wrappedValue
+                if section.key != .members {
+                    FoldHeading(label: section.title, count: section.people.count, open: isOpen(section.key), inset: Tokens.Space.s2)
+                }
+                if open {
+                    ForEach(section.people, id: \.userID) { person in row(person, offline: section.key == .offline) }
+                }
             }
         }
         .listStyle(.plain)
@@ -55,7 +63,9 @@ struct MemberList: View {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: Tokens.Space.s2) {
                     Text("Members").font(.headline).foregroundStyle(Palette.ink)
-                    Text("\(sections.reduce(0) { $0 + $1.people.count })").apText(.sm, .medium).foregroundStyle(Palette.inkMuted)
+                    if let total = session.memberTotal(roomID) {
+                        Text(String(total)).apText(.sm, .medium).foregroundStyle(Palette.inkMuted)
+                    }
                 }
                 .accessibilityElement(children: .combine)
             }
@@ -71,6 +81,17 @@ struct MemberList: View {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
             }
         }
+    }
+
+    /// Online or Offline as left, on this device, as the web keeps `apron.memberSections`.
+    private func isOpen(_ key: MemberSection.Key) -> Binding<Bool> {
+        key == .offline ? $offlineOpen : $onlineOpen
+    }
+
+    private func noteRow(_ line: String, danger: Bool = false) -> some View {
+        Text(line).apText(.sm).foregroundStyle(danger ? Palette.danger : Palette.inkMuted)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
     }
 
     private func row(_ person: UserObject, offline: Bool) -> some View {

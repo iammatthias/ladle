@@ -66,6 +66,21 @@ final class PrivateRoomsIntegrationTests: XCTestCase {
         XCTAssertEqual(bob.directRoom(with: try id(ada)), roomID)
     }
 
+    func testATruncatedListingKeepsItsMemberCountAndMessageSkipsIt() async throws {
+        let server = try await started(["--max-listed-members", "1"])
+        let ada = try await account(server, "ada@example.com")
+        let bob = try await account(server, "bob@example.com")
+        let roomID = try await ada.message(try id(bob)).roomID
+
+        try await waitFor("Bob's room arrived, listed") { bob.isPrivateRoom(roomID) && bob.store.members(of: roomID) != nil }
+        XCTAssertEqual(bob.store.members(of: roomID)?.count, 1)
+        XCTAssertEqual(bob.store.memberCount(of: roomID), 2)
+        XCTAssertEqual(bob.memberTotal(roomID), 2)
+        XCTAssertEqual(bob.memberListNote(roomID), "Showing 1 of 2: the most recently active")
+        XCTAssertEqual(bob.memberSections(roomID).map(\.title), ["Online"], "the server's statuses section the list")
+        XCTAssertNil(bob.directRoom(with: try id(ada)), "a truncated listing says nothing for sure")
+    }
+
     func testAnAddTheServerRefusesIsReportedAndTheRoomIsKept() async throws {
         let server = try await started()
         let ada = try await account(server, "ada@example.com")

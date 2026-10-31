@@ -38,12 +38,12 @@ final class RoleMentionsTests: XCTestCase {
                 }
             }
         }
-        XCTAssertEqual(list(""), ["ada", "bram", "chiara", "eunji", "dev", "&announce:chiara,eunji", "&admin:ada", "&bot:dev"],
+        XCTAssertEqual(list(""), ["ada", "eunji", "bram", "chiara", "dev", "&announce:eunji,chiara", "&admin:ada", "&bot:dev"],
                        "five people, then roles in the three places left, most held first")
-        XCTAssertEqual(list("&"), ["&announce:chiara,eunji", "&admin:ada", "&bot:dev", "&mod:chiara"], "roles alone")
+        XCTAssertEqual(list("&"), ["&announce:eunji,chiara", "&admin:ada", "&bot:dev", "&mod:chiara"], "roles alone")
         XCTAssertEqual(list("&mo"), ["&mod:chiara"])
         XCTAssertEqual(list("bot"), ["&bot:dev"])
-        XCTAssertEqual(list("a"), ["ada", "bram", "chiara", "&announce:chiara,eunji", "&admin:ada"], "people containing it, roles starting with it")
+        XCTAssertEqual(list("a"), ["ada", "bram", "chiara", "&announce:eunji,chiara", "&admin:ada"], "people containing it, roles starting with it")
         XCTAssertEqual(home.suggestions(for: DraftField(text: "Ping @&mo"), in: "general"),
                        .mentions([.role(RoleSuggestion(role: "mod", members: ["chiara"]))]))
     }

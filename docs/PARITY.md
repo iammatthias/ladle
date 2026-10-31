@@ -178,7 +178,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Create a room with Private | #123 | has | `Rooms/RoomFormSheet.swift` (`privateChoice`), `Kit/ServerSession.swift` (`createRoom(…isPrivate:)`) | |
 | Private room that comes back public is refused | bh | has | `Kit/PrivateRooms.swift` (`PrivateRoomError.notPrivate`) | Nobody is added; the room stays joined to leave. |
 | New private conversation: people picker with chips, Name for groups | #123, #129 | has | `Rooms/NewPrivateSheet.swift`, `Rooms/PeoplePickerView.swift`, `Kit/PeoplePicker.swift`, `Kit/PrivateRooms.swift` (`startPrivateRoom`) | The button says Message or Start (the chips say who), short for the bar. |
-| Message on a profile card opens or starts the DM | #123 | has | `Profile/ProfileCardView.swift`, `Kit/PrivateRooms.swift` (`message(_:)`, `directRoom(with:)`) | The web skips a room whose listing is truncated (`member_count`); Ladle doesn't track `member_count` (section 10), so it trusts the members it holds. |
+| Message on a profile card opens or starts the DM | #123 | has | `Profile/ProfileCardView.swift`, `Kit/PrivateRooms.swift` (`message(_:)`, `directRoom(with:)`) | A room whose listing is truncated (`member_count`) is skipped, as the web does: it says nothing for sure. |
 | "Already talking · Open" | #123 | has | `Kit/PeoplePicker.swift` (`privatePeople`), `Rooms/PeoplePickerView.swift` | |
 | Private room limit "2 of 5" with Leave list (`ext.settings.private_rooms`) | #123 | has | `Kit/PrivateRooms.swift` (`privateRoomLimit`, `privateRoomQuota`, `privateRoomsQuietestFirst`), `Rooms/NewPrivateSheet.swift` (`QuotaLine`) | |
 | Private room intro card at the start of history | #124 | has | `Kit/PrivateRooms.swift` (`reachesStart`, `privateIntro`), `Timeline/PrivateRoomViews.swift` (`PrivateIntroCard`) | |
@@ -191,16 +191,16 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
 | Member list with Online and Offline sections and counts | #99, #101 | has | `Timeline/MemberList.swift` | |
-| Sections fold, remembered | bh | missing | | |
-| No status stays under Online; one list with no heading without presence | bh | missing | `Kit/Timeline.swift` (`memberSections`) | A member with no status counts as offline, and headings always show. |
-| Sort online, idle, dnd, unknown, offline, none | bh | partial | `Kit/Timeline.swift` | Two sections, by name within. |
+| Sections fold, remembered | bh | has | `Timeline/MemberList.swift` (`FoldHeading`, `memberOnlineOpen`, `memberOfflineOpen`) | "Online · 5" and "Offline · 1" fold away, open by default, kept on the device as the web's `apron.memberSections`. |
+| No status stays under Online; one list with no heading without presence | bh | has | `Kit/Timeline.swift` (`memberSections`, `MemberSection`) | Without capability `status`, or nobody with a status, one Members list with no heading. |
+| Sort online, idle, dnd, unknown, offline, none | bh | has | `Kit/Timeline.swift` (`MemberSection.rank`) | By name (then `user_id`) within each; your own invisible sorts as offline. The composer's `@` list follows the same order. |
 | Offline members dimmed | #101 | has | `Timeline/MemberList.swift` | |
-| `member_count` with a truncated list says so | bh | missing | | |
+| `member_count` with a truncated list says so | bh | has | `Kit/Records.swift` (`RoomDelivery.memberCount`), `Kit/ReplayStore.swift` (`memberCount(of:)`), `Kit/Timeline.swift` (`memberTotal`, `memberListNote`), `Timeline/MemberList.swift` | The bar counts the total; "Showing 3 of 1204: the most recently active" over the list. A complete listing clears the count. Place cards count the total too. |
 | Role badges, names first, "BOT +2" overflow | #39, #77, #131 | partial | `Design/People.swift` (`RoleBadges`) | Badges that don't fit are dropped. No "+2" count on the last one. |
 | `@user_id` beside a name only when another user shares it | #82 | has | `Kit/UserDirectory.swift` | |
 | One entry per user after a `user_id` change, aliases | #81, #83 | has | `Kit/UserDirectory.swift` (`rename`) | |
 | Initials on a hue hashed from `user_id` | bh | has | `Design/People.swift` (`Avatar`) | |
-| Profile card: avatar, name, `@user_id` with copy, roles, "(you)", same-name warning, bio, in-room | #47, #115, #116 | has | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` | A sheet. "Not among the recently active members" waits for `member_count` (gap 33). |
+| Profile card: avatar, name, `@user_id` with copy, roles, "(you)", same-name warning, bio, in-room | #47, #115, #116 | has | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` | A sheet. "Not among the recently active members of lobby" when the listing is truncated. |
 | Profile card: Message, Mention, Add to room | #123 | has | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` (`addMember`, `mayMessage`), `Kit/DraftField.swift` (`mention`) | |
 | Tap a mention chip, name, avatar, or member to open the profile | #149, #153, #161 | has | `Timeline/MessageRow.swift`, `Timeline/MemberList.swift`, `Timeline/TimelineView.swift`, `Kit/MessageText.swift` | A chip links `apron:?user=`; a link's `user` opens the card too. |
 | Member row menu: Profile, Direct message, Remove from room | #152, #161 | has | `Timeline/MemberList.swift`, `Kit/Members.swift` (`memberMenu`) | A tap opens the card; a long press, or a secondary click on iPad, opens the menu. Your own row has none. |
@@ -557,7 +557,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 30. **Client-side commands.** Handle `/nick`, `/join`, `/leave`, `/topic`, `/kick`, and `/invite` locally, as the web does, and give a failed command's draft back. S.
 31. ~~**Appearance.**~~ Done (`Kit/Appearance.swift`, `Kit/ResolvedTheme.swift`, `Servers/AppearanceView.swift`): mode, the premade themes, custom theme CSS and the theme fonts, as apron-web #174.
 32. ~~**Export and archive.**~~ Done (`Kit/Archive.swift`, `Kit/ArchiveServer.swift`, `Kit/ServerSession+Archive.swift`, `Archive/ArchiveViewer.swift`). Export loaded chats as `.jsonl`, with Include private rooms, and open an export read-only from Files. M.
-33. **Presence details.** An unknown status as a dashed placeholder with its value, the full status sort order, foldable member sections, and the `member_count` note. S.
+33. ~~**Presence details.**~~ Done (`Kit/Timeline.swift` `memberSections`, `Timeline/MemberList.swift`): the unknown status's dashed placeholder, the full status sort order, Online and Offline folding and remembered, one list without presence, `member_count` in the count, the note, the profile card and Message. "No members listed." for an empty listing came with it.
 34. **Composer details.** Standard emoji `:shortcode` autocomplete, mention chips in the field, and hardware-keyboard ↑ ↓ Tab Enter in every picker. S.
 35. **Timeline polish.** The floating day while scrolling, the mention pulse on arrival, the 3-second wait for thread listings on first show, and the welcome notice in the first room. S.
 36. **Keyboard shortcuts.** ⌘F for search (done with item 16), `x` to select, Alt+↑ and Alt+↓ to move a room, ← → in the image viewer, once the features behind them exist. S.

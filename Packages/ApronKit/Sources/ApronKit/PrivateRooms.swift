@@ -215,12 +215,14 @@ extension ServerSession {
     }
 
     /// The conversation you already have with someone: joined, private, top-level and untitled,
-    /// with exactly the two of you as members.
+    /// with exactly the two of you as members, from a complete listing: a truncated one
+    /// (`member_count`) says nothing for sure.
     public func directRoom(with userID: String) -> String? {
         guard let you, !isYou(userID) else { return nil }
         let id = users.current(userID)
         return privateRoomIDs.first { roomID in
-            guard isNamedForMembers(roomID), let members = store.members(of: roomID) else { return false }
+            guard isNamedForMembers(roomID), let members = store.members(of: roomID),
+                  store.memberCount(of: roomID) == nil else { return false }
             let ids = Set(members.map { users.current($0.userID) })
             return ids == [you.userID, id]
         }
