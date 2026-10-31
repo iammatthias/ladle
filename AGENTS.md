@@ -333,7 +333,8 @@ clone), which is only a worked example.
     `auth` sent clears them first). `pause` and `mute(of:)` read them at `Environment.now`, a
     thread taking its room's as `RoomMute.withRoom`; a timer drops ended ones, since the server's
     `mute: false` comes up to 15 s later. `profileLine` puts "Paused until …" first. `mayMute`
-    is capability `status` while signed in.
+    is capability `status` while signed in, and not as a guest without a token to sign back in
+    with (`resumable`, apron-web's `registeredSession`), whom apron-web offers neither Pause nor Mute.
   - Idle (`Attention.swift`, `ServerSession+Idle.swift`, §4.5 `idle`), as apron-web's
     `PagePresence`, `setIdle` and `syncIdle`: `SessionStore.attention` goes idle after 5 minutes
     without input (touches through the app's `InputWatcher`, and `composerChanged` via

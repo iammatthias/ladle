@@ -122,6 +122,9 @@ public final class ServerSession {
     public private(set) var unavailableMessage: String?
     /// Why the saved token stopped working, until the user signs in again.
     public private(set) var signInNeeded: String?
+    /// Whether this account has a token to sign back in with: false for a guest the server gave
+    /// none, whose `user_id` ends with its connection (apron-web's `registeredSession`).
+    public private(set) var resumable = false
     public private(set) var store = ReplayStore()
     public private(set) var users = UserDirectory()
     public private(set) var joinedRoomIDs: Set<String> = []
@@ -254,6 +257,7 @@ public final class ServerSession {
     /// Forgets the token and the account, and reconnects without an identity.
     public func signOut() async {
         try? tokens.setToken(nil, for: record.id)
+        resumable = false
         setAccount(nil)
         await stop()
         resetChatState()
@@ -328,6 +332,7 @@ public final class ServerSession {
                     status = .stopped(.signedOut)
                 case .credentialsRevoked(let reason):
                     try? tokens.setToken(nil, for: record.id)
+                    resumable = false
                     setAccount(nil)
                     signInNeeded = reason
                     status = .stopped(.signedOut)
@@ -392,6 +397,7 @@ public final class ServerSession {
             try await authenticate(.token(token), on: connection)
         } catch let error as RPCError where error.code == RPCError.Code.denied || error.code == RPCError.Code.invalidParams {
             try? tokens.setToken(nil, for: record.id)
+            resumable = false
             setAccount(nil)
             signInNeeded = error.message
             status = .signedOut
@@ -427,6 +433,7 @@ public final class ServerSession {
         var bearer = result["token"]?.stringValue
         if bearer == nil, case .token(let presented) = method { bearer = presented }
         try tokens.setToken(bearer, for: record.id)
+        resumable = bearer != nil
         you = identity
         chosenStatus = identity.json["status"]?.stringValue
         users.replace(with: identity)

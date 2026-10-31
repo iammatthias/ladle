@@ -5,8 +5,9 @@ import Foundation
 /// notification says so, which it sends to each of your connections, this one included. Each
 /// sign-in starts with none, and the server sends those in effect after its result.
 extension ServerSession {
-    /// Whether you may pause or mute here: capability `status`, signed in.
-    public var mayMute: Bool { server?.has("status") == true && status == .signedIn && you != nil }
+    /// Whether you may pause or mute here, as apron-web's `canPause` and `canMuteRoom`: capability
+    /// `status`, signed in, and not as a guest without a token to sign back in with.
+    public var mayMute: Bool { server?.has("status") == true && status == .signedIn && you != nil && (!isGuest || resumable) }
 
     /// Your pause, while it lasts.
     public var pause: MuteEnd? {

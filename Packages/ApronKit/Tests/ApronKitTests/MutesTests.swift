@@ -209,6 +209,33 @@ final class MutesTests: ScriptedSessionCase {
         XCTAssertNil(session.mute(of: "general"), "the server sends the mutes in effect after the result")
     }
 
+    /// apron-web offers Pause and Mute only to a registered session: not a guest the server gave
+    /// no token to sign back in with.
+    func testAGuestWithoutATokenCannotMuteOrPause() async throws {
+        let socket = queueTransport(capabilities: ["history", "rooms", "status"])
+        session.start()
+        await eventually("signed out") { session.status == .signedOut }
+        let signIn = Task { try await session.signIn(.guest(name: nil)) }
+        _ = await sent(socket, count: 2)
+        await socket.deliver(["id": "c1", "result": ["you": ["user_id": "guest-7", "name": "Guest"]]])
+        await socket.deliver(["id": "c2", "result": ["joined": []]])
+        _ = try await signIn.value
+        XCTAssertTrue(session.isGuest)
+        XCTAssertFalse(session.resumable)
+        XCTAssertFalse(session.mayMute)
+    }
+
+    func testAGuestWithATokenMayMute() async throws {
+        let socket = queueTransport(capabilities: ["history", "rooms", "status"])
+        session.start()
+        try await signIn(socket)
+        XCTAssertTrue(session.isGuest)
+        XCTAssertTrue(session.resumable)
+        XCTAssertTrue(session.mayMute)
+        await session.signOut()
+        XCTAssertFalse(session.resumable)
+    }
+
     func testWithoutTheStatusCapabilityThereIsNoMuting() async throws {
         let socket = queueTransport(capabilities: ["history", "rooms"])
         session.start()
