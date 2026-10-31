@@ -64,7 +64,8 @@ final class TimelineTests: XCTestCase {
         XCTAssertEqual(["ada", "bram", "chiara", "dev", "nobody"].map { home.presence(of: $0)?.label ?? "none" },
                        ["Online", "Idle", "Do not disturb", "Offline", "none"])
         XCTAssertEqual(Presence(["status": "invisible"]), .offline)
-        XCTAssertEqual(Presence(["status": "away"]), .online, "an unknown status shows as online")
+        XCTAssertEqual(Presence(["status": "away"]), .unknown, "an unknown status shows as unknown, with its value (§4.5.2)")
+        XCTAssertNil(Presence(["status": ""]), "no status")
     }
 
     func testAMessageSnapshotsDateEditAndMentions() async throws {

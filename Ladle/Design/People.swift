@@ -12,11 +12,12 @@ extension Presence {
         case .idle: Tokens.Color.presenceIdle.color()
         case .dnd: Tokens.Color.presenceDnd.color()
         case .offline: Tokens.Color.presenceOffline.color()
+        case .unknown: Tokens.Color.presenceUnknown.color()
         }
     }
 }
 
-/// The web's StatusDot: 8 pt by default (7 small, 12 large).
+/// The web's StatusDot: 8 pt by default (7 small, 12 large). An unknown status is a dashed ring.
 struct StatusDot: View {
     let presence: Presence
     var diameter: CGFloat = 8
@@ -36,6 +37,10 @@ struct StatusDot: View {
             case .offline:
                 let r = d * 0.25
                 shape = shape.subtracting(Path(ellipseIn: CGRect(x: d / 2 - r, y: d / 2 - r, width: r * 2, height: r * 2)))
+            case .unknown:
+                let ring = Path(ellipseIn: CGRect(origin: .zero, size: size).insetBy(dx: d * 0.125, dy: d * 0.125))
+                context.stroke(ring, with: .color(presence.color), style: StrokeStyle(lineWidth: d * 0.25, dash: [d * 0.3, d * 0.2]))
+                return
             }
             context.fill(shape, with: .color(presence.color))
         }

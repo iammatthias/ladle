@@ -24,6 +24,7 @@ enum Screen: String, CaseIterable {
     case linkCards = "link-cards", roomMention = "room-mention", selectText = "select-text"
     case reminder, reminderCustom = "reminder-custom"
     case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded"
+    case you
 }
 
 @MainActor
@@ -156,6 +157,8 @@ enum Renderer {
                         home.mediaSettings.loadOnce(URL(string: url)!)
                     }
                 })
+        case .you:
+            AnyView(YouView(session: home))
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))

@@ -285,7 +285,7 @@ Each section has one action button at its bottom, within reach.
 - If the connection drops, `pendingEmail` clears and the code no longer works on a new connection (§4.11.2). Say "The connection dropped, so that code no longer works. Send a new code." Never just "Invalid code".
 - A `retry_after` on Send Code counts down on the button.
 
-**Guest section.** No name field: the server picks a guest's name (Cloudflare's demo names every guest `Guest <n>` and ignores a requested one), so the section only says so. A guest account whose only way back is the saved token gets a callout in You (3.11), per §3.2.1's SHOULD.
+**Guest section.** No name field: the server picks a guest's name (Cloudflare's demo names every guest `Guest <n>` and ignores a requested one), so the section only says so. You (3.11) says how the account signs in; the callout for a guest or token-only account to add a way back (§3.2.1's SHOULD) is not built.
 
 **QR scanner.**
 
@@ -530,22 +530,22 @@ Status symbols also appear beside names in the room info member list. They scale
 - **Members**, with status, sorted online, idle, dnd, unknown, offline, then no status.
 - **Copy Link**, then **Leave** at the end.
 
-### 3.11 You (identity, status, and pause)
+### 3.11 You (profile and status)
 
-**Purpose.** Change how this server's account appears, and when it is quiet. Each server has its own You screen. **Entry.** The section menu **You**, or tap your own name in a timeline. **Layout.** A sheet with a grouped `Form`.
+**Purpose.** Change how this server's account appears, as apron-web's Preferences > Profile. Each server has its own. **Entry.** The profile bar at the foot of the room list (your face, your name, your status in words or else your `@user_id`, and a gear), or Edit Profile in the server pane (3.12). **Layout.** A sheet with a grouped `Form` (`YouView`). **Done** closes it; **Save** is on while the name or bio differs from what the server keeps.
 
 | Section | Rows | Protocol |
 |---|---|---|
-| Profile | Avatar, then a **Name** field that saves on Return or Done, then `@user_id` with copy | `me {name}` (§3.3.2). The result's `you` wins. |
-| Status (`status` capability) | A `Picker` with a checkmark on the current value. **Online** and **None**, plus **Do Not Disturb** and **Invisible** only if `server.status` lists them (§4.5.1) | `me {status}`. If the server answers a different value, show "This server set your status to None." |
-| Pause notifications (`status`, not for guests) | **Pause…** menu (For 1 hour, For 8 hours, Until tomorrow 9:00, Until I resume). Then the row shows "Paused until 14:30" with **Resume**. | `status {mute}`. The row shows the mute that the server sends back (§4.5.3). |
-| Sign-in | "Signed in with a token" (or email, or guest). **Add Email…** when `email` is offered and the account is a guest or token-only | An email proposal on the signed-in connection adds to the account (§4.11.1) |
+| Display Name | Your avatar with **Upload Avatar** or **Change Avatar** (where `/avatar` takes an upload) and **Remove Avatar** (when you have one), the **Display name** field, which saves on Return, and **Revert** while it differs. The footer reads "User ID assigned by server: @ada", selectable. | `/avatar` with an upload embed (§4.8.6); `me {avatar: ""}`; `me {name}` (§3.3.2). The result's `you` is complete and replaces what is kept. |
+| Bio (`ext:bio` or `ext`) | A multi-line field, "A few words about you, in plain text", with a count to 250 in the header that turns red over the limit | `me {ext: {bio}}`, cleaned as apron-web's `cleanBio`; `""` clears it. Sent before the name. |
+| Status (`status`, signed in) | A menu picker, **Show Me As**, each choice with its dot and hint: **Online** (Automatic) and **None** (Show no status) always, **Do not disturb** (Mutes notifications) and **Invisible** (Appear offline) only where `server.status` lists them (§4.5.1). The footer says what the current one means to others. | `me {status}`. |
+| Sign-in | How this account signs in, and **Sign Out** (3.12's confirmation). The footer reads "Signed in to Home as Ada." | |
 
-A guest or token-only account gets a callout at the top when the server offers email: "Your token is the only way back into this account. Add an email to sign in again later." This is §3.2.1's SHOULD.
+What the server did with a save shows under the name: "Saved." for two seconds, "The server saved your name as “Ada L.”" when it kept another, or "The server declined this name (…). Your old one is still in use." in red. A bio the server refuses as `too_large` says "Your bio is too long for this server. Try a shorter one." and the name is not sent.
 
-The footer of the Status and Pause sections reads "Ladle shows no notifications in this version. Pausing affects your other Apron apps." This is honest, because v1 has no push (4.3).
+When the server keeps another status than the one chosen, a callout under the picker says so: "This server doesn’t offer Do not disturb. Your status is None." for an optional one, which the picker then stops offering on this server, or "The server chose another status." A refusal, such as `retry_after`, reads "Your status didn’t change. The server declined Invisible (…)." and nothing changes (§4.5.3). VoiceOver announces the callout. Your chosen status comes only from `you` (§4.5.2); your own Invisible reads "Invisible · others see you as offline".
 
-A `retry_after` on a status change shows the countdown under the row, and nothing changes (§4.5.3).
+Not built yet: Pause notifications (PARITY gap 7), Add Email and the other ways to add a sign-in (gap 28).
 
 ### 3.12 Server Settings
 
@@ -788,7 +788,7 @@ The web-parity pass (2026-10-28) closed most of the list. "Partial" names what i
 | 8. Accessibility | Closed for the listed items. Rotors are not added. |
 | 9. Add Server and Sign In | Closed. One Connect sheet. |
 | 10. Confirmations | Closed. |
-| 11. Identity, status, mute, profile | Open. |
+| 11. Identity, status, mute, profile | Partial. You (3.11) edits the name, bio and avatar and picks a status. Mute and pause are not. |
 | 12. Lifecycle | Partial. Sessions stop in the background and start in the foreground, and a returning network reconnects. `status {idle: 0}` before backgrounding is not sent. |
 | 13. Threads | Partial. Posting into an unjoined room joins first. No Threads list, "Other threads", or unjoined-thread preview. |
 | 14. Reactions | Closed. Frequent six plus the system emoji keyboard; who reacted on long press and in VoiceOver. |

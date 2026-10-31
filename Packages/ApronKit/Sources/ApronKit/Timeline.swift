@@ -103,14 +103,19 @@ extension MessageSnapshot {
     public func mentions(_ userID: String) -> Bool { mentionIDs.contains(userID) }
 }
 
-/// A user's shown status (§4.5.1): their object's `status`, `invisible` showing as offline and
-/// an unknown value as online. The app gives each its own shape and color.
+/// A user's shown status (§4.5.1): their object's `status`, `invisible` (your own, chosen) showing
+/// as offline, and a value this client does not know as `unknown` (§4.5.2). No status, absent or
+/// `""`, is none. The app gives each its own shape and color.
 public enum Presence: String, Sendable {
-    case online, idle, dnd, offline
+    case online, idle, dnd, offline, unknown
 
     public init?(_ user: JSONValue?) {
-        guard let value = user?["status"]?.stringValue else { return nil }
-        self = Presence(rawValue: value) ?? (value == "invisible" ? .offline : .online)
+        self.init(status: user?["status"]?.stringValue)
+    }
+
+    public init?(status: String?) {
+        guard let status, !status.isEmpty else { return nil }
+        self = Presence(rawValue: status) ?? (status == "invisible" ? .offline : .unknown)
     }
 
     public var label: String {
@@ -119,12 +124,24 @@ public enum Presence: String, Sendable {
         case .idle: "Idle"
         case .dnd: "Do not disturb"
         case .offline: "Offline"
+        case .unknown: "Unknown status"
         }
+    }
+
+    /// A status in words, as apron-web's ProfileCard says it: an unknown one with its value, and
+    /// your own invisible as how others see you. Nil for no status.
+    public static func words(_ status: String?, yours: Bool) -> String? {
+        guard let presence = Presence(status: status) else { return nil }
+        if yours, status == "invisible" { return "Invisible · others see you as offline" }
+        return presence == .unknown ? "Unknown status: \(status ?? "")" : presence.label
     }
 }
 
 extension ServerSession {
-    public func presence(of userID: String) -> Presence? { Presence(users.user(userID)) }
+    /// Someone's shown status; for you, your chosen one (§4.5.2).
+    public func presence(of userID: String) -> Presence? {
+        isYou(userID) ? Presence(status: chosenStatus) : Presence(users.user(userID))
+    }
 }
 
 /// An image upload in a room, as the media viewer pages through them.

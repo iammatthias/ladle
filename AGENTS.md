@@ -282,6 +282,17 @@ clone), which is only a worked example.
     message, setting and removing one, Custom…'s first time, and that notice. A tapped notification's `userInfo` reads back as its key, and
     `RootView` opens it as a link to the message (reveal and highlight). Local notifications
     need no Info.plist key.
+  - `Profile` (`Profile.swift`): your own profile and status, as apron-web's Preferences >
+    Profile. `updateProfile` sends `me` (§3.3.2) and `adopt`s the complete `you` it returns
+    (kept object replaced, account name saved, a changed `user_id` followed as a rename).
+    `chosenStatus` is your chosen status, read only from a `you` (§4.5.2: others' objects about
+    you carry the shown one); `presence(of:)` reads it for you. `Bio` cleans a bio as apron-web's
+    `cleanBio` (250 code points); `keepsBio` is `ext:bio` or `ext`. `ProfileForm` is the You
+    sheet's name and bio; `save` sends a changed bio, then a changed name, and says what the
+    server kept. `StatusChoice.offered` is the picker (optional statuses only where
+    `server.status` lists them and not after the server answered otherwise for one),
+    `chooseStatus` sends `me {status}` and returns a `StatusAnswer` when the server kept another.
+    `Presence` has `unknown` for a value the client does not know (a dashed ring).
 - `Ladle/`: the app, views only; logic belongs in ApronKit where `swift test` reaches it. The
   design follows apron-web, the official web client (see "Design").
   `App/` (`RootView`: one pane at a time in compact width, a split view with the server rail,
@@ -300,6 +311,8 @@ clone), which is only a worked example.
   Copy, Look Up, Translate and Share, since an iOS `Text` selects only all of itself and its
   long press would compete with the row's menu;
   a server added through the Connect sheet opens once its sign-in succeeds),
+  `Profile/` (`YouView`: your avatar, name, bio, status and sign-out on one server, from the
+  profile bar; `signOutDialog`),
   `Servers/` (the server list and iPad rail, `PreferencesView`: the media policy and trusted sites, from the list's toolbar and the rail's foot, `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
   mention list, the custom emoji `:` list, the `#` room list and the command list (`CommandSuggestions`: usage and
@@ -405,7 +418,7 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), and media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room); the busy room at AX3; and the iPad
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), and the You sheet; the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with

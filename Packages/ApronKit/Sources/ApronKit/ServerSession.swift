@@ -102,6 +102,11 @@ public final class ServerSession {
     /// The latest `server` frame (§3.1).
     public private(set) var server: ServerInfo?
     public private(set) var you: UserObject?
+    /// Your chosen status (§4.5.1), taken only from `you` (§4.5.2): others' objects about you
+    /// carry the shown one. `""` is no status; nil, none known (the default, `online`).
+    public private(set) var chosenStatus: String?
+    /// Optional statuses this server answered something else for, which the picker stops offering.
+    public internal(set) var unsupportedStatuses: Set<String> = []
     /// The address a code was mailed to, while the proposing connection lasts (§4.11.2).
     public private(set) var pendingEmail: String?
     /// What the server said when it would not take a connection, such as "Demo temporarily
@@ -224,6 +229,7 @@ public final class ServerSession {
         await stop()
         resetChatState()
         you = nil
+        chosenStatus = nil
         start()
     }
 
@@ -389,6 +395,7 @@ public final class ServerSession {
         if bearer == nil, case .token(let presented) = method { bearer = presented }
         try tokens.setToken(bearer, for: record.id)
         you = identity
+        chosenStatus = identity.json["status"]?.stringValue
         users.replace(with: identity)
         pendingEmail = nil
         signInNeeded = nil
@@ -413,6 +420,18 @@ public final class ServerSession {
         if let kept = users.user(new).flatMap(UserObject.init) { you = kept }
         if let account = record.account {
             setAccount(ServerRecord.Account(userID: new, name: account.name, scheme: account.scheme))
+        }
+    }
+
+    /// A complete `you` from a `me` result (§3.3.1): it replaces what is kept, a changed `user_id`
+    /// is followed as a rename, and the saved account takes its name.
+    func adopt(_ identity: UserObject) {
+        if let you, you.userID != identity.userID { followRename(from: you.userID, to: identity.userID) }
+        users.replace(with: identity)
+        you = identity
+        chosenStatus = identity.json["status"]?.stringValue
+        if let account = record.account {
+            setAccount(ServerRecord.Account(userID: identity.userID, name: identity.json["name"]?.stringValue, scheme: account.scheme))
         }
     }
 
@@ -472,6 +491,7 @@ public final class ServerSession {
                 if let you, current.userID != you.userID { followRename(from: you.userID, to: current.userID) }
                 users.merge(current)
                 if current.userID == you?.userID, let kept = users.user(current.userID) { you = UserObject(kept) }
+                if current.userID == you?.userID, let chosen = current.json["status"]?.stringValue { chosenStatus = chosen }
             }
             if let current = UserObject(params?["new"]) {
                 if let old = UserObject(params?["old"]), old.userID != current.userID {

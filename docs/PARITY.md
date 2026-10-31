@@ -85,22 +85,22 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` is partl
 | Sidebar head: server avatar, title, host | #138 | has | `Servers/ServerListView.swift`, `Rooms/RoomListView.swift` title | |
 | Server pane: description, connection dot, who you are, address with copy, protocol version | #177 | missing | | Description shows only in the Connect sheet. |
 | Edit profile from the server pane | #177 | missing | | |
-| Profile bar: avatar, name, status line or "notifications paused", gear | #177 | partial | `Rooms/RoomListView.swift` (`profileBar`) | Shows avatar, name and server. No status line, paused badge, or Preferences. |
-| Edit display name (`me {name}`) | bh | missing | | Kit sends no `me` request. |
-| Edit bio (`ext:bio`) | #115 | missing | | |
-| Upload avatar (`/avatar` with an upload embed) | bh | has | `Rooms/RoomListView.swift`, `Kit/ServerSession+Uploads.swift` | |
-| Remove avatar (`me {avatar: ""}`) | bh | missing | | |
-| "User ID assigned by server: @ada" | #177 | missing | | |
-| Revert and Save for name and bio | #177, #179 | missing | | |
+| Profile bar: avatar, name, status line or "notifications paused", gear | #177 | partial | `Rooms/RoomListView.swift` (`profileBar`), `Kit/Profile.swift` (`profileLine`) | Avatar with your dot, name, your status in words or else `@user_id`, and a gear that opens You. No paused line until pause exists (gap 7). |
+| Edit display name (`me {name}`) | bh | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`save`) | Says when the server kept another name or declined it. |
+| Edit bio (`ext:bio`) | #115 | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`Bio`, `save`) | Cleaned as `cleanBio`, 250 code points, `too_large` explained. |
+| Upload avatar (`/avatar` with an upload embed) | bh | has | `Profile/YouView.swift`, `Kit/ServerSession+Uploads.swift` | |
+| Remove avatar (`me {avatar: ""}`) | bh | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`removeAvatar`) | |
+| "User ID assigned by server: @ada" | #177 | has | `Profile/YouView.swift` | |
+| Revert and Save for name and bio | #177, #179 | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`ProfileForm`) | |
 
 ## 5. Presence, status, and pause
 
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
 | Status dots: online, idle, dnd, offline | #48 | has | `Design/People.swift` (`StatusDot`), `Kit/Timeline.swift` (`Presence`) | |
-| Unknown status as a dashed placeholder with its value | bh | partial | `Kit/Timeline.swift:107` | An unknown value shows as online. |
-| Status picker: Online, None, Do not disturb, Invisible per `server.status` | #48 | missing | | No `me {status}`. |
-| Server answered another status: callout | bh | missing | | |
+| Unknown status as a dashed placeholder with its value | bh | has | `Design/People.swift` (`StatusDot`), `Kit/Timeline.swift` (`Presence.unknown`, `words`) | A dashed ring; the words say "Unknown status: away-ish". |
+| Status picker: Online, None, Do not disturb, Invisible per `server.status` | #48 | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`StatusChoice`, `chooseStatus`) | Your chosen status is read only from `you`. |
+| Server answered another status: callout | bh | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`StatusAnswer`) | An optional one it answered otherwise for is not offered again. |
 | Idle after 5 minutes, `status {idle}` reporting | #52 | missing | `App/RootView.swift` | UX.md 4.1 wants `{idle: 0}` on background. Not sent. |
 | Pause notifications (1 h, 8 h, until tomorrow, until I resume) | #48 | missing | | |
 | Pause set elsewhere shows here | bh | missing | | |
@@ -507,7 +507,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 
 1. **Code highlighting.** Every markdown block renders since deac4e3; fenced code still has no syntax highlighting. S.
 2. **Profile card.** Open it from a name, avatar, mention chip, or member row. Show `@user_id` with copy, roles, "(you)", the same-name warning, bio, last seen, and whether they're in the room. Offer Mention, Message, and Add to room. M.
-3. **Your profile and status.** Edit the display name and bio (`me`), remove the avatar, and pick a status (Online, None, Do not disturb, Invisible). Show the server's answer. Kit sends no `me` yet. M.
+3. ~~**Your profile and status.**~~ Done: You (`Profile/YouView.swift`) edits the name, bio and avatar and picks a status, with the server's answer.
 4. **Drafts per room.** Keep text, reply target, and attachments per room and thread, and persist them. Leaving a room drops the draft today. S.
 5. **Typing.** Send `activity typing` (15 s, refresh at most every 12 s) and show others typing above the composer. S.
 6. **Notifications and push.** Local alerts for other rooms while open, then APNs push through a §4.9.2 relay. Add Notify me about scopes, the per-device switch, the first-mention offer, the app badge, tap to open, closing notifications once read, and a test notification. Push, never polling. L.

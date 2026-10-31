@@ -61,7 +61,8 @@ public enum PreviewFixtures {
 
     private static let greeting: JSONValue = [
         "apron": 9, "auth": ["token", "guest"], "agent": "aprond/0.9",
-        "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity", "command", "embed:upload", "ext:emoji"],
+        "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity", "command", "embed:upload", "ext", "ext:emoji"],
+        "status": ["dnd", "invisible"],
         "ext": ["emoji": ["catalog_url": "https://home.example/emoji/catalog.json"]],
     ]
 
@@ -106,11 +107,12 @@ public enum PreviewFixtures {
     }()
 
     private static let people: [String: JSONValue] = [
-        "sam": ["user_id": "sam", "name": "Sam", "status": "online"],
-        "ada": ["user_id": "ada", "name": "Ada Okafor", "status": "online", "roles": ["admin"]],
+        "sam": ["user_id": "sam", "name": "Sam", "status": "online", "ext": ["bio": "Writes Ladle. Mostly on the train."]],
+        "ada": ["user_id": "ada", "name": "Ada Okafor", "status": "online", "roles": ["admin"],
+                "ext": ["bio": "Runs this server. Ask me about the paging floor, or soup."]],
         "bram": ["user_id": "bram", "name": "Bram", "status": "idle"],
         "chiara": ["user_id": "chiara", "name": "Chiara", "status": "dnd", "roles": ["mod", "announce"]],
-        "dev": ["user_id": "dev", "name": "Dev", "status": "offline", "roles": ["bot"]],
+        "dev": ["user_id": "dev", "name": "Dev", "status": "offline", "seen": .string(message(-180)), "roles": ["bot"]],
         "eunji": ["user_id": "eunji", "name": "Eun-ji", "status": "online", "roles": ["announce"]],
     ]
 

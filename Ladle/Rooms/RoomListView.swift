@@ -1,5 +1,4 @@
 import ApronKit
-import PhotosUI
 import SwiftUI
 
 /// One server's rooms, as the web's sidebar: a "Rooms" section of rows, threads under their room
@@ -17,10 +16,7 @@ struct RoomListView: View {
     @State private var newTitle = ""
     @State private var problem: String?
     @State private var leaving: String?
-    @State private var signingOut = false
-    @State private var pickingAvatar = false
-    @State private var avatarItem: PhotosPickerItem?
-    @State private var settingAvatar = false
+    @State private var editingProfile = false
 
     /// A room to create: top level, or a thread under `parent`.
     struct NewRoom: Identifiable {
@@ -79,13 +75,7 @@ struct RoomListView: View {
         } message: { roomID in
             Text(session.isPrivate(roomID) ? "It is private, so you need an invitation to come back." : "You can join it again from Browse Rooms.")
         }
-        .confirmationDialog("Sign out of \(session.serverName)?", isPresented: $signingOut, titleVisibility: .visible) {
-            Button("Sign Out", role: .destructive) { Task { await session.signOut() } }
-        } message: {
-            Text(session.record.account?.scheme == "guest" || session.record.account?.scheme == "token"
-                 ? "This account signs in only with its token, which is deleted. You may not get back into it."
-                 : "You can sign in again with the same method.")
-        }
+        .sheet(isPresented: $editingProfile) { YouView(session: session) }
     }
 
     // MARK: Rows
@@ -155,27 +145,22 @@ struct RoomListView: View {
         }
     }
 
-    /// The web's ProfileBar: you, and the server you are on.
+    /// The web's ProfileBar: you, your status in words (else your `@user_id`), and the gear that
+    /// opens your profile.
     @ViewBuilder
     private var profileBar: some View {
         if let you = session.you {
             let name = session.displayName(for: you)
-            Menu {
-                Section(name + " on " + session.serverName) {
-                    if session.canSetAvatar {
-                        Button("Change Avatar", systemImage: "person.crop.circle") { pickingAvatar = true }
-                    }
-                    Button("Sign Out", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { signingOut = true }
-                }
-            } label: {
+            let line = session.profileLine
+            Button { editingProfile = true } label: {
                 HStack(spacing: Tokens.Space.s2) {
-                    Avatar(name: name, userID: you.userID, presence: session.presence(of: you.userID) ?? .online, image: session.avatarURL(of: you.userID))
-                        .overlay { if settingAvatar { ProgressView().controlSize(.small) } }
+                    Avatar(name: name, userID: you.userID, presence: session.presence(of: you.userID), image: session.avatarURL(of: you.userID))
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(name).apText(.ui, .semibold).foregroundStyle(Palette.ink)
-                        Text("on \(session.serverName)").apText(.sm).foregroundStyle(Palette.inkMuted)
+                        Text(name).apText(.ui, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
+                        if let line { Text(line).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1) }
                     }
                     Spacer(minLength: 0)
+                    Image(systemName: "gearshape").foregroundStyle(Palette.inkMuted).accessibilityHidden(true)
                 }
                 .padding(.horizontal, Tokens.Space.s4)
                 .padding(.vertical, Tokens.Space.s2)
@@ -185,28 +170,8 @@ struct RoomListView: View {
             .buttonStyle(.plain)
             .background(Palette.chrome)
             .overlay(alignment: .top) { Rectangle().fill(Palette.line).frame(height: 1) }
-            .accessibilityLabel("Your profile on \(session.serverName): \(name)")
-            .photosPicker(isPresented: $pickingAvatar, selection: $avatarItem, matching: .images, preferredItemEncoding: .compatible)
-            .onChange(of: avatarItem) {
-                guard let item = avatarItem else { return }
-                avatarItem = nil
-                setAvatar(from: item)
-            }
-        }
-    }
-
-    /// Crops the picked image to the avatar the server takes, then sends it with `/avatar`
-    /// (§4.8.6). The server sends `user` with the new avatar once it is written.
-    private func setAvatar(from item: PhotosPickerItem) {
-        let limits = session.mediaLimits?.avatar
-        settingAvatar = true
-        perform {
-            defer { settingAvatar = false }
-            guard let file = try await item.loadTransferable(type: ImportedFile.self) else { throw CocoaError(.fileReadUnknown) }
-            let avatar = try await Task.detached {
-                try AttachmentPreparer.prepareAvatar(file.url, limits: limits, into: AttachmentStaging.directory)
-            }.value
-            try await session.setAvatar(avatar)
+            .accessibilityLabel("Your profile on \(session.serverName): \(name)" + (line.map { ", \($0)" } ?? ""))
+            .accessibilityHint("Opens your profile and status")
         }
     }
 
