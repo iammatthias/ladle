@@ -293,6 +293,9 @@ clone), which is only a worked example.
     `server.status` lists them and not after the server answered otherwise for one),
     `chooseStatus` sends `me {status}` and returns a `StatusAnswer` when the server kept another.
     `Presence` has `unknown` for a value the client does not know (a dashed ring).
+  - `ServerPane` (`ServerPane.swift`): `ServerSession.pane`, the server pane's facts as
+    apron-web's ServerPane: name, host, description, the connection in words with a tone,
+    "Signed in as Ada (guest)", the address, and "Apron 9".
   - `UserProfile` (`UserProfile.swift`): what a profile card shows, as apron-web's ProfileCard:
     `ServerSession.profile(of:in:)` gives the plain name (`UserDirectory.plainName`) and
     `sharesName`, the status in words, `LastSeen` (only while offline, never yours), roles, bio,
@@ -320,7 +323,9 @@ clone), which is only a worked example.
   a server added through the Connect sheet opens once its sign-in succeeds),
   `Profile/` (`YouView`: your avatar, name, bio, status and sign-out on one server, from the
   profile bar; `signOutDialog`; `ProfileCardView`: someone's card, from a sender's avatar or
-  name, a mention chip, a member row or a link's `user`),
+  name, a mention chip, a member row or a link's `user`; `ServerPaneView`: the server pane, from
+  the room list's title or, on iPad, its server head, with Edit Profile, Connect to Another
+  Server… and Disconnect, which signs out of that server),
   `Servers/` (the server list and iPad rail, `PreferencesView`: the media policy and trusted sites, from the list's toolbar and the rail's foot, `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/`, `Timeline/` (messages, composer with the
   mention list, the custom emoji `:` list, the `#` room list and the command list (`CommandSuggestions`: usage and
@@ -426,7 +431,7 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards and a room chip (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen); the busy room at AX3; and the iPad
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block (the markdown room), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it); the busy room at AX3; and the iPad
 split view at 1180x820 pt (regular width) in dark and light. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with

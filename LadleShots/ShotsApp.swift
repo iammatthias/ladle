@@ -24,7 +24,7 @@ enum Screen: String, CaseIterable {
     case linkCards = "link-cards", roomMention = "room-mention", selectText = "select-text"
     case reminder, reminderCustom = "reminder-custom"
     case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded"
-    case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline"
+    case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline", serverPane = "server-pane", serverPaneDemo = "server-pane-demo", mentionChip = "mention-chip"
 }
 
 @MainActor
@@ -163,6 +163,16 @@ enum Renderer {
             AnyView(ProfileCardView(session: home, request: ProfileRequest(user: UserObject(["user_id": "ada"])!, roomID: "ops")))
         case .profileCardOffline:
             AnyView(ProfileCardView(session: home, request: ProfileRequest(user: UserObject(["user_id": "dev"])!, roomID: PreviewFixtures.busyRoomID)))
+        case .mentionChip:
+            // Eun-ji's "@Sam", revealed and highlighted as a link to it opens it.
+            AnyView(NavigationStack {
+                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders,
+                             place: .constant(ApronLink(room: PreviewFixtures.busyRoomID, message: LogID("1793092500000"))))
+            })
+        case .serverPane:
+            AnyView(ServerPaneView(session: home))
+        case .serverPaneDemo:
+            AnyView(Group { if let demo = store.session(for: PreviewFixtures.demoID) { ServerPaneView(session: demo) } })
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))

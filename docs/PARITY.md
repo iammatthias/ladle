@@ -4,7 +4,7 @@ This is the backlog of record for parity with apron-web. The rule is that every 
 
 The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`. It carries upstream through #178 and #179, plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
 
-Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` is partly stale: sections 3.10 to 3.12 describe screens that the code does not have yet.
+Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections 3.10 to 3.12 describe the profile card, You and the server pane as built.
 
 ## How to read the tables
 
@@ -83,8 +83,8 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` is partl
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
 | Sidebar head: server avatar, title, host | #138 | has | `Servers/ServerListView.swift`, `Rooms/RoomListView.swift` title | |
-| Server pane: description, connection dot, who you are, address with copy, protocol version | #177 | missing | | Description shows only in the Connect sheet. |
-| Edit profile from the server pane | #177 | missing | | |
+| Server pane: description, connection dot, who you are, address with copy, protocol version | #177 | has | `Profile/ServerPaneView.swift`, `Kit/ServerPane.swift` | From the room list's title, and on iPad the sidebar head. Connect to Another Server… opens Connect; Disconnect signs out of this server after a confirmation, since Ladle keeps every server. |
+| Edit profile from the server pane | #177 | has | `Profile/ServerPaneView.swift`, `Rooms/RoomListView.swift` | Opens You. |
 | Profile bar: avatar, name, status line or "notifications paused", gear | #177 | partial | `Rooms/RoomListView.swift` (`profileBar`), `Kit/Profile.swift` (`profileLine`) | Avatar with your dot, name, your status in words or else `@user_id`, and a gear that opens You. No paused line until pause exists (gap 7). |
 | Edit display name (`me {name}`) | bh | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`save`) | Says when the server kept another name or declined it. |
 | Edit bio (`ext:bio`) | #115 | has | `Profile/YouView.swift`, `Kit/Profile.swift` (`Bio`, `save`) | Cleaned as `cleanBio`, 250 code points, `too_large` explained. |
@@ -526,7 +526,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 19. **Streams and terminal output.** Read a stream's `url` live with a Live badge. Render `terminal` with ANSI colors and carriage-return overwrite. Only from the server's origin. M.
 20. **Apron link chips.** Draw Apron links as chips that say what they are ("Message in #general"), and other-server links as a globe chip. S.
 21. **Rate limit feedback.** Count down "Sending is paused", show "Uploads are paused", and refuse reactions, joins, and leaves during a pause with the server's words. S.
-22. **Server pane.** Show the server's description, connection dot, who you are, the address with copy, and the protocol version. Add Disconnect that keeps the saved session. S.
+22. ~~**Server pane.**~~ Done (`Profile/ServerPaneView.swift`). Disconnect signs out of that server, with a confirmation; a disconnect that keeps the saved session is not offered, since each server keeps its own connection.
 23. **Reconnect feedback.** A floating pill with the 400/600/300 ms timing, "Checking for new messages…", the catching-up line under the header, and your own dot as a dashed ring while reconnecting. S.
 24. **Idle reporting.** Send `status {idle}` on background and after 5 minutes without input, and `{idle: false}` on return. S.
 25. **Sign-in QR display.** Show a sign-in link from a `~private` notice as a QR code behind a warning, so a second device can scan it. S.

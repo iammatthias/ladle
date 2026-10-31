@@ -5,18 +5,32 @@ import SwiftUI
 /// on a guide line with their description and latest message, and the profile bar at the foot.
 /// The open room has a neutral fill and an accent bar; an unread room is set in ink and
 /// semibold with its count, and a mention of you is an `@` count. Connection problems and
-/// sign-in show as a banner at the top, never an alert or a sheet that opens by itself.
+/// sign-in show as a banner at the top, never an alert or a sheet that opens by itself. The
+/// title (on iPad, the head above the rooms, as the web's sidebar head) opens the server pane,
+/// and the profile bar opens You.
 struct RoomListView: View {
     let session: ServerSession
     var selected: String?
     let open: (String) -> Void
     var onSignIn: () -> Void = {}
+    /// Connect to Another Server…: the Connect sheet for a new server.
+    var onConnect: () -> Void = {}
+    /// The iPad sidebar, whose navigation bar is hidden: the server's head leads the list.
+    var showsServerHead = false
     @State private var browsing = false
     @State private var naming: NewRoom?
     @State private var newTitle = ""
     @State private var problem: String?
     @State private var leaving: String?
-    @State private var editingProfile = false
+    @State private var panel: Panel?
+    /// What the server pane asked for, once it has gone.
+    @State private var afterPanel: (() -> Void)?
+
+    /// The sheets this list opens: the server pane, and You.
+    enum Panel: String, Identifiable {
+        case server, you
+        var id: String { rawValue }
+    }
 
     /// A room to create: top level, or a thread under `parent`.
     struct NewRoom: Identifiable {
@@ -26,6 +40,9 @@ struct RoomListView: View {
 
     var body: some View {
         List {
+            if showsServerHead {
+                serverHead.listRowBackground(Color.clear).listRowSeparator(.hidden)
+            }
             if let banner = bannerView { banner.listRowBackground(Color.clear).listRowSeparator(.hidden) }
             Section {
                 ForEach(session.roomTree) { node in
@@ -58,6 +75,18 @@ struct RoomListView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { profileBar }
         .navigationTitle(session.serverName)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .principal) {
+                Button { panel = .server } label: {
+                    HStack(spacing: Tokens.Space.s1) {
+                        Text(session.serverName).font(.headline).foregroundStyle(Palette.ink).lineLimit(1)
+                        Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Palette.inkMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("\(session.serverName), server details")
+            }
+        }
         .sheet(isPresented: $browsing) { BrowseRoomsView(session: session) }
         .alert(naming?.parent == nil ? "New Room" : "New Thread", isPresented: Binding(get: { naming != nil }, set: { if !$0 { naming = nil } })) {
             TextField("Title", text: $newTitle)
@@ -75,7 +104,37 @@ struct RoomListView: View {
         } message: { roomID in
             Text(session.isPrivate(roomID) ? "It is private, so you need an invitation to come back." : "You can join it again from Browse Rooms.")
         }
-        .sheet(isPresented: $editingProfile) { YouView(session: session) }
+        .sheet(item: $panel, onDismiss: {
+            afterPanel?()
+            afterPanel = nil
+        }) { panel in
+            switch panel {
+            case .server:
+                ServerPaneView(session: session, onEditProfile: { afterPanel = { self.panel = .you } }, onConnect: { afterPanel = onConnect })
+            case .you:
+                YouView(session: session)
+            }
+        }
+    }
+
+    /// The web's sidebar head on iPad: the server's face, name and host, which open its pane.
+    private var serverHead: some View {
+        Button { panel = .server } label: {
+            HStack(spacing: Tokens.Space.s2) {
+                RailTile(label: session.serverName, image: session.serverAvatarURL, active: false)
+                    .scaleEffect(0.8)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(session.serverName).apText(.ui, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
+                    Text(session.record.url.host() ?? "").apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
+                }
+                Spacer(minLength: 0)
+                Image(systemName: "chevron.down").imageScale(.small).foregroundStyle(Palette.inkMuted)
+            }
+            .frame(minHeight: Tokens.Size.touchTarget)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(session.serverName), server details")
     }
 
     // MARK: Rows
@@ -152,7 +211,7 @@ struct RoomListView: View {
         if let you = session.you {
             let name = session.displayName(for: you)
             let line = session.profileLine
-            Button { editingProfile = true } label: {
+            Button { panel = .you } label: {
                 HStack(spacing: Tokens.Space.s2) {
                     Avatar(name: name, userID: you.userID, presence: session.presence(of: you.userID), image: session.avatarURL(of: you.userID))
                     VStack(alignment: .leading, spacing: 0) {

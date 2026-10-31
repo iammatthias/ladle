@@ -72,7 +72,8 @@ struct RootView: View {
                     case .server(let id):
                         if let session = store.session(for: id) {
                             RoomListView(session: session, open: { path.append(.room(id, $0)) },
-                                         onSignIn: { connecting = ConnectRequest(record: session.record) })
+                                         onSignIn: { connecting = ConnectRequest(record: session.record) },
+                                         onConnect: { connecting = ConnectRequest() })
                                 .resolvingLinks(from: session)
                                 .onAppear { serverID = id.uuidString; roomID = nil }
                         }
@@ -189,7 +190,8 @@ struct SplitLayout: View {
                 if let session {
                     NavigationStack {
                         RoomListView(session: session, selected: roomID, open: { roomID = $0 },
-                                     onSignIn: { connecting = ConnectRequest(record: session.record) })
+                                     onSignIn: { connecting = ConnectRequest(record: session.record) },
+                                     onConnect: { connecting = ConnectRequest() }, showsServerHead: true)
                             .resolvingLinks(from: session)
                     }
                 } else {

@@ -550,23 +550,19 @@ When the server keeps another status than the one chosen, a callout under the pi
 
 Not built yet: Pause notifications (PARITY gap 7), Add Email and the other ways to add a sign-in (gap 28).
 
-### 3.12 Server Settings
+### 3.12 Server pane
 
-**Purpose.** Account and connection for one server. **Layout.** A sheet with a grouped `Form`.
+**Purpose.** Which server this is, how the connection stands, who you are there, and the way to another server or out of this one, as apron-web's ServerPane (#177). **Entry.** The room list's title, "Home ⌄", on iPhone; on iPad the head above the rooms (the server's tile, name and host), as the web's sidebar head. **Layout.** A sheet at `.medium` height (`ServerPaneView`).
 
-1. **Account.** "Signed in as Ada (@ada)" opens You. **Sign Out** is a destructive row.
-2. **Connection.** **Name**, **Address**, and **Origin** with the 3.2 footer. Changing the address or origin reconnects (`SessionStore.update`), and the section header shows the quiet status.
-3. **About this server.** Collapsed. `agent`, protocol version, capabilities, and sign-in schemes, for debugging.
-4. **Remove Server** is a destructive row at the end.
+1. **Head.** The server's avatar, or its initials on a tile, its name (3.1's `serverName`), then a dot and the connection in words with the host: green "Connected", amber "Connecting…" or "Reconnecting…", red "Not connected" or what stopped it (4.1's words).
+2. **Description.** The server's `description` as CommonMark, with custom emoji.
+3. **You.** "Signed in as Ada", with "(guest)" for a guest, and **Edit Profile**, which opens You (3.11).
+4. **Address.** The WebSocket address, selectable, with a copy button that turns to a check for a moment, and the protocol version, "Apron 9".
+5. **Actions.** **Connect to Another Server…** opens the Connect sheet (3.2) for a new server. **Disconnect** signs out of this server only: Ladle keeps several servers side by side, so the web's Disconnect, which leaves its one server for the connect screen, maps to signing out here. The others stay connected.
 
-**Sign Out confirmation.** The text depends on how you signed in:
+**Sign Out confirmation**, from Disconnect and from You's Sign Out: "Sign out of Home?" with "This account signs in only with its token, which is deleted. You may not get back into it." for a token or guest account, and "You can sign in again with the same method." otherwise. The Keychain item is `ThisDeviceOnly`, and Ladle never shows the token, so for token-only accounts the loss is real.
 
-- Token, or guest without email: "Sign out of chat.example? You'll need a new token to sign back in, and a guest account can't be recovered."
-- Email: "Sign out of chat.example? You can sign back in with a code sent to your email."
-
-The Keychain item is `ThisDeviceOnly`, and Ladle never shows the token, so for token-only accounts the loss is real.
-
-**Remove Server confirmation.** "Remove chat.example from Ladle? This signs you out and deletes its saved messages on this device."
+The server's name, address and origin are edited in the Connect sheet (Edit on the server list), and **Remove Server** stays on the server list's swipe and menu, with its confirmation: "Ladle forgets this server and its sign-in. …". The `agent`, capabilities and schemes are not shown.
 
 ### 3.13 Connection and error states
 
@@ -791,7 +787,7 @@ The web-parity pass (2026-10-28) closed most of the list. "Partial" names what i
 | 8. Accessibility | Closed for the listed items. Rotors are not added. |
 | 9. Add Server and Sign In | Closed. One Connect sheet. |
 | 10. Confirmations | Closed. |
-| 11. Identity, status, mute, profile | Partial. You (3.11) edits the name, bio and avatar and picks a status; the profile card (3.10) is in. Mute and pause are not. |
+| 11. Identity, status, mute, profile | Partial. You (3.11) edits the name, bio and avatar and picks a status; the profile card (3.10) and the server pane (3.12) are in. Mute and pause are not. |
 | 12. Lifecycle | Partial. Sessions stop in the background and start in the foreground, and a returning network reconnects. `status {idle: 0}` before backgrounding is not sent. |
 | 13. Threads | Partial. Posting into an unjoined room joins first. No Threads list, "Other threads", or unjoined-thread preview. |
 | 14. Reactions | Closed. Frequent six plus the system emoji keyboard; who reacted on long press and in VoiceOver. |
