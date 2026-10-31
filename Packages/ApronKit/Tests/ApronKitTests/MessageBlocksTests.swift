@@ -76,7 +76,7 @@ final class MessageBlocksTests: XCTestCase {
 
     func testAnEscapedPipeIsALiteralMentionsAreMarkedInCellsAndCellsStaySafe() {
         XCTAssertEqual(md("| cmd | who |\n|---|---|\n| `a \\| b` | @alice |", mentions: ["alice": "Alice"]),
-                       "<table leading,leading><tr><th>cmd</th><th>who</th></tr><tr><td>`a | b`</td><td>{@alice}</td></tr></table>")
+                       "<table leading,leading><tr><th>cmd</th><th>who</th></tr><tr><td>`a | b`</td><td>[{@alice}](apron:?user=alice)</td></tr></table>")
         XCTAssertEqual(md("| a | b |\n|---|---|\n| <img src=x onerror=alert(1)> | [x](javascript:alert(1)) |"),
                        "<table leading,leading><tr><th>a</th><th>b</th></tr><tr><td><img src=x onerror=alert(1)></td><td>x</td></tr></table>")
     }
@@ -119,7 +119,7 @@ final class MessageBlocksTests: XCTestCase {
         XCTAssertEqual(md("`:a:` and\n\n```\n:b:\n```", emoji: catalog), "<p>`:a:` and</p><pre>:b:</pre>")
         XCTAssertEqual(md("**https://example.com**"), "<p>[**https://example.com**](https://example.com)</p>")
         XCTAssertEqual(md("```\nhttps://example.com\n```"), "<pre>https://example.com</pre>")
-        XCTAssertEqual(md("`@alice` @alice", mentions: ["alice": "Alice"]), "<p>`@alice` {@alice}</p>")
+        XCTAssertEqual(md("`@alice` @alice", mentions: ["alice": "Alice"]), "<p>`@alice` [{@alice}](apron:?user=alice)</p>")
         XCTAssertEqual(md("# Ship :a:\n\n> (see https://example.com/x).", emoji: catalog),
                        "<h1>Ship {emoji :a:}</h1><blockquote><p>(see [https://example.com/x](https://example.com/x)).</p></blockquote>")
     }

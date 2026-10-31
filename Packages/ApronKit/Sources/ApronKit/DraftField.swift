@@ -95,6 +95,14 @@ public struct DraftField: Sendable {
         mentions[userID] = name
     }
 
+    /// Mentions a user picked elsewhere, as a profile card's Mention: `@name ` at the end of the
+    /// text, after a space when the text does not end in one.
+    public mutating func mention(_ userID: String, named name: String) {
+        if let last = text.last, !last.isWhitespace { text += " " }
+        text += "@\(name) "
+        mentions[userID] = name
+    }
+
     /// Puts the emoji's key in place of the `:name` being typed, then a space.
     public mutating func insert(_ emoji: CustomEmoji) {
         guard let colon = text.range(of: ":", options: .backwards) else { return }

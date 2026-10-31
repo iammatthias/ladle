@@ -72,7 +72,8 @@ public enum MessageText {
     }
 
     /// Each `@name` or `@user_id` of a mentioned user (`mentions`: `user_id` to name), outside
-    /// code and links, as a chip (`MentionKey`).
+    /// code and links, as a chip (`MentionKey`) linked to the user (`ApronLink.relative(user:)`),
+    /// which opens their profile.
     private static func markMentions(in out: inout AttributedString, _ mentions: [String: String], you: String?) {
         for (id, name) in mentions {
             for token in Set(["@" + name, "@" + id]) {
@@ -81,6 +82,7 @@ public enum MessageText {
                     search = range.upperBound ..< out.endIndex
                     if out[range].runs.contains(where: { $0.link != nil || $0.inlinePresentationIntent?.contains(.code) == true }) { continue }
                     out[range][MentionKey.self] = MentionChip(userID: id, isYou: id == you)
+                    out[range].link = ApronLink.relative(user: id)
                 }
             }
         }

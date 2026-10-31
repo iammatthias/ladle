@@ -24,7 +24,7 @@ enum Screen: String, CaseIterable {
     case linkCards = "link-cards", roomMention = "room-mention", selectText = "select-text"
     case reminder, reminderCustom = "reminder-custom"
     case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded"
-    case you
+    case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline"
 }
 
 @MainActor
@@ -159,6 +159,10 @@ enum Renderer {
                 })
         case .you:
             AnyView(YouView(session: home))
+        case .profileCard:
+            AnyView(ProfileCardView(session: home, request: ProfileRequest(user: UserObject(["user_id": "ada"])!, roomID: "ops")))
+        case .profileCardOffline:
+            AnyView(ProfileCardView(session: home, request: ProfileRequest(user: UserObject(["user_id": "dev"])!, roomID: PreviewFixtures.busyRoomID)))
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))

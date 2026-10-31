@@ -55,12 +55,22 @@ public struct UserDirectory: Hashable, Sendable {
     /// another known user has the same name (§3.3.1).
     public func displayName(for user: UserObject) -> String {
         let id = current(user.userID)
-        let name = name(of: id, recorded: user.json)
-        guard let name else { return TextDirection.withoutOverrides(id) }
-        let clash = kept.contains { userID, fields in
-            userID != id && fields["name"]?.stringValue == name
-        }
-        return clash ? "\(TextDirection.isolated(name)) (@\(id))" : TextDirection.withoutOverrides(name)
+        guard let name = name(of: id, recorded: user.json) else { return TextDirection.withoutOverrides(id) }
+        return sharesName(user) ? "\(TextDirection.isolated(name)) (@\(id))" : TextDirection.withoutOverrides(name)
+    }
+
+    /// The name alone, as a profile card heads it: the kept `name`, else the recorded one, else
+    /// the `user_id`, without bidirectional overrides.
+    public func plainName(for user: UserObject) -> String {
+        let id = current(user.userID)
+        return TextDirection.withoutOverrides(name(of: id, recorded: user.json) ?? id)
+    }
+
+    /// Whether another known user has this user's name (§3.3.1), so the `@user_id` must show.
+    public func sharesName(_ user: UserObject) -> Bool {
+        let id = current(user.userID)
+        guard let name = name(of: id, recorded: user.json) else { return false }
+        return kept.contains { userID, fields in userID != id && fields["name"]?.stringValue == name }
     }
 
     private func name(of userID: String, recorded: JSONValue) -> String? {

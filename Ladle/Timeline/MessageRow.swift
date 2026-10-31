@@ -15,6 +15,8 @@ struct MessageRow: View {
     var onReact: (String) -> Void = { _ in }
     var onAddReaction: () -> Void = {}
     var onJump: (LogID) -> Void = { _ in }
+    /// Opens the sender's profile card, from their avatar or name.
+    var onProfile: () -> Void = {}
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.fixedTypeSize) private var fixedTypeSize
     @Environment(\.liveSessions) private var liveSessions
@@ -41,12 +43,21 @@ struct MessageRow: View {
                 } else if continues {
                     Color.clear.frame(width: Tokens.AvatarSize.md, height: 1)
                 } else {
-                    Avatar(name: name, userID: message.from.userID, image: session.avatarURL(of: message.from.userID)).padding(.top, 2)
+                    Button(action: onProfile) {
+                        Avatar(name: name, userID: message.from.userID, image: session.avatarURL(of: message.from.userID))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
                 }
                 VStack(alignment: .leading, spacing: 0) {
                     if !continues {
                         HStack(alignment: .center, spacing: Tokens.Space.s2) {
-                            if compact { Avatar(name: name, userID: message.from.userID, size: .sm, image: session.avatarURL(of: message.from.userID)) }
+                            if compact {
+                                Button(action: onProfile) {
+                                    Avatar(name: name, userID: message.from.userID, size: .sm, image: session.avatarURL(of: message.from.userID))
+                                }
+                                .buttonStyle(.plain)
+                            }
                             head(row)
                         }
                     }
@@ -71,6 +82,7 @@ struct MessageRow: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(row.spoken(reminderDue: reminderDue, now: .now))
+        .accessibilityAction(named: "\(name)’s Profile", onProfile)
         .task(id: session.server?.emojiCatalogURL) {
             if session.needsEmojiCatalog(message) { await session.loadEmojiCatalog() }
         }
@@ -78,8 +90,11 @@ struct MessageRow: View {
 
     private func head(_ row: MessageRowModel) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: Tokens.Space.s2) {
-            Text(row.name).apText(.body, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
-                .layoutPriority(1)
+            Button(action: onProfile) {
+                Text(row.name).apText(.body, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
+            }
+            .buttonStyle(.plain)
+            .layoutPriority(1)
             if !row.roles.isEmpty {
                 RoleBadges(roles: row.roles).alignmentGuide(.firstTextBaseline) { $0[VerticalAlignment.center] + 4 }
             }

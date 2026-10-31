@@ -43,6 +43,14 @@ public struct ApronLink: Hashable, Sendable {
 
     public init?(_ url: URL) { self.init(url.absoluteString) }
 
+    /// A relative link to a user on the server whose content holds it (§5): `apron:?user=<id>`,
+    /// which a mention chip opens.
+    public static func relative(user userID: String) -> URL? {
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~:@")
+        return userID.addingPercentEncoding(withAllowedCharacters: allowed).flatMap { URL(string: "apron:?user=" + $0) }
+    }
+
     /// Nil when the text is not an Apron link, or is one this reader refuses: a key that does
     /// not decode, a bad `room`, `user` or `message`, a `message` without `room`, a `server`
     /// this client cannot reach, a credential without `server` or in a query, or no place at all.

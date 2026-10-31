@@ -69,6 +69,30 @@ final class ProfileIntegrationTests: XCTestCase {
         XCTAssertNil(Bio.of(session.you?.json))
     }
 
+    func testAnAdminAddsSomeoneToARoomFromTheirCard() async throws {
+        let server = try await Aprond.start()
+        servers.append(server)
+        let environment = ServerSession.Environment(makeTransport: { WebSocketTransport(url: $0.url, origin: $0.origin) })
+        let admin = ServerSession(record: ServerRecord(url: server.url), tokens: InMemoryTokenStore(), environment: environment)
+        sessions.append(admin)
+        admin.start()
+        try await waitFor("admin connected") { admin.status == .signedOut }
+        try await admin.signIn(.token(server.adminToken))
+        let ada = try await signedIn(server, email: "ada@example.com")
+        let adaID = try XCTUnwrap(ada.you?.userID)
+
+        let created = try await admin.createRoom(title: "Kitchen")
+        let roomID = try XCTUnwrap(created)
+        try await waitFor("kitchen joined") { admin.joinedRoomIDs.contains(roomID) && admin.store.members(of: roomID) != nil }
+        let card = admin.profile(of: try XCTUnwrap(ada.you), in: roomID)
+        XCTAssertEqual(card.membership, "Not in Kitchen")
+        XCTAssertTrue(card.mayAddToRoom, "an admin may add members (ext:permissions add_members)")
+
+        try await admin.addMember(adaID, to: roomID)
+        try await waitFor("ada added") { ada.joinedRoomIDs.contains(roomID) }
+        try await waitFor("listed") { admin.profile(of: UserObject(["user_id": .string(adaID)])!, in: roomID).membership == "Member of Kitchen" }
+    }
+
     func testAGuestsNewNameIsDeclinedAndTheOldOneStays() async throws {
         let server = try await Aprond.start()
         servers.append(server)

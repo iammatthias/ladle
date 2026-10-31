@@ -104,7 +104,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` is partl
 | Idle after 5 minutes, `status {idle}` reporting | #52 | missing | `App/RootView.swift` | UX.md 4.1 wants `{idle: 0}` on background. Not sent. |
 | Pause notifications (1 h, 8 h, until tomorrow, until I resume) | #48 | missing | | |
 | Pause set elsewhere shows here | bh | missing | | |
-| Last seen on the profile card and member tooltip | #126 | missing | | `seen` is not read. |
+| Last seen on the profile card and member tooltip | #126 | partial | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` (`LastSeen`) | On the card, as `lastSeen`. No member-list tooltip (iOS has no hover); apron-web's local `sawOffline` floor is not kept. |
 | Do not disturb silences this device | bh | missing | | Depends on notifications. |
 
 ## 6. Rooms list (sidebar)
@@ -197,9 +197,9 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` is partl
 | `@user_id` beside a name only when another user shares it | #82 | has | `Kit/UserDirectory.swift` | |
 | One entry per user after a `user_id` change, aliases | #81, #83 | has | `Kit/UserDirectory.swift` (`rename`) | |
 | Initials on a hue hashed from `user_id` | bh | has | `Design/People.swift` (`Avatar`) | |
-| Profile card: avatar, name, `@user_id` with copy, roles, "(you)", same-name warning, bio, in-room | #47, #115, #116 | missing | | No profile view exists. UX.md 3.10 plans one. |
-| Profile card: Message, Mention, Add to room | #123 | missing | | |
-| Tap a mention chip, name, avatar, or member to open the profile | #149, #153, #161 | missing | | |
+| Profile card: avatar, name, `@user_id` with copy, roles, "(you)", same-name warning, bio, in-room | #47, #115, #116 | has | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` | A sheet. "Not among the recently active members" waits for `member_count` (gap 33). |
+| Profile card: Message, Mention, Add to room | #123 | partial | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` (`addMember`), `Kit/DraftField.swift` (`mention`) | Mention and Add to room. Message waits for private conversations (gap 10). |
+| Tap a mention chip, name, avatar, or member to open the profile | #149, #153, #161 | has | `Timeline/MessageRow.swift`, `Timeline/MemberList.swift`, `Timeline/TimelineView.swift`, `Kit/MessageText.swift` | A chip links `apron:?user=`; a link's `user` opens the card too. |
 | Member row menu: Profile, Direct message, Remove from room | #152, #161 | missing | | |
 | Add member (+ in the header, people picker) | #129 | missing | `Kit/Permissions.swift` reads `add_members` | No `room_join` with a `user_id`. |
 | Remove from room, after a confirm | #152 | missing | | |
@@ -506,7 +506,7 @@ These have no apron-web counterpart. They stay.
 Sizes are rough. S is a day or less. M is a few days. L is a week or more, or needs outside work such as a relay or associated domains. Items lower down often depend on items above them.
 
 1. **Code highlighting.** Every markdown block renders since deac4e3; fenced code still has no syntax highlighting. S.
-2. **Profile card.** Open it from a name, avatar, mention chip, or member row. Show `@user_id` with copy, roles, "(you)", the same-name warning, bio, last seen, and whether they're in the room. Offer Mention, Message, and Add to room. M.
+2. ~~**Profile card.**~~ Done (`Profile/ProfileCardView.swift`), but for Message, which comes with item 10.
 3. ~~**Your profile and status.**~~ Done: You (`Profile/YouView.swift`) edits the name, bio and avatar and picks a status, with the server's answer.
 4. **Drafts per room.** Keep text, reply target, and attachments per room and thread, and persist them. Leaving a room drops the draft today. S.
 5. **Typing.** Send `activity typing` (15 s, refresh at most every 12 s) and show others typing above the composer. S.

@@ -25,6 +25,7 @@ struct TimelineView: View {
     @State private var viewing: MediaRequest?
     @State private var selecting: SelectableBody?
     @State private var remindingAt: CustomReminder?
+    @State private var profile: ProfileRequest?
     @State private var reminding: MessageReminders
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -107,6 +108,14 @@ struct TimelineView: View {
             }
         }
         .background(Palette.timeline)
+        .environment(\.openURL, OpenURLAction { url in
+            if let user = Self.mentionedUser(url) {
+                showProfile(user)
+            } else {
+                openURL(url)
+            }
+            return .handled
+        })
         .environment(\.openMedia, OpenMediaAction { viewing = MediaRequest(id: $0) })
         .fullScreenCover(item: $viewing) { request in
             MediaViewer(items: session.mediaItems(in: roomID), selection: request.id)
@@ -131,13 +140,19 @@ struct TimelineView: View {
                               },
                               cancel: { remindingAt = nil })
         }
+        .sheet(item: $profile) { request in
+            ProfileCardView(session: session, request: request) { id, name in draft.field.mention(id, named: name) }
+        }
         .sheet(item: $reacting) { message in
             ReactionPicker(session: session) { emoji in
                 reacting = nil
                 perform { try await session.toggleReaction(emoji, on: message.messageID) }
             }
         }
-        .modifier(MembersPresentation(session: session, roomID: roomID, showing: $showingMembers, compact: sizeClass == .compact))
+        .modifier(MembersPresentation(session: session, roomID: roomID, showing: $showingMembers, compact: sizeClass == .compact) { id, name in
+            if sizeClass == .compact { showingMembers = false }
+            draft.field.mention(id, named: name)
+        })
         .confirmationDialog("Delete this message?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                             titleVisibility: .visible, presenting: deleting) { message in
             Button("Delete Message", role: .destructive) { perform { try await session.delete(message) } }
@@ -181,10 +196,11 @@ struct TimelineView: View {
         }
     }
 
-    /// A link's place in this room: its member list for `user`, and for `message` the history
-    /// back to it, a scroll there and a brief highlight, or a notice when the room lacks it.
+    /// A link's place in this room: the profile card for `user`, as apron-web's
+    /// `revealLinkedUser`, and for `message` the history back to it, a scroll there and a brief
+    /// highlight, or a notice when the room lacks it.
     private func show(_ link: ApronLink) async {
-        if link.user != nil { showingMembers = true }
+        if let user = link.user { showProfile(user) }
         guard let message = link.message else { return }
         let shown: Bool
         do { shown = try await session.reveal(message, in: roomID) } catch {
@@ -200,6 +216,17 @@ struct TimelineView: View {
         jumpTarget = message.text
         try? await Task.sleep(for: .seconds(2))
         withAnimation(Motion.medium(reduceMotion)) { highlighted = nil }
+    }
+
+    /// A mention chip's link (`ApronLink.relative(user:)`): a user and nothing else.
+    private static func mentionedUser(_ url: URL) -> String? {
+        guard let link = ApronLink(url), link.server == nil, link.room == nil else { return nil }
+        return link.user
+    }
+
+    private func showProfile(_ userID: String) {
+        let user = session.users.user(userID).flatMap(UserObject.init) ?? UserObject(["user_id": .string(userID)])
+        profile = user.map { ProfileRequest(user: $0, roomID: roomID) }
     }
 
     private var isReading: Bool {
@@ -288,7 +315,8 @@ struct TimelineView: View {
                        onClearReminder: { reminding.forget(message) },
                        onReact: { emoji in perform { try await session.toggleReaction(emoji, on: message.messageID) } },
                        onAddReaction: { reacting = message },
-                       onJump: { jumpTarget = $0.text })
+                       onJump: { jumpTarget = $0.text },
+                       onProfile: { profile = ProfileRequest(user: message.from, roomID: roomID) })
                 .padding(.horizontal, Tokens.Space.s2)
                 .padding(.top, continues ? 0 : Tokens.Space.s3)
                 .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Tokens.Radius.md))
@@ -498,17 +526,18 @@ private struct MembersPresentation: ViewModifier {
     let roomID: String
     @Binding var showing: Bool
     let compact: Bool
+    let onMention: (String, String) -> Void
 
     func body(content: Content) -> some View {
         if compact {
             content.sheet(isPresented: $showing) {
-                NavigationStack { MemberList(session: session, roomID: roomID) }
+                NavigationStack { MemberList(session: session, roomID: roomID, onMention: onMention) }
                     .presentationDetents([.medium, .large])
                     .presentationBackground(Palette.chrome)
             }
         } else {
             content.inspector(isPresented: $showing) {
-                MemberList(session: session, roomID: roomID).inspectorColumnWidth(Tokens.Size.memberListW)
+                MemberList(session: session, roomID: roomID, onMention: onMention).inspectorColumnWidth(Tokens.Size.memberListW)
             }
         }
     }

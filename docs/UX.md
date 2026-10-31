@@ -505,25 +505,28 @@ Items that do not apply are hidden, not dimmed ([context-menus]: "Hide unavailab
 
 ### 3.10 User profile and presence
 
-**Purpose.** See who someone is, and mention them. **Layout.** A `.medium` sheet on iPhone, a popover from the name on iPad ([popovers]: "Avoid displaying popovers in compact views.").
+**Purpose.** See who someone is, and mention them or add them to the room, as apron-web's ProfileCard. **Entry.** A sender's avatar or name in the timeline, a mention chip, a member row, a link's `user`, or VoiceOver's "Ada's Profile" action on a message. **Layout.** A sheet at `.medium` height that can grow to `.large` (`ProfileCardView`), on iPhone and iPad alike; from the member list it opens over the list.
 
-- **Top.** Avatar, or initials as a placeholder (§4.8.6). Avatars load only as images, from `https:` or small `data:` URLs.
-- **Below.** The name, then `@user_id` (selectable), then roles as text capsules.
-- **Presence line.** Symbol and text. Never a dot alone.
-- **Bottom.** **Mention** (prominent, inserts `@user_id` into the current composer and dismisses), then **Copy Link** and **Copy User ID**.
+- **Top.** Avatar with its status dot, or initials where no avatar may load (§4.8.6). Beside it the name and "(you)", then `@user_id` (selectable) with a copy button, the status in words, "Last seen 3h ago" while they show offline, and roles as badges.
+- **Same name.** When another user shows with the same name: "Another user also shows as **Ada**. Check the @user_id." (§3.3.1).
+- **Bio** (`ext:bio`), selectable, in its own direction.
+- **Membership.** "Member of general" or "Not in general", once the room's members are known.
+- **Actions.** **Mention** (prominent: puts `@Name ` at the end of the composer and closes the card; also closes the member sheet on iPhone) where the composer takes text and the user is not a `~` system identity, and **Add to Room** (`room_join` with `user_id`, §4.2.2) where you may add them: `add_members` or a private room you are in, the members known and they not among them. A line under the actions says "Copied @ada", "Added to ops", or the server's refusal.
+- **Message** is not offered: Ladle has no private conversations yet (PARITY gap 10).
 
-| Shown status | Symbol | Text |
+| Shown status | Dot | Text |
 |---|---|---|
-| `online` | `circle.fill` | Online |
-| `idle` | `moon.fill` | Idle |
-| `dnd` | `minus.circle.fill` | Do Not Disturb |
-| `offline` | `circle` (outline) | Offline, plus "Last seen 3 h ago" from `seen` (§4.5.2) |
+| `online` | disc | Online |
+| `idle` | crescent | Idle |
+| `dnd` | disc with a bar | Do not disturb |
+| `offline` | ring | Offline, plus "Last seen 3h ago" from `seen` (§4.5.2) |
+| your own `invisible` | ring | Invisible · others see you as offline |
 | `""`, or absent | none | No status line |
-| An unknown value | `questionmark.circle` | "Status: away-ish" (§4.5.2: shown as unknown, with the value) |
+| An unknown value | dashed ring | "Unknown status: away-ish" (§4.5.2: shown as unknown, with the value) |
 
-Status symbols also appear beside names in the room info member list. They scale with Dynamic Type because they are SF Symbols ([typography]: "Increase the size of meaningful interface icons as font size increases.").
+Last seen reads "recently" under ten minutes (a server may record `seen` coarsely), then minutes, hours or days up to two weeks, then the day ("Last seen Sep 14", with the year when it is not this one), as apron-web's `lastSeen`.
 
-**Room info.** It is pushed from the room toolbar.
+**Room info.** Not built yet (PARITY gap 9). It is pushed from the room toolbar.
 
 - The title and description (CommonMark), with **Edit** (title and description, `room_set`, resubmitting the other client fields) when you are a member.
 - **Mute** as a `Toggle` row (§4.5.3 with `room_id`). Its footer reads "Mutes notifications for this room and its threads on all your devices."
@@ -788,7 +791,7 @@ The web-parity pass (2026-10-28) closed most of the list. "Partial" names what i
 | 8. Accessibility | Closed for the listed items. Rotors are not added. |
 | 9. Add Server and Sign In | Closed. One Connect sheet. |
 | 10. Confirmations | Closed. |
-| 11. Identity, status, mute, profile | Partial. You (3.11) edits the name, bio and avatar and picks a status. Mute and pause are not. |
+| 11. Identity, status, mute, profile | Partial. You (3.11) edits the name, bio and avatar and picks a status; the profile card (3.10) is in. Mute and pause are not. |
 | 12. Lifecycle | Partial. Sessions stop in the background and start in the foreground, and a returning network reconnects. `status {idle: 0}` before backgrounding is not sent. |
 | 13. Threads | Partial. Posting into an unjoined room joins first. No Threads list, "Other threads", or unjoined-thread preview. |
 | 14. Reactions | Closed. Frequent six plus the system emoji keyboard; who reacted on long press and in VoiceOver. |

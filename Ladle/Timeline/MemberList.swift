@@ -2,11 +2,14 @@ import ApronKit
 import SwiftUI
 
 /// The web's MemberList: "Members n", then Online and Offline sections, each person with their
-/// face and StatusDot, "(you)" beside you, offline people dimmed. On iPhone it is a sheet over
-/// the room; on iPad a column of its own, as the web's at 960 px and wider.
+/// face and StatusDot, "(you)" beside you, offline people dimmed. A tap opens their profile
+/// card. On iPhone it is a sheet over the room; on iPad a column of its own, as the web's at
+/// 960 px and wider.
 struct MemberList: View {
     let session: ServerSession
     let roomID: String
+    var onMention: (String, String) -> Void = { _, _ in }
+    @State private var profile: ProfileRequest?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -25,6 +28,9 @@ struct MemberList: View {
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
         .background(Palette.chrome)
+        .sheet(item: $profile) { request in
+            ProfileCardView(session: session, request: request, onMention: onMention)
+        }
         .navigationTitle("Members")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -45,20 +51,25 @@ struct MemberList: View {
         let name = session.displayName(for: person)
         let presence = session.presence(of: person.userID) ?? .offline
         let you = person.userID == session.you?.userID
-        return HStack(spacing: Tokens.Space.s2) {
-            Avatar(name: name, userID: person.userID, presence: presence, size: .sm, image: session.avatarURL(of: person.userID))
-                .opacity(offline ? Tokens.Opacity.dim : 1)
-            Text(name).apText(.ui).foregroundStyle(offline ? Palette.inkMuted : Palette.ink).lineLimit(1)
-                .layoutPriority(1)
-            if you { Text("(you)").apText(.xs).foregroundStyle(Palette.inkMuted) }
-            RoleBadges(roles: session.roles(of: person)).opacity(offline ? Tokens.Opacity.dim : 1)
-            Spacer(minLength: 0)
+        return Button { profile = ProfileRequest(user: person, roomID: roomID) } label: {
+            HStack(spacing: Tokens.Space.s2) {
+                Avatar(name: name, userID: person.userID, presence: presence, size: .sm, image: session.avatarURL(of: person.userID))
+                    .opacity(offline ? Tokens.Opacity.dim : 1)
+                Text(name).apText(.ui).foregroundStyle(offline ? Palette.inkMuted : Palette.ink).lineLimit(1)
+                    .layoutPriority(1)
+                if you { Text("(you)").apText(.xs).foregroundStyle(Palette.inkMuted) }
+                RoleBadges(roles: session.roles(of: person)).opacity(offline ? Tokens.Opacity.dim : 1)
+                Spacer(minLength: 0)
+            }
+            .frame(minHeight: Tokens.Size.touchTarget)
+            .contentShape(Rectangle())
         }
-        .frame(minHeight: Tokens.Size.touchTarget)
+        .buttonStyle(.plain)
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: Tokens.Space.s4, bottom: 0, trailing: Tokens.Space.s4))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(([name, you ? "you" : nil] + session.roles(of: person) + [presence.label]).compactMap { $0 }.joined(separator: ", "))
+        .accessibilityHint("Shows their profile")
     }
 }
