@@ -203,9 +203,9 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Profile card: avatar, name, `@user_id` with copy, roles, "(you)", same-name warning, bio, in-room | #47, #115, #116 | has | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` | A sheet. "Not among the recently active members" waits for `member_count` (gap 33). |
 | Profile card: Message, Mention, Add to room | #123 | has | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` (`addMember`, `mayMessage`), `Kit/DraftField.swift` (`mention`) | |
 | Tap a mention chip, name, avatar, or member to open the profile | #149, #153, #161 | has | `Timeline/MessageRow.swift`, `Timeline/MemberList.swift`, `Timeline/TimelineView.swift`, `Kit/MessageText.swift` | A chip links `apron:?user=`; a link's `user` opens the card too. |
-| Member row menu: Profile, Direct message, Remove from room | #152, #161 | missing | | |
-| Add member (+ in the header, people picker) | #129 | missing | `Kit/Permissions.swift` reads `add_members` | No `room_join` with a `user_id`. |
-| Remove from room, after a confirm | #152 | missing | | |
+| Member row menu: Profile, Direct message, Remove from room | #152, #161 | has | `Timeline/MemberList.swift`, `Kit/Members.swift` (`memberMenu`) | A tap opens the card; a long press, or a secondary click on iPad, opens the menu. Your own row has none. |
+| Add member (+ in the header, people picker) | #129 | has | `Timeline/AddMembersSheet.swift`, `Kit/PeoplePicker.swift` (`addablePeople`), `Kit/Members.swift` (`mayAddMembers`) | Add People in the member list's bar. A refused person stays picked with the server's words. |
+| Remove from room, after a confirm | #152 | has | `Timeline/MemberList.swift` (confirmation), `Kit/Members.swift` (`removeMember`, `removeQuestion`) | "Remove Ada from general?" |
 | Member list hides typing and connection status | bh | has | `Timeline/MemberList.swift` | |
 | Member list resize and collapse | bh | N/A-iOS | | Sheet on iPhone, inspector column on iPad. |
 
@@ -459,7 +459,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
-| `ext:permissions`: write, add_members, move_any | #111, #121 | has | `Kit/Permissions.swift` | `add_members` is read but nothing uses it. |
+| `ext:permissions`: write, add_members, move_any | #111, #121 | has | `Kit/Permissions.swift` | `add_members` gates Add People and Add to Room; without the extension `Permissions.core` offers adding everywhere, as the web's `CORE_PERMISSIONS`. |
 | `ext:settings`: read_cursors | #111 | has | `Kit/ServerInfo.swift` | |
 | `ext:settings`: private_rooms limit | #123 | has | `Kit/PrivateRooms.swift` (`ServerInfo.privateRoomLimit`) | A non-negative integer, else no limit. |
 | `ext:limits` write and upload pauses | #109 | has | `Kit/RateLimits.swift` (`LimitScope`), `Kit/ServerSession+Limits.swift` | As apron-web's `limitScope` and `limitHolds`; the category counts only with the capability. |
@@ -538,7 +538,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 11. **Kept view and local history.** Cache rooms and recent messages on disk so a relaunch shows them at once. Keep history with Retention, delete it on sign-out, and page older messages from the device first. L.
 12. ~~**Join, leave, and rename lines.**~~ Done (`Kit/MembershipLines.swift`): netted per run, baselines of 21 joins skipped, adds as joins and renames in rooms and threads (#170).
 13. **Open at the New divider.** Land on the divider instead of the latest message. Needs a device to verify the scroll. S.
-14. **Member management.** Add member with a people picker, Remove from room with a confirm, and the member row menu (Profile, Direct message, Remove). M.
+14. ~~**Member management.**~~ Done (`Kit/Members.swift`, `Timeline/AddMembersSheet.swift`, `Timeline/MemberList.swift`): Add People with the people picker, Remove from Room after a confirmation, and the member menu (Profile, Direct Message, Remove) on a long press, a tap opening the card. A server that answers `unsupported` stops the offers.
 15. **Select mode.** Select several messages, move them to a thread or a new thread, add authors to the thread, and copy them as a Markdown log with quotes, cut marks, and reactions. M.
 16. **Search local history.** As-you-type search with `user:` and `room:`, narrowed to the open room, opening results in place. Also search rooms by name. Depends on item 11. M.
 17. **Message editing with embeds.** Edit shows embeds as tiles with ×. Remove an embed from a sent message (asking for uploads). Rename a file before and after sending. Remove reply reference. M.

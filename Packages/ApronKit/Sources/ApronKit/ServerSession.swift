@@ -184,6 +184,9 @@ public final class ServerSession {
     public let addedRooms: AddedRooms
     /// Rooms that arrive joined without this device asking (`noteArrivals`).
     @ObservationIgnored var arrivals = ArrivalWatch()
+    /// The server answered a `room_join` or `room_leave` with another's `user_id` as `unsupported`
+    /// (§4.2.2): adding and removing others is no longer offered.
+    public internal(set) var memberChangesUnsupported = false
 
     /// What to call this server: the name the user gave it, else the server's `title` (§3.1),
     /// else its host. Shown with the host where the user picks a server, so a server can't pass
@@ -511,6 +514,7 @@ public final class ServerSession {
         clearTyping()
         resetMutes()
         limits = [:]
+        memberChangesUnsupported = false
     }
 
     // MARK: Frames
@@ -902,9 +906,11 @@ public final class ServerSession {
     }
 
     /// What this user may do: `you.ext.permissions` under capability `ext:permissions`
-    /// (EXTENSIONS.md). Read from `you` only; without the capability, the defaults.
+    /// (EXTENSIONS.md). Read from `you` only. Without the capability, what PROTOCOL.md allows, as
+    /// apron-web's `CORE_PERMISSIONS`: any member may ask to add others to any room (§4.2.2), and
+    /// the server's refusal shows.
     public var permissions: Permissions {
-        guard server?.has("ext:permissions") == true else { return Permissions() }
+        guard server?.has("ext:permissions") == true else { return Permissions.core }
         return Permissions(you?.json["ext"]?["permissions"])
     }
 

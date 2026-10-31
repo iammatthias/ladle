@@ -32,8 +32,8 @@ final class UserProfileTests: XCTestCase {
         let inOps = home.profile(of: UserObject(["user_id": "ada"])!, in: "ops")
         XCTAssertEqual(inOps.membership, "Not in ops")
         XCTAssertTrue(inOps.mayAddToRoom, "a private room you are in takes people without add_members")
-        XCTAssertFalse(home.profile(of: UserObject(["user_id": "ada"])!, in: "kitchen").mayAddToRoom,
-                       "a public room needs add_members")
+        XCTAssertTrue(home.profile(of: UserObject(["user_id": "chiara"])!, in: "kitchen").mayAddToRoom,
+                      "without ext:permissions, any room takes people, as PROTOCOL.md allows")
         XCTAssertNil(home.profile(of: UserObject(["user_id": "ada"])!, in: nil).membership)
 
         let you = home.profile(of: UserObject(["user_id": "sam"])!, in: "general")

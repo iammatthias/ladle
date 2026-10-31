@@ -73,6 +73,17 @@ extension ServerSession {
         }
     }
 
+    /// Add people's rows: those who aren't members of the room yet who match, or with none, the
+    /// `@user_id` typed, since the session knows only some of the server's users.
+    public func addablePeople(_ picker: PeoplePicker, to roomID: String) -> [PickPerson] {
+        let members = Set((store.members(of: roomID) ?? []).map { users.current($0.userID) })
+        let shown = matching(pickable(excluding: members), picker.query).map {
+            PickPerson(userID: $0.userID, name: users.plainName(for: $0), existing: false, typed: false)
+        }
+        guard shown.isEmpty, let typed = PeoplePicker.userID(typed: picker.query), !members.contains(typed), !typed.hasPrefix("~"), !isYou(typed) else { return shown }
+        return [PickPerson(userID: typed, name: typed, existing: false, typed: true)]
+    }
+
     /// A picked person's name for a chip, known or not.
     public func pickedName(_ userID: String) -> String {
         users.plainName(for: UserObject(["user_id": .string(userID)])!)

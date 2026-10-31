@@ -1216,7 +1216,8 @@ final class ServerSessionTests: XCTestCase {
 
     func testPermissionsCountOnlyWithTheCapability() async throws {
         _ = try await signInWithRooms(["user_id": "mia", "ext": ["permissions": ["move_any": true, "write": false]]], capabilities: ["history", "edit", "rooms"])
-        XCTAssertEqual(session.permissions, Permissions())
+        XCTAssertEqual(session.permissions, Permissions.core)
+        XCTAssertTrue(session.permissions.addMembers, "PROTOCOL.md lets any member ask to add others")
         XCTAssertTrue(session.mayWrite)
         let other = MessageSnapshot(messageID: LogID("200")!, logID: LogID("200")!, roomID: "general", from: UserObject(["user_id": "ada"])!)
         XCTAssertFalse(session.mayMove(other))

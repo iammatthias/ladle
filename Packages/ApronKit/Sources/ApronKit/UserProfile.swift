@@ -47,8 +47,8 @@ extension ServerSession {
         }
         let mayAdd: Bool = {
             guard let roomID, listed == false, !yours, !system, status == .signedIn, mayWrite,
-                  server?.has("rooms") == true, joinedRoomIDs.contains(roomID) else { return false }
-            return permissions.addMembers || isPrivate(roomID)
+                  mayAddMembers(to: roomID) else { return false }
+            return true
         }()
         return UserProfile(
             userID: id,
@@ -69,8 +69,7 @@ extension ServerSession {
 
     /// Adds someone to a room (§4.2.2): `room_join` with their `user_id`.
     public func addMember(_ userID: String, to roomID: String) async throws {
-        try require("rooms")
-        _ = try await request("room_join", ["room_id": .string(roomID), "user_id": .string(userID)])
+        try await changeMember("room_join", userID, roomID)
     }
 }
 

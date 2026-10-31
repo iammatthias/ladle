@@ -31,6 +31,7 @@ enum Screen: String, CaseIterable {
     case threadRenamed = "thread-renamed", startThread = "start-thread", roomsInactive = "rooms-inactive", editRoom = "edit-room", descriptionPutAway = "description-put-away"
     case directMessage = "direct-message", addedBanner = "added-banner", newPrivate = "new-private", newPrivateGroup = "new-private-group"
     case newRoomPrivate = "new-room-private", privateFull = "private-full", roomsPrivate = "rooms-private"
+    case addMembers = "add-members", membersPrivate = "members-private"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -252,6 +253,17 @@ enum Renderer {
                                   description: ThreadStart.description(message.body) ?? "") { _, _ in }
                 }
             })
+        case .addMembers:
+            // Adding to ops: Ada picked, and "@carol" typed, whom the session doesn't know.
+            AnyView(AddMembersSheet(session: home, roomID: "ops", picker: {
+                var picker = PeoplePicker()
+                picker.toggle("ada")
+                picker.query = "@carol"
+                return picker
+            }()))
+        case .membersPrivate:
+            // Launch plan's members, with the + that adds people.
+            AnyView(NavigationStack { MemberList(session: home, roomID: PreviewFixtures.addedRoomID) })
         case .roomsPrivate:
             // The conversation with Ada open: the Private section, each room with its faces.
             AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.directRoomID, open: { _ in }) })

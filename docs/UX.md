@@ -520,7 +520,7 @@ Items that do not apply are hidden, not dimmed ([context-menus]: "Hide unavailab
 - **Same name.** When another user shows with the same name: "Another user also shows as **Ada**. Check the @user_id." (§3.3.1).
 - **Bio** (`ext:bio`), selectable, in its own direction.
 - **Membership.** "Member of general" or "Not in general", once the room's members are known.
-- **Actions.** **Mention** (prominent: puts `@Name ` at the end of the composer and closes the card; also closes the member sheet on iPhone) where the composer takes text and the user is not a `~` system identity, and **Add to Room** (`room_join` with `user_id`, §4.2.2) where you may add them: `add_members` or a private room you are in, the members known and they not among them. A line under the actions says "Copied @ada", "Added to ops", or the server's refusal.
+- **Actions.** **Mention** (prominent: puts `@Name ` at the end of the composer and closes the card; also closes the member sheet on iPhone) where the composer takes text and the user is not a `~` system identity, and **Add to Room** (`room_join` with `user_id`, §4.2.2) where you may add them: `add_members` (or a server without `ext:permissions`, where PROTOCOL.md lets any member ask, as apron-web's `CORE_PERMISSIONS`) or a private room you are in, the members known and they not among them. A line under the actions says "Copied @ada", "Added to ops", or the server's refusal.
 - **Message** (prominent, before Mention, which then takes the ghost style) for anyone but you and the `~` identities, on an account (not a guest) that may write, with `rooms`: it opens the private conversation you already have with them, or starts one (3.16), and closes the card. One started that couldn't add them stays under Private, and the card says "Couldn’t add Ada: …. The room is kept under Private."
 
 | Shown status | Dot | Text |
@@ -534,6 +534,8 @@ Items that do not apply are hidden, not dimmed ([context-menus]: "Hide unavailab
 | An unknown value | dashed ring | "Unknown status: away-ish" (§4.5.2: shown as unknown, with the value) |
 
 Last seen reads "recently" under ten minutes (a server may record `seen` coarsely), then minutes, hours or days up to two weeks, then the day ("Last seen Sep 14", with the year when it is not this one), as apron-web's `lastSeen`.
+
+**Member list.** As apron-web's MemberList (#129, #152, #153, #161): a tap on a member opens their card; a long press (or secondary click on iPad) opens their menu, **Profile**, **Direct Message** (as the card's Message) and **Remove from Room** (in the danger color), and your own row has no menu. Remove asks "Remove Ada from general?" first and sends `room_leave` with their `user_id`. **Add People** (`person.badge.plus`) in the list's bar opens a sheet like New private conversation's picker, "Add People to general", of those known who aren't members, or the `@user_id` typed whole ("Add by @user_id: @carol"; a display name is never looked up, since names aren't unique). **Add** adds each in turn; one refused stays picked with the server's words, and the sheet closes once all are in. Adding and removing are offered while signed in with `rooms`, allowed to write and in the room; adding also needs `add_members` (as above) or a private room. Who may is the server's to say, and its refusal shows under the list. A server that answers `unsupported` stops the offers, and the list says "This server doesn’t let members add or remove others."
 
 **Room info.** Not built yet (PARITY gap 9). It is pushed from the room toolbar.
 

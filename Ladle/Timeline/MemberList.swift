@@ -3,15 +3,21 @@ import SwiftUI
 
 /// The web's MemberList: "Members n", then Online and Offline sections, each person with their
 /// face and StatusDot, "(you)" beside you, offline people dimmed. A tap opens their profile
-/// card. On iPhone it is a sheet over the room; on iPad a column of its own, as the web's at
-/// 960 px and wider.
+/// card; a long press their menu (Profile, Direct Message, Remove from Room), as apron-web
+/// #152 and #161. The + adds people. On iPhone it is a sheet over the room; on iPad a column of
+/// its own, as the web's at 960 px and wider.
 struct MemberList: View {
     let session: ServerSession
     let roomID: String
     var onMention: (String, String) -> Void = { _, _ in }
     @State private var profile: ProfileRequest?
+    @State private var adding = false
+    @State private var removing: String?
+    @State private var busy = false
+    @State private var note: String?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.openRoom) private var openRoom
 
     var body: some View {
         let sections = session.memberSections(roomID)
@@ -24,6 +30,11 @@ struct MemberList: View {
                         .textCase(nil)
                 }
             }
+            if let line = note ?? session.memberChangesRemark(in: roomID) {
+                Text(line).apText(.sm).foregroundStyle(note != nil ? Palette.danger : Palette.inkMuted)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+            }
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
@@ -31,6 +42,13 @@ struct MemberList: View {
         .sheet(item: $profile) { request in
             ProfileCardView(session: session, request: request, onMention: onMention)
         }
+        .sheet(isPresented: $adding) { AddMembersSheet(session: session, roomID: roomID) }
+        .confirmationDialog(removing.map { session.removeQuestion($0, from: roomID) } ?? "",
+                            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+                            titleVisibility: .visible, presenting: removing) { userID in
+            Button("Remove", role: .destructive) { remove(userID) }
+        }
+        .onChange(of: roomID) { note = nil }
         .navigationTitle("Members")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -40,6 +58,14 @@ struct MemberList: View {
                     Text("\(sections.reduce(0) { $0 + $1.people.count })").apText(.sm, .medium).foregroundStyle(Palette.inkMuted)
                 }
                 .accessibilityElement(children: .combine)
+            }
+            if session.mayAddMembers(to: roomID) {
+                ToolbarItem(placement: .primaryAction) {
+                    Button("Add People", systemImage: "person.badge.plus") {
+                        note = nil
+                        adding = true
+                    }
+                }
             }
             if sizeClass == .compact {
                 ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } }
@@ -68,8 +94,58 @@ struct MemberList: View {
         .listRowBackground(Color.clear)
         .listRowSeparator(.hidden)
         .listRowInsets(EdgeInsets(top: 0, leading: Tokens.Space.s4, bottom: 0, trailing: Tokens.Space.s4))
+        .contextMenu {
+            let menu = session.memberMenu(for: person.userID, in: roomID)
+            if !menu.isEmpty { menuItems(person, menu) }
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(([name, you ? "you" : nil] + session.roles(of: person) + [presence.label]).compactMap { $0 }.joined(separator: ", "))
         .accessibilityHint("Shows their profile")
+        .accessibilityActions {
+            let menu = session.memberMenu(for: person.userID, in: roomID)
+            if !menu.isEmpty { menuItems(person, menu) }
+        }
+    }
+
+    /// The web's member menu: Profile, Direct Message, and Remove from Room in the danger color.
+    @ViewBuilder
+    private func menuItems(_ person: UserObject, _ menu: MemberMenu) -> some View {
+        Button("Profile", systemImage: "person") { profile = ProfileRequest(user: person, roomID: roomID) }
+        if menu.directMessage {
+            Button("Direct Message", systemImage: "bubble.left") { message(person.userID) }.disabled(busy)
+        }
+        if menu.remove {
+            Button("Remove from Room", systemImage: "person.badge.minus", role: .destructive) { removing = person.userID }.disabled(busy)
+        }
+    }
+
+    /// The conversation you have with them, else one started, opened. One started that couldn't
+    /// add them is kept under Private, and the list says so.
+    private func message(_ userID: String) {
+        busy = true
+        note = nil
+        Task {
+            do {
+                let started = try await session.message(userID)
+                if started.refused.isEmpty {
+                    if sizeClass == .compact { dismiss() }
+                    openRoom(started.roomID)
+                } else {
+                    note = Refusal.words(started.refused, name: session.pickedName) + " The room is kept under Private."
+                }
+            } catch {
+                note = errorText(error)
+            }
+            busy = false
+        }
+    }
+
+    private func remove(_ userID: String) {
+        busy = true
+        note = nil
+        Task {
+            do { try await session.removeMember(userID, from: roomID) } catch { note = errorText(error) }
+            busy = false
+        }
     }
 }

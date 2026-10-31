@@ -4,7 +4,7 @@ import XCTest
 
 /// Private rooms and direct messages against the real Rust server: starting one with people,
 /// Message finding it again, the "You were added" banner on the other side, a thread taking its
-/// room's members, refusals, and the private room limit.
+/// room's members, refusals, the private room limit, and adding and removing members.
 @MainActor
 final class PrivateRoomsIntegrationTests: XCTestCase {
     private var servers: [Aprond] = []
@@ -126,6 +126,31 @@ final class PrivateRoomsIntegrationTests: XCTestCase {
             XCTFail("a second private room past the limit")
         } catch let error as RPCError {
             XCTAssertEqual(error.message, "You are in 1 private rooms, the most at once; leave one to start another")
+        }
+    }
+
+    func testMembersAreAddedAndRemovedAsTheServerAllows() async throws {
+        let server = try await started()
+        let ada = try await account(server, "ada@example.com")
+        let bob = try await account(server, "bob@example.com")
+        let carol = try await account(server, "carol@example.com")
+        let room = try await ada.startPrivateRoom(with: [try id(bob)], title: "Crew").roomID
+        XCTAssertTrue(ada.mayAddMembers(to: room))
+
+        let refused = await ada.addMembers([try id(carol)], to: room)
+        XCTAssertEqual(refused, [])
+        try await waitFor("Carol added") { carol.isPrivateRoom(room) }
+        try await waitFor("Carol listed") { ada.store.members(of: room)?.count == 3 }
+
+        try await ada.removeMember(try id(carol), from: room)
+        try await waitFor("Carol removed") { !carol.joinedRoomIDs.contains(room) }
+        try await waitFor("Carol unlisted") { ada.store.members(of: room)?.count == 2 }
+
+        do {
+            try await bob.removeMember(try id(ada), from: room)
+            XCTFail("Bob removed the room's creator")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.message, "Only an admin, the room's creator, or a bot's owner, can remove someone else")
         }
     }
 }

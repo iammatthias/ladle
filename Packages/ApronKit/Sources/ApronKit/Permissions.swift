@@ -11,6 +11,14 @@ public struct Permissions: Hashable, Sendable {
 
     public init() {}
 
+    /// Without the extension: adding others is offered everywhere, the server answering `denied`
+    /// or `unsupported` where it doesn't let them; moves stay with your own messages.
+    public static let core: Permissions = {
+        var core = Permissions()
+        core.addMembers = true
+        return core
+    }()
+
     public init(_ value: JSONValue?) {
         write = value?["write"]?.boolValue ?? write
         addMembers = value?["add_members"]?.boolValue ?? addMembers
