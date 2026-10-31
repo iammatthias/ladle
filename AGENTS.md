@@ -378,7 +378,7 @@ clone), which is only a worked example.
   subtitle so the centered title never moves; `VoiceRecorder`: voice notes as
   `audio/mp4`; `ReminderViews`: `ReminderBadge`, the due line and Clear on a reminded row,
   which takes an accent edge, and `ReminderDateSheet`, Custom…), `Media/` (`MediaLoader`: images decoded at their shown size and files for Quick
-  Look, no cookies; `MediaAskTile`: media the gate holds back, Load on a tap, Always Load in its menu; `MediaViewer`: the room's images full screen, as the web's viewer), `Design/`
+  Look, no cookies; `MediaAskTile`: media the gate holds back, its kind and full URL (two lines, cut in the middle, as apron-web #186), Load on a tap, Always Load from its host in its menu; `MediaViewer`: the room's images full screen, as the web's viewer), `Design/`
   (`Tokens.swift`, generated; `Apron`: colors by job, text roles, motion; `People`: avatars,
   StatusDot and RoleBadges; `Components`: the web's UnreadCount, Callout, ActionBanner, EmptyState, buttons).
   `Servers/KeychainStore.swift` is the only place a secret is persisted (generic password,

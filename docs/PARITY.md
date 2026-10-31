@@ -357,6 +357,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Media from the server's origin and `ext:media` origins | #111 | has | `Kit/Embed.swift` (`MediaPolicy`) | |
 | Media gate: everything else waits for a click (Load) | #163 | has | `Kit/MediaGate.swift`, `Media/MediaAskTile.swift` | |
 | Always load adds the site to Trusted origins | #163 | has | `Media/MediaAskTile.swift` | |
+| The Load tile shows the media's full URL; Always load names its host | #186 | has | `Media/MediaAskTile.swift` | Two lines, cut in the middle; VoiceOver reads the whole URL. |
 | Preferences, Media: Server and trusted sites, or Any site; Trusted origins field | #137, #163 | has | `Servers/PreferencesView.swift` | |
 | Custom emoji and avatars from untrusted sites wait or fall back | #163 | has | `Kit/MediaGate.swift` (`.avatar`) | |
 | HTML embeds never load `srcset`, `background`, `ping` | #163 | missing | | Depends on `html` embeds (section 16). Build it with them. |

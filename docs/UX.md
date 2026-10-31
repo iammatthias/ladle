@@ -408,7 +408,7 @@ The reply drag mirrors in right-to-left layouts ([right-to-left]).
 | Mention of someone else | `@user_id` in the text shows the user's current name in the mention style. An unknown ID renders as written (§A.3). Never inside code. |
 | Unknown embed kind | Render from `og` (title, description, image) if present. Otherwise a fallback card with the kind name and `url` or `text` (§3.5.2 MUST). |
 | `upload` | A pending upload (no `url`) shows a placeholder. With `og.image`, `og.video` or `og.audio`, the media where Preferences lets it load (3.14), else a Load tile. Otherwise a file card. Tap opens Quick Look ([file-management]). |
-| Media from an untrusted site | A dashed tile in its place, sized from the media's aspect (120 to 200 pt tall, 320 pt wide at most): its alt text or kind, its host, and "Tap to Load". See 3.14. |
+| Media from an untrusted site | A dashed tile in its place, sized from the media's aspect (120 to 200 pt tall, 320 pt wide at most): its alt text or kind, its full URL (two lines at most, cut in the middle, as apron-web #186 shows the whole URL so the viewer can judge it), and "Tap to Load". See 3.14. |
 | `stream` | While live, a "Live output" card. When finished, `text` in a monospaced block that you can expand. |
 | `iframe`, `html` | A fallback card with **Open in Browser** for `url`. Not rendered inline in v1 (5.8). |
 | `format: "markdown"` | CommonMark with GitHub tables and strikethrough, as apron-web's markdown-it (`html: false`, `breaks: true`): headings, paragraphs, quotes with a rule at their edge, ordered and bulleted lists, code blocks, rules, and tables. Raw HTML shows as text. A typed line break is kept. Code blocks and tables scroll sideways inside the message, so a wide one never widens the row. Text follows Dynamic Type. Links, mentions, room chips and custom emoji are never drawn inside code. Each image (`![alt](url)`) is a block of its own under the media gate (3.14): the image at its shape, a Load tile naming its alt text and host, or, on a scheme that cannot load, its alt text. A linked image shows as its link. The same rendering covers notices, the server description and the welcome. Room and thread descriptions in rows read as one line per block. |
@@ -595,7 +595,7 @@ Connection state is not a screen. It is one model, rendered in the Rooms section
 
 **Load tile.** A tap is **Load**: that one URL loads, until Ladle quits. The tile's `ellipsis.circle` menu and its long press offer **Load** and, for an `https:` site, **Always Load from host**, which adds the site to Trusted Sites. A link card whose `og.video` waits shows a Video tile under the card even when its image loads, so the video is never silently dropped. A loaded image that fails (an unreachable host, a bad file) shows the `photo` glyph in its box and never spins.
 
-**Accessibility.** The tile reads "Image, from shazow.net, not loaded", with the hint "Loads it". **Always Load from host** is a custom action.
+**Accessibility.** The tile reads its kind and its full URL, "Image, https://shazow.net/images/icon.png, not loaded", with the hint "Loads it". **Always Load from host** is a custom action.
 
 ## 4. Cross-cutting
 

@@ -2,8 +2,9 @@ import ApronKit
 import SwiftUI
 
 /// Media the gate holds back (`MediaDecision.ask`), as the web's MediaAsk: a dashed tile in the
-/// media's place showing what it is (its alt text, else its kind) and its site. A tap loads this
-/// one, this launch (Load). The tile's menu and its long press add Always Load from the site,
+/// media's place showing what it is (its alt text, else its kind) and its full URL, so the viewer
+/// can judge it (apron-web #186), cut in the middle past two lines. A tap loads this one, this
+/// launch (Load). The tile's menu and its long press add Always Load from the site,
 /// which trusts the site from then on; Preferences lists it.
 struct MediaAskTile: View {
     let ask: MediaAsk
@@ -29,7 +30,8 @@ struct MediaAskTile: View {
             VStack(spacing: Tokens.Space.s1) {
                 Image(systemName: symbol).font(.title2).foregroundStyle(Palette.inkMuted)
                 Text(what).apText(.ui, .semibold).foregroundStyle(Palette.ink).lineLimit(2).multilineTextAlignment(.center)
-                Text(ask.host).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1).truncationMode(.middle)
+                Text(ask.url.absoluteString).apText(.sm).foregroundStyle(Palette.inkMuted)
+                    .lineLimit(2).truncationMode(.middle).multilineTextAlignment(.center)
                 Text("Tap to Load").apText(.sm, .semibold).foregroundStyle(Palette.denim)
             }
             .padding(.horizontal, Tokens.Space.s8)
@@ -49,7 +51,7 @@ struct MediaAskTile: View {
         .contextMenu { actions }
         .frame(maxWidth: Self.width)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(what), from \(ask.host), not loaded")
+        .accessibilityLabel("\(what), \(ask.url.absoluteString), not loaded")
         .accessibilityHint("Loads it")
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { settings.loadOnce(ask.url) }
