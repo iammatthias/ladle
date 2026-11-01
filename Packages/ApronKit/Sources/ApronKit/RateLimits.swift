@@ -1,8 +1,8 @@
 import Foundation
 
 /// What a wait the server asked for (§1.1 `retry_after`) holds back, as apron-web's `LimitScope`:
-/// pages of history, sending, every write (`ext:limits` `write`), or messages with new files
-/// (`ext:limits` `upload`).
+/// pages of history and room listings (`ext:limits` `read`), sending, every write (`ext:limits`
+/// `write`), or messages with new files (`ext:limits` `upload`).
 public enum LimitScope: String, Hashable, Sendable, CaseIterable {
     case history, message, write, upload
 
@@ -19,6 +19,8 @@ public enum LimitScope: String, Hashable, Sendable, CaseIterable {
             self = .write
         } else if category == "upload", Self.addsUpload(method, params) {
             self = .upload
+        } else if category == "read", method == "room_list" {
+            self = .history
         } else if let scope = LimitScope(rawValue: method), scope == .history || scope == .message {
             self = scope
         } else {
@@ -32,7 +34,7 @@ public enum LimitScope: String, Hashable, Sendable, CaseIterable {
         case .write: Self.writes.contains(method)
         case .upload: Self.addsUpload(method, params)
         case .message: method == "message"
-        case .history: method == "history"
+        case .history: method == "history" || method == "room_list"
         }
     }
 

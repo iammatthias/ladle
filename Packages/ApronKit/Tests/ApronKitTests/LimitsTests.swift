@@ -19,7 +19,9 @@ final class LimitsTests: ScriptedSessionCase {
                        ["message", "reactions", "room_join", "room_leave", "room_set"])
         XCTAssertTrue(LimitScope.upload.holds("command", params: Self.upload))
         XCTAssertFalse(LimitScope.upload.holds("message", params: ["body": ["text": "hi"]]))
-        XCTAssertEqual(["history", "room_list", "message"].filter { LimitScope.history.holds($0, params: [:]) }, ["history"])
+        XCTAssertEqual(LimitScope(refused: "room_list", params: [:], category: "read"), .history, "a read wait covers room listing")
+        XCTAssertEqual(LimitScope(refused: "room_list", params: [:], category: nil), nil)
+        XCTAssertEqual(["history", "room_list", "message"].filter { LimitScope.history.holds($0, params: [:]) }, ["history", "room_list"])
     }
 
     func testAWaitReadsAsTheWebSaysIt() {
