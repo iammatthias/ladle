@@ -25,6 +25,8 @@ public final class LiveMessage {
     /// The reply the message was posted with, kept by the save unless another was picked.
     let postedReply: LogID?
     var field = DraftField()
+    /// Stop took it back: a write that ends meanwhile deletes it rather than saving it.
+    var stopping = false
 
     /// `typing` makes the write, given the message its end reports on.
     init(roomID: String, draft: LiveDraft, postedReply: LogID?, typing: (LiveMessage) -> LiveTyping) {
@@ -71,8 +73,8 @@ extension ServerSession {
         live.typing.update(field.text)
     }
 
-    /// Send on the live draft: `field` is its final text.
-    func sendLive(_ field: DraftField, in roomID: String) {
+    /// Send on the live draft: `field` is its final text. The composer empties (`forget`).
+    public func sendLive(_ field: DraftField, in roomID: String) {
         typedLive(field, in: roomID)
         finishLiveTyping()
     }
@@ -108,12 +110,21 @@ extension ServerSession {
     public func stopLiveTyping() {
         guard let live = liveMessage else { return }
         liveMessage = nil
+        live.stopping = true
         Task {
             guard let messageID = await live.typing.finish() else { return }
             live.typing.close()
-            if server?.has("edit") == true {
-                _ = try? await request("message", ["message_id": messageID.json, "room_id": .string(live.roomID), "deleted": true])
-            }
+            await takeBack(messageID, in: live.roomID)
+        }
+    }
+
+    /// Deletes a live message (capability `edit`); a refusal says so in the room.
+    private func takeBack(_ messageID: LogID, in roomID: String) async {
+        guard server?.has("edit") == true else { return }
+        do {
+            _ = try await request("message", ["message_id": messageID.json, "room_id": .string(roomID), "deleted": true])
+        } catch {
+            postNotice("Unable to delete the live message: \(errorText(error))", in: roomID)
         }
     }
 
@@ -172,6 +183,10 @@ extension ServerSession {
     /// sent. One the server ended keeps what arrived, and is finished as Send would, from the draft.
     private func ended(_ live: LiveMessage, _ end: LiveTypingEnd) {
         if liveMessage === live { liveMessage = nil }
+        if live.stopping {
+            if let messageID = end.messageID { Task { await takeBack(messageID, in: live.roomID) } }
+            return
+        }
         switch end.kind {
         case .failed:
             if let messageID = end.messageID, server?.has("edit") == true {

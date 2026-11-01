@@ -394,4 +394,18 @@ final class LiveTypingTests: XCTestCase {
         XCTAssertEqual(drafts[key].field.text, "never mind")
         await eventually("the write ended") { self.write.closed }
     }
+
+    func testAWriteThatEndsAsStopTakesItBackStillDeletesIt() async throws {
+        try await signIn()
+        try await startLive()
+        type("never mind")
+        session.stopLiveTyping()
+        await write.respond(413, "limit\n")
+        await expectSent(3, #"{"id":"c4","method":"message","params":{"deleted":true,"message_id":"120","room_id":"general"}}"#)
+        await socket.deliver(["id": "c4", "result": [:]])
+        try? await Task.sleep(for: .milliseconds(20))
+        let count = await socket.sentLog.count
+        XCTAssertEqual(count, 4, "no save follows")
+        XCTAssertEqual(drafts[key].field.text, "never mind")
+    }
 }

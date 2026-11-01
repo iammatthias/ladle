@@ -394,7 +394,8 @@ struct TimelineView: View {
         .onChange(of: drafts[draftKey].field) { _, field in session.typedLive(field, in: roomID) }
         .onDisappear {
             visible = false
-            session.show(roomID, false)
+            // The media viewer covers the room without leaving it: its live message goes on.
+            if viewing == nil { session.show(roomID, false) }
         }
         .onChange(of: PulseFeed(shown: session.histories[roomID] != nil && !session.held.contains(roomID), messages: session.timeline(roomID)),
                   initial: true) { _, feed in
@@ -923,6 +924,8 @@ struct TimelineView: View {
     /// draft here, emptied when it is finished and given back when it can't be made.
     private func send(_ draft: ComposerDraft) {
         let key = draftKey, drafts = drafts
+        // Read before the draft empties, whose change would otherwise go out as a reset first.
+        if composingLive { return session.sendLive(draft.field, in: roomID) }
         if draft.field.isEdit { editing = nil } else { drafts[key] = ComposerDraft() }
         sentCount += 1
         let live = LiveDraft(forget: { drafts[key] = ComposerDraft(files: drafts[key].files) },

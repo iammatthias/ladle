@@ -76,12 +76,17 @@ extension ServerSession {
     /// Tells the server this app is idle, waiting up to `deadline` for the answer, then stops: what
     /// the app does as it goes to the background, so the server can push what comes after.
     /// A message being typed live is finished first, as Send would, since its write would not
-    /// outlive the app's suspension.
+    /// outlive the app's suspension; past `deadline` its save is given up and the draft kept.
     public func suspend(deadline: Duration = .seconds(3)) async {
         suspensions += 1
         let suspension = suspensions
         setIdle(true, inputAt: idleInputAt)
-        await finishLiveTypingNow()
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { await self.finishLiveTypingNow() }
+            group.addTask { try? await Task.sleep(for: deadline) }
+            await group.next()
+            group.cancelAll()
+        }
         await flushReadCursors()
         await flushKept()
         if let sending = idleSending {
