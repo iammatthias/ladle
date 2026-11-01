@@ -360,11 +360,11 @@ struct RoomListView: View {
             // apron-web's held session: the account signs back in with one tap.
             return AnyView(ActionBanner(symbol: "person.badge.key", title: "Sign in with your passkey to continue.",
                                         detail: session.signInNeeded) {
-                Button("Sign In with Passkey") {
+                Button("Sign In") {
                     perform { try await session.usePasskey(.login, with: PlatformPasskeys()) }
                 }
                 .buttonStyle(PrimaryButtonStyle())
-                Button("Other Ways", action: onSignIn).buttonStyle(GhostButtonStyle(tone: Palette.accent))
+                .accessibilityLabel("Sign in with passkey")
             })
         case .signedOut where session.server != nil, .stopped(.signedOut) where session.server != nil:
             return AnyView(ActionBanner(symbol: "person.crop.circle.badge.exclamationmark", title: "Sign in to \(session.serverName)",
