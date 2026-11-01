@@ -2,9 +2,10 @@
 import Foundation
 import XCTest
 
-/// Protocol v10 against the real Rust server: `/embed-terminal` and `/embed-append` waiting for
+/// Protocol v10 against the real Rust server: a message's terminal and append embeds waiting for
 /// their writer without `url`, then read live over HTTP while a streaming `PUT` writes them,
-/// their finished snapshots, and read receipts in a private room.
+/// their finished snapshots, `/embed-terminal`'s url refused once it ends, and read receipts in
+/// a private room.
 @MainActor
 final class LiveTextIntegrationTests: XCTestCase {
     private var servers: [Aprond] = []
@@ -34,7 +35,16 @@ final class LiveTextIntegrationTests: XCTestCase {
         return session
     }
 
-    /// Runs the command and reads the write URL out of its `~private` notice.
+    /// Posts a message with one live embed (§4.8.5) and gives the `write_url` its result lists for
+    /// the sender. The message is broadcast at once, its embed waiting for its writer.
+    private func postLive(_ embed: JSONValue, text: String, as session: ServerSession) async throws -> URL {
+        try await session.open("general")
+        let result = try await session.request("message", ["room_id": "general", "body": ["text": .string(text), "format": "markdown", "embeds": [embed]]])
+        return try XCTUnwrap(result["embeds"]?.arrayValue?.first?["write_url"]?.stringValue.flatMap(URL.init(string:)))
+    }
+
+    /// Runs the command and reads the write URL out of its `~private` notice. aprond posts a
+    /// command's message only when the write starts, with its url.
     private func writeURL(_ command: String, as session: ServerSession) async throws -> URL {
         try await session.open("general")
         _ = try await session.submit(ComposerDraft(field: DraftField(text: command)), in: "general")
@@ -86,7 +96,7 @@ final class LiveTextIntegrationTests: XCTestCase {
         XCTAssertEqual(ada.server?.apron, 10)
         XCTAssertNil(ada.server?.versionWarning)
         XCTAssertTrue(ada.server?.has("embed:terminal") == true && ada.server?.has("embed:append") == true)
-        let target = try await writeURL("/embed-terminal make test", as: ada)
+        let target = try await postLive(["kind": "terminal", "title": "make test"], text: "Running the tests:", as: ada)
         let pending = try await waiting("terminal", in: ada)
         let writer = StreamingPut(target)
         writer.send("\u{1B}[32mok\u{1B}[0m  first\r\n")
@@ -117,7 +127,7 @@ final class LiveTextIntegrationTests: XCTestCase {
         let server = try await Aprond.start()
         servers.append(server)
         let ada = try await account(server, "ada@example.com")
-        let target = try await writeURL("/embed-append **Plan:**", as: ada)
+        let target = try await postLive(["kind": "append"], text: "**Plan:**\n\n", as: ada)
         let pending = try await waiting("append", in: ada)
         XCTAssertEqual(MessageRowModel(pending, in: ada).liveLine, "Waiting to stream…")
         let writer = StreamingPut(target)
@@ -146,10 +156,13 @@ final class LiveTextIntegrationTests: XCTestCase {
         servers.append(server)
         let ada = try await account(server, "ada@example.com")
         let target = try await writeURL("/embed-terminal", as: ada)
-        let pending = try await waiting("terminal", in: ada)
         let writer = StreamingPut(target)
         writer.send("done\r\n")
-        let message: MessageSnapshot? = try await started(pending, kind: "terminal", in: ada)
+        var message: MessageSnapshot?
+        try await waitFor("the command's message, posted with its url as the write starts") {
+            message = ada.timeline("general").last { $0.embedList.contains { $0.kind == "terminal" } }
+            return message != nil
+        }
         let url = try XCTUnwrap(message?.embedList.first?.url)
         _ = await writer.finish()
         try await waitFor("finished", timeout: .seconds(10)) { ada.store.message(message!.messageID)?.embedList.first?.output != nil }
