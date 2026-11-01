@@ -19,7 +19,7 @@ final class LimitsTests: ScriptedSessionCase {
                        ["message", "reactions", "room_join", "room_leave", "room_set"])
         XCTAssertTrue(LimitScope.upload.holds("command", params: Self.upload))
         XCTAssertFalse(LimitScope.upload.holds("message", params: ["body": ["text": "hi"]]))
-        XCTAssertFalse(LimitScope.history.holds("history", params: [:]), "history waits where it loads")
+        XCTAssertEqual(["history", "room_list", "message"].filter { LimitScope.history.holds($0, params: [:]) }, ["history"])
     }
 
     func testAWaitReadsAsTheWebSaysIt() {
@@ -113,6 +113,34 @@ final class LimitsTests: ScriptedSessionCase {
         _ = await sent(socket, count: 4)
         await socket.deliver(["id": "c4", "result": ["message_id": "200"]])
         _ = try await text.value
+    }
+
+    func testARefusedHistoryPageIsNotAskedForAgainUntilItsWaitIsOver() async throws {
+        let socket = try await signedIn()
+        let opening = Task { try await session.open("general") }
+        _ = await sent(socket, count: 3)
+        await socket.deliver(["id": "c3", "error": ["code": -32002, "message": "History request limit reached",
+                                                    "data": ["retry_after": 30, "ext": ["limits": "read"]]]])
+        _ = try? await opening.value
+
+        advance(12)
+        do {
+            try await session.open("general")
+            XCTFail("held back")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.userFacing, "History request limit reached. Try again in 18s.")
+        }
+        let log = await socket.sentLog
+        XCTAssertEqual(log.count, 3, "nothing went")
+
+        advance(19)
+        let again = Task { try await session.open("general") }
+        let history = await sent(socket, count: 4)
+        XCTAssertEqual(history[3], #"{"id":"c4","method":"history","params":{"limit":50,"room_id":"general"}}"#)
+        await socket.deliver(["id": "c4", "result": ["entries": [], "more": false]])
+        _ = await sent(socket, count: 5)
+        await socket.deliver(["id": "c5", "result": ["not_joined": []]])
+        try await again.value
     }
 
     func testAnotherAccountStartsWithoutWaits() async throws {

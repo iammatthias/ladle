@@ -284,6 +284,8 @@ public final class ServerSession {
     let environment: Environment
     private(set) var connection: Connection?
     private var runTask: Task<Void, Never>?
+    /// Counts `start` and `suspend` calls, so a suspend that a start overtook keeps the connection.
+    @ObservationIgnored var suspensions = 0
     /// The email and external proposals this device made, by `state`, shared by every session.
     public let proposals: Proposals
     /// The account whose saved token the server refused, until the next sign-in: a passkey
@@ -317,6 +319,7 @@ public final class ServerSession {
 
     /// Connects, and keeps reconnecting until `stop()`. A no-op while running.
     public func start() {
+        suspensions += 1
         guard runTask == nil else { return }
         status = .connecting
         restoreKept()
@@ -373,7 +376,7 @@ public final class ServerSession {
                 resumesSavedToken = true
                 await restoring?.value
                 if resumes, let token = try? tokens.token(for: record.id) {
-                    await resume(with: token, on: connection)
+                    minimumDelay = await resume(with: token, on: connection) ?? .zero
                 } else {
                     status = .signedOut
                 }
@@ -488,7 +491,9 @@ public final class ServerSession {
     /// False for the one connection a `signIn` opens, which must not resume the saved token.
     @ObservationIgnored private var resumesSavedToken = true
 
-    private func resume(with token: String, on connection: Connection) async {
+    /// Resumes the saved token; a refusal with `retry_after` (an account's connection limit, or
+    /// too many attempts) closes the connection and returns the wait before the next one.
+    private func resume(with token: String, on connection: Connection) async -> Duration? {
         do {
             try await authenticate(.token(token), on: connection, resuming: true)
         } catch let error as RPCError where error.code == RPCError.Code.denied || error.code == RPCError.Code.invalidParams {
@@ -501,7 +506,9 @@ public final class ServerSession {
             status = .signedOut
         } catch {
             await connection.close()
+            return (error as? RPCError)?.retryAfter
         }
+        return nil
     }
 
     @discardableResult
@@ -914,7 +921,14 @@ public final class ServerSession {
 
     private func history(_ params: JSONValue, on connection: Connection? = nil) async throws -> HistoryPage {
         guard let connection = connection ?? self.connection else { throw Failure.notConnected }
-        let result = try await connection.request("history", params: params)
+        if let held = heldBack("history", params) { throw held }
+        let result: JSONValue
+        do {
+            result = try await connection.request("history", params: params)
+        } catch let error as RPCError {
+            noteLimit(error, method: "history", params: params)
+            throw error
+        }
         install(Records(historyResult: result))
         let page = HistoryPage(result)
         if let roomID = params["room_id"]?.stringValue, let floor = page.floor { raiseFloor(of: roomID, to: floor) }
@@ -1305,7 +1319,21 @@ public final class ServerSession {
                 cursorsWaiting.remove(roomID)
             }
         }
-        guard status == .signedIn, let connection, let cursor = readCursors[roomID], !withholdsRead(roomID) else { return }
+        guard status == .signedIn, let connection, let cursor = readCursors[roomID], readSent[roomID] != cursor else { return }
+        await sendCursor(cursor, in: roomID, on: connection)
+    }
+
+    /// Sends each cursor still waiting for its interval, as the app goes to the background.
+    func flushReadCursors() async {
+        guard status == .signedIn, let connection else { return }
+        for roomID in cursorsWaiting.sorted(by: codePointLess) {
+            guard let cursor = readCursors[roomID] else { continue }
+            await sendCursor(cursor, in: roomID, on: connection)
+        }
+    }
+
+    private func sendCursor(_ cursor: LogID, in roomID: String, on connection: Connection) async {
+        guard !withholdsRead(roomID) else { return }
         cursorSentAt[roomID] = .now
         readSent[roomID] = cursor
         try? await connection.notify("activity", params: ["room_id": .string(roomID), "read_message_id": cursor.json])

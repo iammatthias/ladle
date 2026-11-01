@@ -127,7 +127,7 @@ clone), which is only a worked example.
       Move To the room's threads, or out of a thread to its room and that room's other threads.
     - Reconnect: pending requests fail with `Connection.Failure.closed` (no same-id resend),
       then `backoff(attempt:jitter:)` = min(60 s, 1 s × 2^min(6, attempt − 1)) × [0.5, 1.5) (Cloudflare's docs/limits.md checklist),
-      never below a `retry_after`. Attempts restart after 30 s signed in. An id-less `denied`
+      never below a `retry_after`, a refused resume's included (an account's connection limit). Attempts restart after 30 s signed in. An id-less `denied`
       or a refused upgrade other than 429 or 5xx stops reconnecting (`Status.stopped`).
     - `ConnectionState` (`ConnectionState.swift`): a status as UX spec 4.1 shows it, its
       symbol, words, detail, and whether it is a problem with Try Now; nil when signed in.
@@ -159,7 +159,8 @@ clone), which is only a worked example.
       link names, the loaded history reaches past it, or the floor stops it, so the timeline
       stays one unbroken run. A page arriving after an older one leaves paging where it is.
       `page` asks the device first while a restored room's kept log reaches below what
-      `store` shows (`keptCoverage`), then the server.
+      `store` shows (`keptCoverage`), then the server. A `history` refused with `retry_after`
+      holds back every `history` until the wait is over (`LimitScope.history`).
     - Threads: a thread's record is in its own log (§4.3.1), not its room's, so a member of the
       room who has not joined it learns of it from `room_update` `updated` while connected, and
       otherwise only from `room_list {parent_room_id, filter: not_joined}` (§4.2.1). `open` and
@@ -582,8 +583,9 @@ clone), which is only a worked example.
     each change to every session. `setIdle` sends `status {idle: <seconds since input>}` or
     `{idle: false}` while signed in with `status`, one at a time per connection (`IdleReport`),
     after a `retry_after` wait or a 5 s backoff doubling to 5 minutes; a connection starts
-    attended, so an attended app sends nothing. `suspend()` reports idle, waits up to 3 s, and
-    stops: what the app does going to the background.
+    attended, so an attended app sends nothing. `suspend()` reports idle, sends the read cursors
+    still waiting for their interval, waits up to 3 s, and stops: what the app does going to the
+    background. A `start()` meanwhile (back in the foreground) keeps the connection instead.
   - Waits (`RateLimits.swift`, `ServerSession+Limits.swift`, §1.1 `retry_after`, `ext:limits`), as
     apron-web's `noteLimit`, `heldBack`, `limitScope` and RateLimitNotice: `request` notes what a
     refusal holds back (`LimitScope`: a refused `message`, history, and with `ext:limits` a

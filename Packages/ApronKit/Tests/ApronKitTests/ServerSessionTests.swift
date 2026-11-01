@@ -499,6 +499,49 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(clock.recorded, [.seconds(30)])
     }
 
+    func testAResumeRefusedWithRetryAfterWaitsItOutAndKeepsTheToken() async throws {
+        try tokens.setToken("t1", for: record.id)
+        session.start()
+        let socket = await transport(0)
+        _ = await frames(socket, count: 2)
+        await socket.deliver(["id": "c1", "error": ["code": -32002, "message": "Connection limit reached for this account",
+                                                    "data": ["retry_after": 60]]])
+        await eventually("backoff") { clock.recorded.count == 1 }
+        XCTAssertEqual(clock.recorded, [.seconds(60)])
+        XCTAssertEqual(try tokens.token(for: record.id), "t1")
+    }
+
+    func testSuspendSendsTheReadCursorStillWaitingForItsInterval() async throws {
+        let socket = queueTransport(capabilities: ["history", "rooms", "activity"])
+        session.start()
+        try await signInAsGuest(on: socket)
+        await session.markRead("general", through: LogID("201")!)
+        let waiting = Task { await session.markRead("general", through: LogID("202")!) }
+        try await Task.sleep(for: .milliseconds(10))
+        await session.suspend(deadline: .zero)
+        await waiting.value
+        let log = await socket.sentLog
+        XCTAssertEqual(Array(log[2...]), [
+            #"{"method":"activity","params":{"read_message_id":"201","room_id":"general"}}"#,
+            #"{"method":"activity","params":{"read_message_id":"202","room_id":"general"}}"#,
+        ])
+    }
+
+    func testStartingAgainWhileSuspendingKeepsTheConnection() async throws {
+        let socket = queueTransport(capabilities: ["history", "rooms", "status"])
+        session.start()
+        try await signInAsGuest(on: socket)
+        let suspending = Task { await session.suspend() }
+        _ = await frames(socket, count: 3)
+        session.start()
+        await socket.deliver(["id": "c3", "result": [:]])
+        await suspending.value
+        XCTAssertEqual(session.status, .signedIn)
+        let closed = await socket.closed
+        XCTAssertFalse(closed)
+        XCTAssertEqual(transports.made.withLock { $0.count }, 1)
+    }
+
     // MARK: Connection status
 
     private func failUpgrade(status: Int? = nil) {

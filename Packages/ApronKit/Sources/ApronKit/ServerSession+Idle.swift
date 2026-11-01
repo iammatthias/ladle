@@ -76,7 +76,10 @@ extension ServerSession {
     /// Tells the server this app is idle, waiting up to `deadline` for the answer, then stops: what
     /// the app does as it goes to the background, so the server can push what comes after.
     public func suspend(deadline: Duration = .seconds(3)) async {
+        suspensions += 1
+        let suspension = suspensions
         setIdle(true, inputAt: idleInputAt)
+        await flushReadCursors()
         await flushKept()
         if let sending = idleSending {
             await withTaskGroup(of: Void.self) { group in
@@ -86,6 +89,7 @@ extension ServerSession {
                 group.cancelAll()
             }
         }
+        guard suspensions == suspension else { return }
         await stop()
     }
 }

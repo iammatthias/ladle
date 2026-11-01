@@ -26,13 +26,13 @@ public enum LimitScope: String, Hashable, Sendable, CaseIterable {
         }
     }
 
-    /// Whether a wait on this scope refuses `method` before it is sent. History is not refused.
+    /// Whether a wait on this scope refuses `method` before it is sent.
     public func holds(_ method: String, params: JSONValue?) -> Bool {
         switch self {
         case .write: Self.writes.contains(method)
         case .upload: Self.addsUpload(method, params)
         case .message: method == "message"
-        case .history: false
+        case .history: method == "history"
         }
     }
 
