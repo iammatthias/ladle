@@ -236,9 +236,12 @@ clone), which is only a worked example.
     bare `http(s)` URLs and `apron:?` links linked in either format outside code and existing
     links, with apron-web's trimming of trailing punctuation; links on schemes apron-web's
     sanitizer refuses are dropped. Web links open in the default browser (`OpenURLAction`'s
-    system action); Apron links open in the app (`ApronLink`). `attributed` is the blocks flattened, a line each, for reading links and code; the app draws blocks with `MessageBlocksView`. Neither reference server describes links:
-    both drop a sender's `og`, so a `link` embed arrives as its kind and URL and shows the
-    fallback card, as on the web. With `rooms`, a `#room_id` (Appendix A.3: not after a letter
+    system action); Apron links open in the app (`ApronLink`). `attributed` is the blocks flattened, a line each, for reading links and code; the app draws blocks with `MessageBlocksView`. Both reference servers keep a sender's `og`
+    text (`title`, `description`, `site_name`, one line each, 256, 512 and 128 code points) and
+    drop its media (aprond's `clean_og`, Cloudflare's `withCleanOg`), so a sender-built preview
+    (`DraftLinkPreviews`) shows as a card; a `link` embed without `og` shows the fallback card, as
+    on the web. aprond with `--unfurl.enable` adds its own previews only for text URLs no embed
+    already names, by exact string. With `rooms`, a `#room_id` (Appendix A.3: not after a letter
     or digit, apron-web's `TEXT_ID`) outside code and links that names a room the session holds
     a record of (`ServerSession.referencedTitle`) shows as `#title` linked to `apron:?room=<id>`
     and marked `RoomReferenceKey`; the app draws it as a denim chip, and a tap opens the room
@@ -406,10 +409,27 @@ clone), which is only a worked example.
     else shows as its room: title, lock, member count. Nothing is fetched for a card: no request
     names one message, and `reveal` pages history. `PlaceCard.previews` is apron-web's
     `previewedByCard` (#155): an embed whose `url` reads as the same place as a card is hidden.
-  - `LinkPreviews`: previews this device fetches for links the server did not describe (the
+  - `LinkSites` and `DraftLinkPreviews` (`LinkSites.swift`, `DraftLinkPreviews.swift`), as
+    apron-web's `link-sites.ts` and `link-previews.ts` (#11, #122), their tests ported with literal
+    values: the sender's previews. `LinkSites` maps GitHub (pull requests, issues, commits,
+    repositories), YouTube, X, Bluesky and Wikipedia links (`site(for:)`, `www.`-like subdomains;
+    any of Wikipedia's) to a `LinkLookup`: the page's one URL, the public API request, its
+    headers, how its answer reads as an `og` (`clip`, `excerpt`, `htmlText`, 200 code points),
+    and the `og` the URL alone gives. `DraftLinkPreviews` (`findLinks`: three distinct links at
+    most, `trimURL`, `parse` as a browser reads a URL) asks each link once (`prefetch`) through
+    `Environment.fetchLinkSite` (`LinkSiteFetch.live`: no cookies, credentials or referrer, at
+    most 1 MB, 10 s), remembers 100 answers and the statuses a site names as missing, and holds
+    a site that answers a limit until its `Retry-After` or `X-RateLimit-Reset` (else a minute).
+    `embeds(in:dismissed:)` are the `link` embeds a draft goes out with. `SessionStore` owns one
+    for every server (`ServerSession.linkPreviews`), as the web keeps one per page; `submit`
+    sends them with a message (none with a command or an edit), skipping
+    `ComposerDraft.dismissedPreviews`, which a failed command's draft brings back and
+    `drafts.json` never keeps; `send`, `post` and `PendingMessage` carry them as `links`, before
+    the uploads.
+  - `LinkPreviews`: previews this device fetches for links no one described (the
     user's choice over §4.8.1's "clients don't fetch third-party pages"). `unfurlURL` picks one
     link per message, the first `mayFetch` allows among its first three (text links, then `link`
-    embeds without `og`), and none once any embed carries the server's `og`. `mayFetch` allows
+    embeds without `og`), and none once any embed carries an `og`, the sender's or the server's. `mayFetch` allows
     only `http(s)`, and refuses `link.apron.chat`, `localhost`, `.local` and single-label
     names, and non-public address literals; a public name that redirects inward is not caught. Previews are
     cached in memory and as JSON in `Caches/LinkPreviews` (7 days, 1 day for a failure; the
@@ -637,7 +657,7 @@ clone), which is only a worked example.
   `Servers/` (the server list and iPad rail, `PreferencesView`: apron-web's Preferences (#184), its five sections (`PreferencesSection`) in a navigation stack, opened from the list's toolbar, the rail's foot and the profile bar (Profile, for that server) through `openPreferences`, which `RootView` presents, at a section when asked: Profile (`YouView`, not `standalone`), Notifications (Remind Me's permission and each server's `PauseSection`), Appearance, Media (the media policy and trusted sites), History (`HistoryPreferences`: Retention, how much is kept, why keeping stopped, Export Chats with Include Private Rooms through `ShareSheet`, and Open an Export…); `Archive/ArchiveViewer.swift` (`OpenedExport`, `ArchiveViewer`: an export read-only, after "Load its images?", from History or a `.jsonl` handed to the app, which `RootView`'s `onOpenURL` opens); `AppearanceView`: the mode, the themes with swatches, `ThemeCSSView` (the custom CSS) and `BaseColorsView` (the color pickers); `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/` (`RoomSearchField`: Search Rooms in the iPad sidebar, whose navigation bar is hidden), `Timeline/` (messages, select mode's check circles and `SelectionBar` (Copy, Move, New Thread) in the composer's place, `SearchView`: Search Local History, from the magnifying glass beside a room's title, ⌘F, or Search Rooms' Search Messages, `RateLimitNotice` and Send's countdown over the composer while a wait holds it back, composer with the
   mention list, the `:` emoji list (`EmojiSuggestions`), the `#` room list and the command list (`CommandSuggestions`: usage and
-  summary, scrolling past five rows; picking fills `/name ` and keeps the keyboard up), reaction picker (custom emoji by category first),
+  summary, scrolling past five rows; picking fills `/name ` and keeps the keyboard up), reaction picker (custom emoji by category first), `LinkPreviewTray` (in `ComposerView.swift`: the draft's link previews above the box as the cards they will be, each with its (x), side by side; looked up 800 ms after typing pauses, a paste too, since a SwiftUI field reports no paste),
   member list, `CustomEmojiViews`: `EmojiText` draws each marked key as its image at the line's
   height inside one `Text`, read by VoiceOver as its `alt`, `ReactionGlyph` an emoji, a custom
   emoji's image or a dashed placeholder for a key the catalog lacks, `EmojiImages` the images,
@@ -772,7 +792,7 @@ of uploads (image, video, file, audio, pending), the media viewer, the composer 
 limit, a read-only guest's sign-in prompt on the demo server, custom emoji in text, a
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list (`:pa`), `:smi` with the custom `:smilingpan:` first, the standard emoji and the first row highlighted (`ladle-emoji-standard`), its command list (`/inv`, answered by
-`PreviewServer`'s `/help`), link cards, a room chip and Apron link chips for a message, a room, a thread, a user and another server (the Icon sketches thread), the `#` room
+`PreviewServer`'s `/help`), link cards, a sender-built GitHub card as others see it (`ladle-sent-link-preview`), the composer's link previews for a pull request and a Wikipedia article (`ladle-composer-link-previews`), a room chip and Apron link chips for a message, a room, a thread, a user and another server (the Icon sketches thread), the `#` room
 list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block and highlighted code in python, diff, json and an unknown language left plain (the markdown room, also in Ferrous as `ladle-markdown-ferrous-<mode>`, where inline code takes Rec Mono), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the Release thread's rename line (and Dev's join line in the busy room), the Start Thread form on Bram's message, #general's threads in the room list (five joined, Inactive folded, Other Threads with "4d", "9w", "2y" and "1 more…"), and Inactive unfolded with its untitled thread open, the busy room's "Reconnecting…" and "Checking for new messages…" pills, its "Loading earlier messages…" pill, its catching-up line under the bar (`ladle-catching-up-line`, and on iPad `ladle-ipad-catching-up`), the room list with your dot as the dashed ring (`ladle-rooms-reconnecting`), each held through the renderer-only `heldPaneLoading` and `heldAwayWords` environment values, the kitchen's pinned description (the emoji shot), put away (its first line under the title), and Edit Room, the Private section with faces (`ladle-rooms-private`), the conversation with Ada (faces, plum header and its line, the intro card), Launch plan's "You were added" banner, New private conversation empty and with two picked (chips, Name), New Room with Private, and at the limit after starting home's fifth private room (`ladle-private-full`, taken after the others), Add People to ops with Ada picked and "@carol" typed, `/invite-device add phone`'s notice in ops with Show QR Code, and its sheet's warning and code (`ladle-signin-qr-*`), Launch plan's members with Add People, a refused `/kick @Dev` in ops (its reason as a notice, the draft given back; `PreviewServer` refuses removing someone else), #general's members with Offline folded (`ladle-members-folded`), the demo lobby's truncated listing ("Showing 3 of 1204") and a profile card for someone it leaves out ("Not among the recently active members"), the room list and Preferences > Notifications while paused (`ladle-notifications-paused`), and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the rooms list in an order of your own (`ladle-rooms-ordered`: random and kitchen moved up, Ada's conversation last of Private), Rooms and Private folded to their rooms with news with their "…" (`ladle-rooms-folded`), #general picked again with its threads folded and its "…" (`ladle-rooms-threads-folded`), Reorder Rooms' edit mode (`ladle-rooms-reorder`), Browse Rooms with descriptions and member counts (`ladle-browse-rooms`, after the other phone shots, as its listing adds rooms to home), and the garden open to read before joining with Join in its header (`ladle-room-peek`); the floating day over the busy room scrolled back to Eun-ji's mention (`ladle-floating-day`), that mention mid-pulse (`ladle-mention-pulse`), the demo's welcome before `auth` in its first room, help (`ladle-welcome`); the Load test thread with a v10 server's finished terminal output and finished append (`ladle-live-text-finished`); the busy room at AX3; the busy room in Ferrous, Gumball, Linocut and a custom CSS theme (`ladle-timeline-<theme>-<mode>`), the markdown room in Ferrous, Gumball and the custom theme (`ladle-markdown-<theme>-<mode>`: bold and oblique emphasis in Recursive, Nunito and SF Rounded), and drawn in Apron then given Linocut in place (`ladle-timeline-switched-linocut-dark`: a new theme redraws open screens); Preferences' sections and History; Search Local History for "icon" across rooms, and started narrowed to the design room with `room:` suggesting rooms at the caret (`ladle-search-filtered`; the renderer opens it unfocused, as a focused Catalyst field selects all of itself), and Search Rooms for "des" with Search Messages under it (`ladle-rooms-search`); the busy room in select mode with its last three messages picked (`ladle-select`), and what Copy puts on the pasteboard for them, shown as text (`ladle-select-log`); home exported and opened: "Load its images?" (`ladle-archive-ask`), its rooms (`ladle-archive-rooms`) and the busy room read-only with the export's line in the composer's place (`ladle-archive-timeline`); Appearance with Ferrous chosen, and the custom theme's CSS with its "not used on iOS" line; and the iPad
 split view at 1180x820 pt (regular width) in dark and light, on the busy room and on the random room with its typing line. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
@@ -850,7 +870,9 @@ pinned commit. Run it before `swift test` (the gate line above does), and `./bui
   picker run out of process and need no usage string; the camera and the microphone (voice
   notes) have theirs in `project.yml`; the camera's names scanning too. Nothing in them is a required-reason API: files go only to the server the user sends them to.
   LinkPresentation fetches link previews; it is not a required-reason API either, and a
-  preview goes nowhere but the screen and the cache. The Show Link Previews setting is read
+  preview goes nowhere but the screen and the cache. A draft's link previews ask the five
+  sites' public APIs with URLSession (`LinkSiteFetch`), no required-reason API; what they
+  answer goes to the server with the message, as on the web. The Show Link Previews setting is read
   from `UserDefaults`, which is, so `PrivacyInfo.xcprivacy` declares it with reason `CA92.1`. A third-party package needs a justified entry here. None so far.
 - Bundled fonts: only the faces apron-web carries for its themes (#174), Recursive's casual
   sans and mono and Nunito, under the SIL Open Font License 1.1. `tools/design/fonts.py` (run

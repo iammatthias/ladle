@@ -65,6 +65,8 @@ public final class ServerSession {
         public var fetchEmojiCatalog: @Sendable (URL) async throws -> Data
         /// The GET of `?apron_connection_status=1` after a failed upgrade.
         public var fetchConnectionStatus: ConnectionStatusFetch
+        /// A site's API, asked about a link in a draft (`DraftLinkPreviews`).
+        public var fetchLinkSite: DraftLinkPreviews.Fetch
         /// The least time between two read cursors sent for one room. Each is a frame, and
         /// Cloudflare's server closes a connection over 60 frames a minute.
         public var readCursorInterval: Duration
@@ -91,6 +93,7 @@ public final class ServerSession {
             writeEmbed: @escaping EmbedWrite = EmbedWriter.live,
             fetchEmojiCatalog: @escaping @Sendable (URL) async throws -> Data = EmojiCatalogFetch.live,
             fetchConnectionStatus: @escaping ConnectionStatusFetch = ConnectionStatusProbe.live,
+            fetchLinkSite: @escaping DraftLinkPreviews.Fetch = LinkSiteFetch.live,
             readCursorInterval: Duration = .seconds(5),
             typing: TypingTimes = TypingTimes(),
             now: @escaping @Sendable () -> Date = { Date() },
@@ -109,6 +112,7 @@ public final class ServerSession {
             self.writeEmbed = writeEmbed
             self.fetchEmojiCatalog = fetchEmojiCatalog
             self.fetchConnectionStatus = fetchConnectionStatus
+            self.fetchLinkSite = fetchLinkSite
             self.readCursorInterval = readCursorInterval
             self.typing = typing
             self.now = now
@@ -258,6 +262,9 @@ public final class ServerSession {
     /// Called when the account on `record` changes, so the owner can persist it.
     public var onRecordChange: (@MainActor (ServerRecord) -> Void)?
 
+    /// The previews of a draft's links that go out with it (`DraftLinkPreviews`), shared by
+    /// every server's composer.
+    public let linkPreviews: DraftLinkPreviews
     private let tokens: any TokenStore
     private let positions: any ReadPositionStore
     let environment: Environment
@@ -277,8 +284,9 @@ public final class ServerSession {
     public init(record: ServerRecord, tokens: any TokenStore, positions: any ReadPositionStore = InMemoryReadPositionStore(),
                 mediaSettings: MediaSettings = MediaSettings(), addedRooms: AddedRooms = AddedRooms(),
                 roomArrangement: RoomArrangement = RoomArrangement(), keeping: HistoryKeeping? = nil,
-                proposals: Proposals = Proposals(), environment: Environment = .live) {
+                proposals: Proposals = Proposals(), linkPreviews: DraftLinkPreviews? = nil, environment: Environment = .live) {
         self.record = record
+        self.linkPreviews = linkPreviews ?? DraftLinkPreviews(fetch: environment.fetchLinkSite, now: environment.now)
         self.mediaSettings = mediaSettings
         self.addedRooms = addedRooms
         self.proposals = proposals
@@ -938,8 +946,8 @@ public final class ServerSession {
     /// own; `uploadProgress` follows them, and a failed one comes back as a Not sent item in the
     /// outbox, since the server drops the embed from the message (§4.8.3).
     @discardableResult
-    public func send(_ text: String, in roomID: String, replyTo: LogID? = nil, mentions: [String] = [], attachments: [Attachment] = [],
-                     id: String? = nil) async throws -> LogID? {
+    public func send(_ text: String, in roomID: String, replyTo: LogID? = nil, mentions: [String] = [], links: [Embed] = [],
+                     attachments: [Attachment] = [], id: String? = nil) async throws -> LogID? {
         let draft = Draft(text: text, commands: server?.has("command") == true)
         if !draft.isCommand, !joinedRoomIDs.contains(roomID), server?.has("rooms") == true, connection != nil, status == .signedIn {
             try await join(roomID)
@@ -947,7 +955,8 @@ public final class ServerSession {
         if !draft.isCommand { sentMessage(in: roomID) }
         var body: [String: JSONValue] = ["text": .string(draft.text), "format": "markdown"]
         if !mentions.isEmpty { body["mentions"] = .array(mentions.map(JSONValue.string)) }
-        if !attachments.isEmpty { body["embeds"] = .array(attachments.map(Self.uploadEmbed)) }
+        let embeds = links.map(\.json) + attachments.map(Self.uploadEmbed)
+        if !embeds.isEmpty { body["embeds"] = .array(embeds) }
         var params: [String: JSONValue] = ["room_id": .string(roomID), "body": .object(body)]
         if let replyTo { params["reply_to"] = ["message_id": replyTo.json] }
         let result = try await request(draft.isCommand ? "command" : "message", .object(params), id: id)
@@ -1021,6 +1030,8 @@ public final class ServerSession {
         public let text: String
         public let replyTo: LogID?
         public let mentions: [String]
+        /// The `link` embeds built for its links (`DraftLinkPreviews`), sent before the uploads.
+        public var links: [Embed] = []
         public let attachments: [Attachment]
         /// Who queued it; it sends only as that user.
         public internal(set) var userID: String?
@@ -1034,9 +1045,10 @@ public final class ServerSession {
 
     /// Queues a message and sends it now if signed in, or on the next sign-in as the same user.
     /// Commands are not queued: they need a connection (UX spec 4.2).
-    public func post(_ text: String, in roomID: String, replyTo: LogID? = nil, mentions: [String] = [], attachments: [Attachment] = []) {
+    public func post(_ text: String, in roomID: String, replyTo: LogID? = nil, mentions: [String] = [], links: [Embed] = [],
+                     attachments: [Attachment] = []) {
         outbox.append(PendingMessage(id: "q-" + environment.makeRequestID(), roomID: roomID, text: text, replyTo: replyTo,
-                                     mentions: mentions, attachments: attachments, userID: you?.userID, queuedAt: Date(), state: .sending))
+                                     mentions: mentions, links: links, attachments: attachments, userID: you?.userID, queuedAt: Date(), state: .sending))
         Task { await drainOutbox() }
     }
 
@@ -1062,8 +1074,8 @@ public final class ServerSession {
                 continue
             }
             do {
-                try await send(item.text, in: item.roomID, replyTo: item.replyTo, mentions: item.mentions, attachments: item.attachments,
-                               id: item.id)
+                try await send(item.text, in: item.roomID, replyTo: item.replyTo, mentions: item.mentions, links: item.links,
+                               attachments: item.attachments, id: item.id)
                 outbox.removeAll { $0.id == item.id }
             } catch let error as RPCError {
                 if error.retryAfter != nil, error.limitCategory == "upload" {

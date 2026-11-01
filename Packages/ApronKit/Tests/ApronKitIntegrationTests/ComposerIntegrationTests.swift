@@ -19,8 +19,8 @@ final class ComposerIntegrationTests: XCTestCase {
         return server
     }
 
-    private func session(_ server: Aprond) async throws -> ServerSession {
-        let environment = ServerSession.Environment(makeTransport: { WebSocketTransport(url: $0.url, origin: $0.origin) })
+    private func session(_ server: Aprond, fetchLinkSite: @escaping DraftLinkPreviews.Fetch = { _, _ in throw URLError(.cancelled) }) async throws -> ServerSession {
+        let environment = ServerSession.Environment(makeTransport: { WebSocketTransport(url: $0.url, origin: $0.origin) }, fetchLinkSite: fetchLinkSite)
         let session = ServerSession(record: ServerRecord(url: server.url), tokens: InMemoryTokenStore(), environment: environment)
         sessions.append(session)
         session.start()
@@ -28,8 +28,9 @@ final class ComposerIntegrationTests: XCTestCase {
         return session
     }
 
-    private func account(_ server: Aprond, _ email: String) async throws -> ServerSession {
-        let session = try await session(server)
+    private func account(_ server: Aprond, _ email: String,
+                         fetchLinkSite: @escaping DraftLinkPreviews.Fetch = { _, _ in throw URLError(.cancelled) }) async throws -> ServerSession {
+        let session = try await session(server, fetchLinkSite: fetchLinkSite)
         _ = try await session.signIn(.emailProposal(address: email))
         _ = try await session.signIn(.emailCode(try await server.emailCode(for: email)))
         return session
@@ -49,6 +50,32 @@ final class ComposerIntegrationTests: XCTestCase {
         ada.post("hello", in: "general")
         try await waitFor("ada's message ends it") { bob.typing["general"] == nil }
         XCTAssertEqual(bob.timeline("general").last?.plainText, "hello")
+    }
+
+    func testTheDraftsLinkPreviewsGoOutAsLinkEmbedsWhoseTextTheServerKeeps() async throws {
+        let server = try await startServer()
+        let pull: JSONValue = ["title": "Remove the Go server", "state": "closed", "user": ["login": "shazow"],
+                               "body": "Now in its own repo.", "pull_request": ["merged_at": "2026-09-01T00:00:00Z"]]
+        let ada = try await account(server, "ada@example.com") { url, _ in
+            guard url.host() == "api.github.com" else { throw URLError(.notConnectedToInternet) }
+            return DraftLinkPreviews.Response(status: 200, body: pull.serializedData())
+        }
+        let bob = try await account(server, "bob@example.com")
+        try await bob.open("general")
+
+        let text = "See https://github.com/shazow/apron/pull/60/files, https://en.wikipedia.org/wiki/Mercury_(planet) and https://youtu.be/dQw4w9WgXcQ"
+        await ada.linkPreviews.prefetch(text)
+        try await ada.submit(ComposerDraft(field: DraftField(text: text), dismissedPreviews: ["https://www.youtube.com/watch?v=dQw4w9WgXcQ"]), in: "general")
+
+        try await waitFor("bob has it") { bob.timeline("general").last?.plainText == text }
+        let embeds = try XCTUnwrap(bob.timeline("general").last).embedList
+        XCTAssertEqual(embeds.map(\.kind), ["link", "link"], "the dismissed YouTube preview stays off")
+        XCTAssertEqual(embeds.map(\.url?.absoluteString), ["https://github.com/shazow/apron/pull/60", "https://en.wikipedia.org/wiki/Mercury_(planet)"])
+        XCTAssertEqual(embeds.map(\.og), [
+            OpenGraph(siteName: "GitHub · shazow/apron", title: "Remove the Go server", description: "Pull request #60 · Merged · by shazow — Now in its own repo."),
+            OpenGraph(siteName: "Wikipedia", title: "Mercury (planet)"),
+        ], "the broadcast keeps the sender's title, description and site name")
+        XCTAssertNil(bob.timeline("general").last?.unfurlURL, "a reader's device fetches nothing for a link the sender described")
     }
 
     func testARoleMentionListsEveryOtherHolderAndOnlyThoseListedAreMentioned() async throws {

@@ -18,6 +18,11 @@ import SwiftUI
 /// message (§4.8.4). Without the capability the menu is not there. Where the server states what
 /// it takes (`UploadOffer`), the pickers show only that, the rest is greyed out, and the menu
 /// says what the server takes.
+///
+/// A link to GitHub, YouTube, X, Bluesky or Wikipedia shows its card above the box, as the web's
+/// link previews: built from the URL at once, then from the site's public API once typing pauses
+/// (`DraftLinkPreviews`). Each goes out with the message as a `link` embed unless its (x) takes
+/// it off the draft. A command, an edit and a composer that can't write show none.
 struct ComposerView: View {
     let session: ServerSession
     let roomID: String
@@ -79,6 +84,12 @@ struct ComposerView: View {
                     .foregroundStyle(Palette.danger)
                     .padding(.horizontal, Tokens.Space.s4)
             }
+            if !linkPreviews.isEmpty {
+                LinkPreviewTray(previews: linkPreviews, gate: session.mediaGate, settings: session.mediaSettings) { url in
+                    draft.dismissedPreviews.append(url)
+                    focused = true
+                }
+            }
             if !draft.files.isEmpty, !draft.field.isEdit {
                 AttachmentTray(attachments: draft.files) { id in draft.files.removeAll { $0.id == id } }
             }
@@ -111,6 +122,16 @@ struct ComposerView: View {
             // Typing in the composer, never the editor, says so (§4.6), as the web's `composerInput`.
             // An emptied field is most often a sent one, which the message itself ends.
             if !draft.field.isEdit, !draft.field.text.isEmpty { session.composerChanged(in: roomID) }
+            if draft.field.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !draft.dismissedPreviews.isEmpty { draft.dismissedPreviews = [] }
+        }
+        .task(id: previewsShown ? draft.field.text : nil) {
+            // Looked up once typing pauses, so a half-typed URL isn't; a lookup already asked
+            // goes on when typing resumes.
+            let text = draft.field.text
+            guard previewsShown, !session.linkPreviews.links(in: text).isEmpty else { return }
+            try? await Task.sleep(for: .milliseconds(800))
+            guard !Task.isCancelled else { return }
+            Task { await session.linkPreviews.prefetch(text) }
         }
         .onChange(of: draft.field.mode, initial: true) { if draft.field.mode != .new { focused = true } }
         .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, maxSelectionCount: 10,
@@ -239,6 +260,16 @@ struct ComposerView: View {
     }
 
     private var canAttach: Bool { session.canAttach && !draft.field.isEdit }
+
+    /// Whether the draft's links show previews: not for a command, an edit, or while it can't write.
+    private var previewsShown: Bool {
+        canWrite && !draft.field.isEdit && !ServerSession.Draft(text: draft.field.text, commands: session.server?.has("command") == true).isCommand
+    }
+
+    /// The `link` embeds the draft goes out with (`submit` builds them the same way).
+    private var linkPreviews: [Embed] {
+        previewsShown ? session.linkPreviews.embeds(in: draft.field.text, dismissed: draft.dismissedPreviews) : []
+    }
 
     private var offer: UploadOffer { UploadOffer(session.mediaLimits?.upload) }
 
@@ -528,5 +559,43 @@ extension View {
             .background(active ? Palette.hover : .clear, in: RoundedRectangle(cornerRadius: Tokens.Radius.sm))
             .onHover { if $0 { rows.hover(index) } }
             .accessibilityAddTraits(active ? .isSelected : [])
+    }
+}
+
+/// The web's composer link previews: each card as the message will show it, side by side, with
+/// an (x) that sends the message without it.
+struct LinkPreviewTray: View {
+    let previews: [Embed]
+    let gate: MediaGate
+    let settings: MediaSettings
+    let remove: (String) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: Tokens.Space.s3) {
+                ForEach(previews, id: \.url) { embed in
+                    EmbedCard(embed: embed, gate: gate, settings: settings)
+                        .frame(width: 320, alignment: .leading)
+                        .overlay(alignment: .topTrailing) {
+                            Button("Remove preview", systemImage: "xmark") { embed.url.map { remove($0.absoluteString) } }
+                                .labelStyle(.iconOnly)
+                                .font(.caption.weight(.bold))
+                                .foregroundStyle(Palette.inkMuted)
+                                .frame(width: 24, height: 24)
+                                .background(Palette.timeline, in: Circle())
+                                .overlay(Circle().strokeBorder(Palette.lineStrong))
+                                .frame(width: Tokens.Size.touchTarget, height: Tokens.Size.touchTarget)
+                                .contentShape(Rectangle())
+                                .offset(x: 10, y: -10)
+                        }
+                        .padding(.top, Tokens.Space.s1)
+                        .padding(.trailing, Tokens.Space.s1)
+                }
+            }
+            .padding(.horizontal, Tokens.Space.s4)
+            .padding(.top, Tokens.Space.s3)
+            .padding(.bottom, Tokens.Space.s1)
+        }
+        .accessibilityLabel("Link previews to send")
     }
 }

@@ -14,6 +14,8 @@ public final class SessionStore {
     public let reminders: Reminders
     /// Where media loads from, on every server, kept beside `servers.json`.
     public let mediaSettings: MediaSettings
+    /// The previews of drafts' links, one for every server, as apron-web keeps one per page.
+    public let linkPreviews: DraftLinkPreviews
     /// The theme and mode on this device, kept beside `servers.json`.
     public let appearance: AppearanceSettings
     /// Every room's composer draft, kept beside `servers.json`, its files in `Staged`.
@@ -50,6 +52,7 @@ public final class SessionStore {
         reminders = Reminders(store: serverStore.map { FileReminderStore(directory: $0.directory) } ?? InMemoryReminderStore(),
                               notifier: notifier)
         mediaSettings = MediaSettings(directory: serverStore?.directory)
+        linkPreviews = DraftLinkPreviews(fetch: environment.fetchLinkSite, now: environment.now)
         appearance = AppearanceSettings(directory: serverStore?.directory)
         hiddenDescriptions = HiddenDescriptions(directory: serverStore?.directory)
         addedRooms = AddedRooms(directory: serverStore?.directory)
@@ -127,7 +130,7 @@ public final class SessionStore {
         let keeping = historyFiles.map { HistoryKeeping(files: $0, settings: historySettings) }
         let session = ServerSession(record: record, tokens: tokens, positions: positions, mediaSettings: mediaSettings, addedRooms: addedRooms,
                                     roomArrangement: roomArrangement,
-                                    keeping: keeping, proposals: proposals, environment: environment)
+                                    keeping: keeping, proposals: proposals, linkPreviews: linkPreviews, environment: environment)
         session.onRecordChange = { [weak self] changed in self?.accountChanged(changed) }
         session.onInput = { [weak self] in self?.attention.input() }
         if attention.idle { session.setIdle(true, inputAt: attention.inputAt) }

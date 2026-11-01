@@ -43,10 +43,15 @@ public struct StagedFile: Identifiable, Hashable, Sendable {
 public struct ComposerDraft: Hashable, Sendable {
     public var field: DraftField
     public var files: [StagedFile]
+    /// The link previews taken off this draft, by URL (`PreviewLink.url`): the message goes out
+    /// without them. Given back with a failed command's draft, as apron-web's `composerDismissed`,
+    /// and never kept across launches.
+    public var dismissedPreviews: [String]
 
-    public init(field: DraftField = DraftField(), files: [StagedFile] = []) {
+    public init(field: DraftField = DraftField(), files: [StagedFile] = [], dismissedPreviews: [String] = []) {
         self.field = field
         self.files = files
+        self.dismissedPreviews = dismissedPreviews
     }
 
     public var isEmpty: Bool { field.text.isEmpty && field.replyTo == nil && files.isEmpty }

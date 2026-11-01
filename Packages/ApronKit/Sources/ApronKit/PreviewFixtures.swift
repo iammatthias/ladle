@@ -29,6 +29,10 @@ public enum PreviewFixtures {
             sleep: { _ in try await Task.sleep(for: .seconds(3600)) },
             jitter: { 1 },
             fetchEmojiCatalog: { _ in emojiCatalog.serializedData() },
+            fetchLinkSite: { url, _ in
+                guard let answer = linkSiteAnswers[url.host() ?? ""] else { throw URLError(.notConnectedToInternet) }
+                return DraftLinkPreviews.Response(status: 200, body: answer.serializedData())
+            },
             typing: TypingTimes(longest: .seconds(3600))
         )
         let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment)
@@ -69,6 +73,19 @@ public enum PreviewFixtures {
 
     /// Home's custom emoji: the demo's `:apron:`, an animated one with a still copy, a wide one,
     /// one `:smi` finds ahead of the standard emoji, and a hidden one. LadleShots answers the images with generated pictures.
+    /// What GitHub's and Wikipedia's APIs answer for the links in the composer's link preview shot.
+    private static let linkSiteAnswers: [String: JSONValue] = [
+        "api.github.com": ["title": "Bowl-only app icon", "state": "open", "user": ["login": "eunji"],
+                           "body": "Swaps the profile ladle for the bowl, with a 2 pt stroke at 20 pt.", "pull_request": ["url": "https://api.github.com/repos/example/ladle/pulls/42"]],
+        "en.wikipedia.org": ["title": "Ladle (spoon)", "extract": "A ladle is a type of serving spoon used for soup, stew, or other foods."],
+    ]
+
+    /// Eun-ji's message in the link card thread whose GitHub card she built, for the sent-card shot.
+    public static let sentLinkPreviewID = message(-19)
+
+    /// A draft linking a pull request and an article, whose previews the composer builds.
+    public static let linkPreviewDraft = "The icon PR is up: https://github.com/example/ladle/pull/42 and the name, for the record: https://en.wikipedia.org/wiki/Ladle_(spoon)"
+
     private static let emojiCatalog: JSONValue = [
         ":apron:": ["url": .string(emojiURL("apron")), "width": 512, "height": 512],
         ":partyparrot:": ["url": .string(emojiURL("partyparrot")), "static_url": .string(emojiURL("partyparrot-still")),
@@ -360,7 +377,7 @@ public enum PreviewFixtures {
         line(13, "dev", "", deleted: true),
         line(14, "sam", "I'll cut the build after lunch.", reply: 13, reactions: ["👍": ["ada"]]),
         line(15, "eunji", "@Sam can you review the icon PR before then? It's small, mostly the ladle glyph at 20 pt.",
-             // A link preview as a server that describes links would send it; aprond drops a sender's `og`.
+             // A link preview as a server that unfurls links sends it, image and all; a sender's image would be dropped.
              mentions: ["sam"], embeds: [[
                  "kind": "link", "url": "https://git.example/ladle/pull/42",
                  "og": ["title": "Ladle glyph at small sizes #42", "description": "Bowl-only mark, 2 pt stroke, rounded caps.", "site_name": "git.example",
@@ -447,6 +464,11 @@ public enum PreviewFixtures {
             ]),
             iconThread: history(iconThread, [
                 line(-20, "eunji", "Bowl-only, 2 pt stroke, rounded caps."),
+                // A link preview as Ladle and apron-web build it for GitHub; the server keeps its text.
+                line(-19, "eunji", "Up for review: https://github.com/example/ladle/pull/42",
+                     embeds: [["kind": "link", "url": "https://github.com/example/ladle/pull/42", "og": [
+                         "site_name": "GitHub · example/ladle", "title": "Bowl-only app icon",
+                         "description": "Pull request #42 · Open · by eunji — Swaps the profile ladle for the bowl, with a 2 pt stroke at 20 pt."]]]),
                 line(-18, "sam", "Love it.", reactions: ["❤️": ["eunji"]]),
                 line(-17, "eunji", "Linking the notes from #general so we don't lose them: \(notesLink)",
                      embeds: [["kind": "link", "url": .string(notesLink), "og": ["title": "general on Home", "site_name": "link.apron.chat"]]]),

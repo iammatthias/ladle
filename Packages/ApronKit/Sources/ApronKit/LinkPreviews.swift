@@ -2,7 +2,7 @@ import CryptoKit
 import Darwin
 import Foundation
 
-/// A preview this device fetched for a link the server did not describe: the page's title, its
+/// A preview this device fetched for a link no one described: the page's title, its
 /// site, a small JPEG of its image, and the direct video URL the page names, if any.
 public struct LinkPreview: Codable, Hashable, Sendable {
     public var title: String
@@ -25,7 +25,8 @@ public struct LinkPreview: Codable, Hashable, Sendable {
 extension MessageSnapshot {
     /// The link this device may fetch a preview for: the first one it may fetch among the
     /// message's first three links (its text's links, then `link` embeds without `og`). Nil once
-    /// any embed on the message carries the server's `og`, which then is the preview.
+    /// any embed on the message carries an `og`, the sender's or the server's, which then is
+    /// the preview.
     public var unfurlURL: URL? {
         let embeds = embedList
         guard !embeds.contains(where: { $0.og != nil && $0.upload == nil }) else { return nil }

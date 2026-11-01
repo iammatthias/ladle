@@ -206,7 +206,8 @@ extension ServerSession {
 
     /// Sends what the composer wrote, as apron-web's `sendMessage`: for a new message or a reply,
     /// a command (`ComposerAction`, the draft's files going with the server's own `command`) or a
-    /// message queued in the outbox with the files; for an edit, its save, which sends no files.
+    /// message queued in the outbox with the files and the previews of its links still on the
+    /// draft (`DraftLinkPreviews`); for an edit, its save, which sends no files.
     /// Returns the room to show after a command, such as the one `/join` named. A failed command
     /// throws `CommandFailure`, holding `draft` to give back.
     @discardableResult
@@ -222,7 +223,8 @@ extension ServerSession {
         let attachments = draft.files.compactMap(\.attachment)
         let action = action(for: field, withFiles: !attachments.isEmpty)
         guard action.isCommand else {
-            post(text, in: roomID, replyTo: field.replyTo, mentions: mentions, attachments: attachments)
+            let links = linkPreviews.embeds(in: text, dismissed: draft.dismissedPreviews)
+            post(text, in: roomID, replyTo: field.replyTo, mentions: mentions, links: links, attachments: attachments)
             return nil
         }
         return try await run(action, from: draft, in: roomID, mentions: mentions)

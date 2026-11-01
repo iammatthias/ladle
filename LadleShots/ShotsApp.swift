@@ -21,7 +21,7 @@ enum Screen: String, CaseIterable {
     case firstRun = "first-run", servers, connect, connectScanned = "connect-scanned", rooms, timeline, mention, members, reaction, attachments, media, links, viewer, ipad
     case textLimit = "text-limit", guestComposer = "guest-composer"
     case emoji, emojiPicker = "emoji-picker", emojiShortcode = "emoji-shortcode", commands
-    case linkCards = "link-cards", roomMention = "room-mention", selectText = "select-text"
+    case linkCards = "link-cards", composerLinkPreviews = "composer-link-previews", sentLinkPreview = "sent-link-preview", roomMention = "room-mention", selectText = "select-text"
     case reminder, reminderCustom = "reminder-custom"
     case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded"
     case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline", serverPane = "server-pane", serverPaneDemo = "server-pane-demo", mentionChip = "mention-chip"
@@ -260,6 +260,12 @@ enum Renderer {
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.liveTextRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .linkCards:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
+        case .composerLinkPreviews:
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: kept(home, PreviewFixtures.linkCardRoomID, ComposerDraft(field: DraftField(text: PreviewFixtures.linkPreviewDraft)))) })
+        case .sentLinkPreview:
+            // Eun-ji's message with the GitHub card her composer built, as others see it.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
+                .environment(\.shotPins, ShotPins(scrollTo: PreviewFixtures.sentLinkPreviewID)))
         case .roomMention:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: kept(home, PreviewFixtures.linkCardRoomID, ComposerDraft(field: DraftField(text: "Moving this to #s")))) })
         case .selectText:

@@ -132,6 +132,17 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.roles(of: UserObject(["user_id": "zed", "roles": ["bot"]])!), ["bot"], "an unknown user's roles come from the object given")
     }
 
+    func testTheComposerShotsLinksBuildTheCardTheSentMessageShows() async throws {
+        let store = await PreviewFixtures.makeStore()
+        let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
+        await home.linkPreviews.prefetch(PreviewFixtures.linkPreviewDraft)
+        let built = home.linkPreviews.embeds(in: PreviewFixtures.linkPreviewDraft)
+        XCTAssertEqual(built.map(\.og?.title), ["Bowl-only app icon", "Ladle (spoon)"])
+        XCTAssertEqual(built.map(\.og?.siteName), ["GitHub · example/ladle", "Wikipedia"])
+        let sent = home.timeline(PreviewFixtures.linkCardRoomID).flatMap(\.embedList).first { $0.url?.host() == "github.com" }
+        XCTAssertEqual(sent?.og, built.first?.og, "the sent message carries the card the composer built")
+    }
+
     func testThePreviewServerRefusesAKickForTheFailedCommandShot() async throws {
         let store = await PreviewFixtures.makeStore()
         let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))

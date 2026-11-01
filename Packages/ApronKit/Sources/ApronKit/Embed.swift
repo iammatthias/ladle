@@ -147,6 +147,22 @@ public struct OpenGraph: Hashable, Sendable {
     public var video: Media?
     public var audio: Media?
 
+    /// An `og` a sender writes: text only, since the server drops the media a sender names.
+    public init(siteName: String? = nil, title: String? = nil, description: String? = nil) {
+        self.siteName = siteName
+        self.title = title
+        self.description = description
+    }
+
+    /// The text fields as the wire's `og` object.
+    public var json: JSONValue {
+        var object: [String: JSONValue] = [:]
+        object["site_name"] = siteName.map(JSONValue.string)
+        object["title"] = title.map(JSONValue.string)
+        object["description"] = description.map(JSONValue.string)
+        return .object(object)
+    }
+
     init?(_ value: JSONValue?) {
         guard let value, case .object = value else { return nil }
         title = value["title"]?.stringValue
