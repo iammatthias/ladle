@@ -201,6 +201,9 @@ public final class ServerSession {
     public let addedRooms: AddedRooms
     /// Rooms that arrive joined without this device asking (`noteArrivals`).
     @ObservationIgnored var arrivals = ArrivalWatch()
+    /// Rooms someone else added you to while this session watched (`ArrivalWatch`), as apron-web's
+    /// `UnreadTracker.addedTo`: each counts unread from your join (`joinFloor`).
+    public internal(set) var addedTo: Set<String> = []
     /// The server answered a `room_join` or `room_leave` with another's `user_id` as `unsupported`
     /// (§4.2.2): adding and removing others is no longer offered.
     public internal(set) var memberChangesUnsupported = false
@@ -626,6 +629,7 @@ public final class ServerSession {
         commandsNoticeAwaited = nil
         histories = [:]
         readCursors = [:]
+        addedTo = []
         readPositions = [:]
         formerUserIDs = []
         clearTyping()
@@ -1295,13 +1299,25 @@ public final class ServerSession {
         return nil
     }
 
-    /// Loaded messages from others after `readThrough`, or all of them when nothing is known.
+    /// Loaded messages from others after `readThrough`, or all of them when nothing is known; in
+    /// a room someone added you to, only those after your join (`joinFloor`).
     public func unreadCount(in roomID: String) -> Int {
         guard you != nil else { return 0 }
-        let read = readThrough(roomID)
+        let read = [readThrough(roomID), joinFloor(of: roomID)].compactMap { $0 }.max()
         return timeline(roomID).count { message in
             !isYou(message.from.userID) && read.map { $0 < message.messageID } ?? true
         }
+    }
+
+    /// Your latest join of a room someone added you to, as apron-web's `joinOf`: the `log_id` of
+    /// the newest loaded membership record naming you, when it joins you. Nil for a room you
+    /// joined yourself, or before that record loads.
+    public func joinFloor(of roomID: String) -> LogID? {
+        guard addedTo.contains(roomID) else { return nil }
+        for record in store.membershipLog(of: roomID).reversed() {
+            if let entry = record.entries.first(where: { isYou($0.user.userID) }) { return entry.joined ? record.logID : nil }
+        }
+        return nil
     }
 
     /// A room's title; a thread without one is "Untitled", an untitled private room is named for

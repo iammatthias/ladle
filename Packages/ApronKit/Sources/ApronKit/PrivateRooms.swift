@@ -338,11 +338,13 @@ extension ServerSession {
         return store.room(roomID)
     }
 
-    /// After a listing or a `room_update`: the top-level private rooms someone else added you to get their banner.
+    /// After a listing or a `room_update`: every room someone else added you to counts unread from
+    /// your join, and the top-level private ones get their banner.
     func noteArrivals() {
         guard let you, server?.has("rooms") == true, arrivals.listed else { return }
-        for roomID in arrivals.next(you: you.userID, joined: joinedRoomIDs) where isPrivateRoom(roomID) {
-            addedRooms.add(DraftKey(server: record.id, roomID: roomID))
+        for roomID in arrivals.next(you: you.userID, joined: joinedRoomIDs) {
+            addedTo.insert(roomID)
+            if isPrivateRoom(roomID) { addedRooms.add(DraftKey(server: record.id, roomID: roomID)) }
         }
     }
 }

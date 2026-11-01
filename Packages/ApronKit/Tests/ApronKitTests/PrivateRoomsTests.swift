@@ -212,6 +212,30 @@ final class PrivateRoomsTests: XCTestCase {
         XCTAssertFalse(session.wasAdded(to: "p3"))
     }
 
+    func testARoomSomeoneAddedYouToCountsUnreadFromYourJoin() async throws {
+        try await signIn()
+        await socket.deliver(["method": "room_update", "params": ["joined": [["room_id": "pub", "log_id": "301", "title": "Public"]]]])
+        await eventually("arrived") { self.session.joinedRoomIDs.contains("pub") }
+        func said(_ id: String, in room: String = "pub") -> JSONValue {
+            ["method": "message", "params": ["message_id": .string(id), "log_id": .string(id), "room_id": .string(room),
+                                             "from": ["user_id": "bob"], "body": ["text": "hi"]]]
+        }
+        for id in ["302", "310", "311"] { await socket.deliver(said(id)) }
+        await eventually("messages") { self.session.timeline("pub").count == 3 }
+        XCTAssertEqual(session.unreadCount(in: "pub"), 3, "every message until your join is loaded")
+        await socket.deliver(["method": "room_update", "params": ["memberships": [
+            ["log_id": "305", "room_id": "pub", "members": [["user": ["user_id": "ada", "name": "Ada"], "joined": true]]],
+        ]]])
+        await eventually("membership") { self.session.joinFloor(of: "pub") != nil }
+        XCTAssertEqual(session.joinFloor(of: "pub"), LogID("305"))
+        XCTAssertEqual(session.unreadCount(in: "pub"), 2, "what came before your join is not unread")
+
+        for id in ["320", "321"] { await socket.deliver(said(id, in: "general")) }
+        await eventually("general") { self.session.timeline("general").count == 2 }
+        XCTAssertNil(session.joinFloor(of: "general"), "a room listed at sign-in")
+        XCTAssertEqual(session.unreadCount(in: "general"), 2)
+    }
+
     func testARoomArrivingBeforeTheListingIsNotTakenAsAdded() async throws {
         try await signIn(early: ["method": "room_update", "params": ["joined": [["room_id": "general", "log_id": "100", "title": "General"]]]])
         XCTAssertFalse(session.wasAdded(to: "p0"))

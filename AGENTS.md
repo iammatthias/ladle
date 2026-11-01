@@ -157,7 +157,9 @@ clone), which is only a worked example.
       `ReadPositionStore` (`read-positions.json` beside `servers.json`, by server, account and
       room; in memory for tests and previews). `readThrough(_:)` is the furthest of the two and
       this user's newest loaded message; `unreadCount(in:)` counts loaded messages from others
-      after it, all of them when nothing is known. `markRead(_:through:)` moves the position,
+      after it, all of them when nothing is known, and in a room someone added you to
+      (`addedTo`, from `ArrivalWatch`) only those after your latest join (`joinFloor`, apron-web's
+      `joinOf`). `markRead(_:through:)` moves the position,
       and with capability `activity` the cursor, sending the frame unless `ext:settings` says
       `read_cursors: false` (`ServerInfo.keepsReadCursors`), at most once per room every
       `readCursorInterval` (5 s), the newest cursor going when the interval is up. The timeline calls it when the
