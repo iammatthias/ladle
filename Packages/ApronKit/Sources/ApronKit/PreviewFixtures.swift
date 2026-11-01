@@ -68,12 +68,13 @@ public enum PreviewFixtures {
     ]
 
     /// Home's custom emoji: the demo's `:apron:`, an animated one with a still copy, a wide one,
-    /// and a hidden one. LadleShots answers the images with generated pictures.
+    /// one `:smi` finds ahead of the standard emoji, and a hidden one. LadleShots answers the images with generated pictures.
     private static let emojiCatalog: JSONValue = [
         ":apron:": ["url": .string(emojiURL("apron")), "width": 512, "height": 512],
         ":partyparrot:": ["url": .string(emojiURL("partyparrot")), "static_url": .string(emojiURL("partyparrot-still")),
                           "category": "Parrots", "tags": ["party", "celebrate"]],
         ":shipit:": ["url": .string(emojiURL("shipit")), "width": 64, "height": 32, "alt": "Squirrel in a hat"],
+        ":smilingpan:": ["url": .string(emojiURL("smilingpan")), "alt": "Smiling frying pan", "tags": ["kitchen"]],
         ":oldlogo:": ["url": .string(emojiURL("apron")), "hidden": true],
     ]
 

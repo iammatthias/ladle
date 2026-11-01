@@ -2,3 +2,8 @@
 # reads tokens.css and rail.css at this commit; --check says when the clone has moved past it.
 # Move it after reviewing apron-web's design changes in between, then regenerate.
 apron-web 0811a18a97ff004f4667d29eea8a840762d4e40e
+
+# The @emoji-mart/data that Packages/ApronKit/Sources/ApronKit/StandardEmojiData.swift is generated
+# from by tools/design/emoji.py: the version in the apron-web clone's node_modules and the SHA-256
+# of its main file (sets/15/native.json). Move it after reviewing a new version, then regenerate.
+@emoji-mart/data 1.2.1 e1e7d657dba21af5904ffecf043f313852f5495833fc7bff6b1f0c5c4906d148

@@ -232,7 +232,7 @@ clone), which is only a worked example.
   - `DraftField` (`DraftField.swift`): what the composer writes, a new message, a reply or an
     edit (the composer's edit mode, Ladle's message editor), as apron-web's `DraftField`
     (#159). `query` is what the end of the text types: a `/` command word (outside an edit),
-    an `@` word, a `:` name that could be a custom emoji's key, or a `#` room id.
+    an `@` word, a `:` shortcode (`StandardEmoji.query(in:)`), or a `#` room id.
     `ServerSession.suggestions(for:in:)` is the one list it shows; the `insert` methods put a
     pick in place of what was typed. A mention is `@Name` in the text and an entry in
     `mentions`; `sentMentions` are those the text still shows. An edit opens with the
@@ -240,6 +240,18 @@ clone), which is only a worked example.
     from the field (§3.5.5, §4.4: a save replaces it). `ServerSession.submit` takes a
     `ComposerDraft` and runs a command, posts, or saves the edit. A reply names its message by `LogID` alone, as
     apron-web's kept `reply`; the composer shows what the session holds of it.
+  - `StandardEmoji` (`StandardEmoji.swift`, generated `StandardEmojiData.swift`), as apron-web's
+    `emoji-autocomplete.ts`: `query(in:)` is the `:shortcode` the text ends with (2 to 32 of
+    `[A-Za-z0-9_+-]` after a `:` that starts a word); `search` ranks @emoji-mart/data's emoji
+    by shortcode, whole term, a term's start, then anywhere, ties in the table's order (ICU's,
+    as `localeCompare`), 8 at most; `suggestions` puts the catalog's matches first
+    (`EmojiSuggestion`: a glyph or a custom emoji's key to insert). `tools/design/emoji.py`
+    writes the table from the clone's `node_modules`, at the version and SHA-256 pinned in
+    `tools/design/UPSTREAM`.
+  - `SuggestionCursor` (`SuggestionCursor.swift`): the highlighted row of every list above the
+    composer and the hardware keys over it, as apron-web's `DraftField.keydown`: ↑ ↓ wrap,
+    Tab and Return pick, Escape puts the list away until the text changes; a list of another
+    kind starts at its top.
   - `ComposerCommands` (`ComposerCommands.swift`), as apron-web's `commands.ts` and `sendMessage`:
     `ComposerAction` reads composer text (§4.1; every text a message without capability
     `command`, and `ServerSession.Draft` likewise for what `send` gets): `/nick`, `/join`,
@@ -580,7 +592,7 @@ clone), which is only a worked example.
   (`Profile/PauseSection.swift`);
   `Servers/` (the server list and iPad rail, `PreferencesView`: apron-web's Preferences (#184), its five sections (`PreferencesSection`) in a navigation stack, opened from the list's toolbar, the rail's foot and the profile bar (Profile, for that server) through `openPreferences`, which `RootView` presents, at a section when asked: Profile (`YouView`, not `standalone`), Notifications (Remind Me's permission and each server's `PauseSection`), Appearance, Media (the media policy and trusted sites), History (`HistoryPreferences`: Retention, how much is kept, why keeping stopped, Export Chats with Include Private Rooms through `ShareSheet`, and Open an Export…); `Archive/ArchiveViewer.swift` (`OpenedExport`, `ArchiveViewer`: an export read-only, after "Load its images?", from History or a `.jsonl` handed to the app, which `RootView`'s `onOpenURL` opens); `AppearanceView`: the mode, the themes with swatches, `ThemeCSSView` (the custom CSS) and `BaseColorsView` (the color pickers); `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/` (`RoomSearchField`: Search Rooms in the iPad sidebar, whose navigation bar is hidden), `Timeline/` (messages, select mode's check circles and `SelectionBar` (Copy, Move, New Thread) in the composer's place, `SearchView`: Search Local History, from the magnifying glass beside a room's title, ⌘F, or Search Rooms' Search Messages, `RateLimitNotice` and Send's countdown over the composer while a wait holds it back, composer with the
-  mention list, the custom emoji `:` list, the `#` room list and the command list (`CommandSuggestions`: usage and
+  mention list, the `:` emoji list (`EmojiSuggestions`), the `#` room list and the command list (`CommandSuggestions`: usage and
   summary, scrolling past five rows; picking fills `/name ` and keeps the keyboard up), reaction picker (custom emoji by category first),
   member list, `CustomEmojiViews`: `EmojiText` draws each marked key as its image at the line's
   height inside one `Text`, read by VoiceOver as its `alt`, `ReactionGlyph` an emoji, a custom
@@ -631,8 +643,8 @@ clone), which is only a worked example.
 - `./build.sh build` builds the `Ladle` scheme with DerivedData in `build/`. With no simulator
   it uses the generic iOS Simulator destination.
 - `./build.sh test` runs the fixture drift check, the design checks (`tools/design/tokens.py`,
-  `theme-goldens.py`, which needs `bun`, and `fonts.py`, which needs `uv` and fetches fontTools
-  on its first run; all read the apron-web clone) and then the `Ladle` scheme's tests on the
+  `theme-goldens.py`, which needs `bun`, `fonts.py`, which needs `uv` and fetches fontTools
+  on its first run, and `emoji.py`; all read the apron-web clone) and then the `Ladle` scheme's tests on the
   "Ladle iPhone" simulator (create it once with `xcrun simctl create "Ladle iPhone" <iPhone
   device type> <iOS runtime>`). Set `DEST` to override.
 - The gate is `scripts/sync-fixtures.sh --check && swift test --package-path
@@ -713,7 +725,7 @@ mention list, the member list and the reaction picker, the composer with attachm
 of uploads (image, video, file, audio, pending), the media viewer, the composer over the text
 limit, a read-only guest's sign-in prompt on the demo server, custom emoji in text, a
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
-with the custom emoji, the composer's `:` list, its command list (`/inv`, answered by
+with the custom emoji, the composer's `:` list (`:pa`), `:smi` with the custom `:smilingpan:` first, the standard emoji and the first row highlighted (`ladle-emoji-standard`), its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards, a room chip and Apron link chips for a message, a room, a thread, a user and another server (the Icon sketches thread), the `#` room
 list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block and highlighted code in python, diff, json and an unknown language left plain (the markdown room, also in Ferrous as `ladle-markdown-ferrous-<mode>`, where inline code takes Rec Mono), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the Release thread's rename line (and Dev's join line in the busy room), the Start Thread form on Bram's message, #general's threads in the room list (five joined, Inactive folded, Other Threads with "4d", "9w", "2y" and "1 more…"), and Inactive unfolded with its untitled thread open, the busy room's "Reconnecting…" and "Checking for new messages…" pills, its "Loading earlier messages…" pill, its catching-up line under the bar (`ladle-catching-up-line`, and on iPad `ladle-ipad-catching-up`), the room list with your dot as the dashed ring (`ladle-rooms-reconnecting`), each held through the renderer-only `heldPaneLoading` and `heldAwayWords` environment values, the kitchen's pinned description (the emoji shot), put away (its first line under the title), and Edit Room, the Private section with faces (`ladle-rooms-private`), the conversation with Ada (faces, plum header and its line, the intro card), Launch plan's "You were added" banner, New private conversation empty and with two picked (chips, Name), New Room with Private, and at the limit after starting home's fifth private room (`ladle-private-full`, taken after the others), Add People to ops with Ada picked and "@carol" typed, `/invite-device add phone`'s notice in ops with Show QR Code, and its sheet's warning and code (`ladle-signin-qr-*`), Launch plan's members with Add People, a refused `/kick @Dev` in ops (its reason as a notice, the draft given back; `PreviewServer` refuses removing someone else), #general's members with Offline folded (`ladle-members-folded`), the demo lobby's truncated listing ("Showing 3 of 1204") and a profile card for someone it leaves out ("Not among the recently active members"), the room list and Preferences > Notifications while paused (`ladle-notifications-paused`), and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the busy room at AX3; the busy room in Ferrous, Gumball, Linocut and a custom CSS theme (`ladle-timeline-<theme>-<mode>`), the markdown room in Ferrous, Gumball and the custom theme (`ladle-markdown-<theme>-<mode>`: bold and oblique emphasis in Recursive, Nunito and SF Rounded), and drawn in Apron then given Linocut in place (`ladle-timeline-switched-linocut-dark`: a new theme redraws open screens); Preferences' sections and History; Search Local History for "icon" across rooms, and started narrowed to the design room with `room:` suggesting rooms at the caret (`ladle-search-filtered`; the renderer opens it unfocused, as a focused Catalyst field selects all of itself), and Search Rooms for "des" with Search Messages under it (`ladle-rooms-search`); the busy room in select mode with its last three messages picked (`ladle-select`), and what Copy puts on the pasteboard for them, shown as text (`ladle-select-log`); home exported and opened: "Load its images?" (`ladle-archive-ask`), its rooms (`ladle-archive-rooms`) and the busy room read-only with the export's line in the composer's place (`ladle-archive-timeline`); Appearance with Ferrous chosen, and the custom theme's CSS with its "not used on iOS" line; and the iPad
 split view at 1180x820 pt (regular width) in dark and light, on the busy room and on the random room with its typing line. Sheets render as root views,

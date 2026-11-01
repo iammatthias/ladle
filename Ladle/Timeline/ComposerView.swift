@@ -6,8 +6,11 @@ import SwiftUI
 /// and Send. A reply or edit shows its line above the box. Typing `@` opens the mention list
 /// above it (the web's MentionPicker), and typing a command word after `/` lists the commands
 /// the server's `/help` gives this user, with their usage and what they do. With a hardware
-/// keyboard, Return sends and Shift-Return starts a new line; Escape cancels a reply or edit. Text is held to `TextLimit`: a counter shows
-/// in the last 512 bytes, and past the limit Send is off and the composer says why.
+/// keyboard, Return sends and Shift-Return starts a new line; Escape cancels a reply or edit.
+/// While a list shows, ↑ and ↓ move its highlighted row, Tab and Return pick it, and Escape
+/// puts the list away (`SuggestionCursor`), as the web's AutocompletePicker. Text is held to
+/// `TextLimit`: a counter shows in the last 512 bytes, and past the limit Send is off and the
+/// composer says why.
 ///
 /// With capability `embed:upload`, the attach menu adds photos and videos (PhotosPicker), a
 /// photo or video from the camera, files (the document picker), a voice note, or a pasted image.
@@ -31,30 +34,22 @@ struct ComposerView: View {
     @State private var importingFiles = false
     @State private var usingCamera = false
     @State private var recorder = VoiceRecorder()
+    @State private var cursor = SuggestionCursor()
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             Group {
-                switch session.suggestions(for: draft.field, in: roomID) {
-                case .commands(let found):
-                    CommandSuggestions(commands: found) { command in
-                        draft.field.insert(command)
-                        focused = true
+                if let list = suggestions {
+                    let row = SuggestionRows(highlighted: cursor.highlighted(count: list.count), showsKey: sizeClass == .regular,
+                                             hover: { cursor.hover($0) }, pick: { pick($0, of: list) })
+                    switch list {
+                    case .commands(let found): CommandSuggestions(commands: found, rows: row)
+                    case .mentions(let found): MentionPicker(session: session, items: found, rows: row)
+                    case .emoji(let found): EmojiSuggestions(emoji: found, rows: row)
+                    case .rooms(let found): RoomSuggestions(rooms: found, rows: row)
                     }
-                case .mentions(let found):
-                    MentionPicker(session: session, items: found) { item in
-                        switch item {
-                        case .person(let person): draft.field.insert(mention: person.userID, named: session.displayName(for: person))
-                        case .role(let role): draft.field.insert(role: role.role)
-                        }
-                    }
-                case .emoji(let found):
-                    EmojiSuggestions(emoji: found) { draft.field.insert($0) }
-                case .rooms(let found):
-                    RoomSuggestions(rooms: found) { draft.field.insert(room: $0.id) }
-                case nil:
-                    EmptyView()
                 }
             }
             .padding(.horizontal, Tokens.Space.s4)
@@ -111,6 +106,7 @@ struct ComposerView: View {
             if typingCommand { await session.loadCommands(in: roomID) }
         }
         .task(id: typingEmoji) { if typingEmoji { await session.loadEmojiCatalog() } }
+        .onChange(of: draft.field.text, initial: true) { cursor.follow(draft.field.query, text: draft.field.text) }
         .onChange(of: draft.field.text) {
             // Typing in the composer, never the editor, says so (§4.6), as the web's `composerInput`.
             // An emptied field is most often a sent one, which the message itself ends.
@@ -156,8 +152,18 @@ struct ComposerView: View {
             .frame(minHeight: Tokens.Control.md + Tokens.Space.s2 * 2 - Tokens.Space.s2, alignment: .center)
             .onKeyPress(.return, phases: .down) { press in
                 guard !press.modifiers.contains(.shift) else { return .ignored }
+                if !press.modifiers.contains(.command), use(.enter) { return .handled }
                 send()
                 return .handled
+            }
+            .onKeyPress(keys: [.upArrow, .downArrow, .tab, .escape], phases: .down) { press in
+                let key: SuggestionCursor.Key = switch press.key {
+                case .upArrow: .up
+                case .downArrow: .down
+                case .tab: .tab
+                default: .escape
+                }
+                return use(key) ? .handled : .ignored
             }
         if textLimit.showsCounter {
             Text(textLimit.remaining.formatted())
@@ -314,6 +320,39 @@ struct ComposerView: View {
         return false
     }
 
+    /// The list above the field, unless Escape put it away at this text.
+    private var suggestions: DraftSuggestions? {
+        cursor.shows(draft.field.text) ? session.suggestions(for: draft.field, in: roomID) : nil
+    }
+
+    /// A key pressed while a list shows, as the web's AutocompletePicker: whether the list took it.
+    private func use(_ key: SuggestionCursor.Key) -> Bool {
+        guard let list = suggestions else { return false }
+        switch cursor.press(key, count: list.count, text: draft.field.text) {
+        case .ignored: return false
+        case .moved, .dismissed: return true
+        case .pick(let index):
+            pick(index, of: list)
+            return true
+        }
+    }
+
+    /// Puts the row at `index` in place of what is typed, by touch or key.
+    private func pick(_ index: Int, of list: DraftSuggestions) {
+        switch list {
+        case .commands(let found):
+            draft.field.insert(found[index])
+            focused = true
+        case .mentions(let found):
+            switch found[index] {
+            case .person(let person): draft.field.insert(mention: person.userID, named: session.displayName(for: person))
+            case .role(let role): draft.field.insert(role: role.role)
+            }
+        case .emoji(let found): draft.field.insert(found[index])
+        case .rooms(let found): draft.field.insert(room: found[index].id)
+        }
+    }
+
     private func send() {
         if session.composerWait(withFiles: !draft.files.isEmpty) != nil { return onHeld() }
         guard canSend else { return }
@@ -325,12 +364,12 @@ struct ComposerView: View {
 /// when private, and its `#room_id`. Picking one puts `#room_id` in the draft.
 struct RoomSuggestions: View {
     let rooms: [RoomSuggestion]
-    let pick: (RoomSuggestion) -> Void
+    let rows: SuggestionRows
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(rooms, id: \.id) { room in
-                Button { pick(room) } label: {
+            ForEach(Array(rooms.enumerated()), id: \.element.id) { index, room in
+                Button { rows.pick(index) } label: {
                     HStack(spacing: Tokens.Space.s2) {
                         Image(systemName: room.isThread ? "text.bubble" : "number")
                             .foregroundStyle(Palette.inkMuted)
@@ -345,6 +384,7 @@ struct RoomSuggestions: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .suggestionRow(index, of: rows)
                 .accessibilityLabel("\(room.isThread ? "Thread" : "Room") \(room.title)\(room.isPrivate ? ", private" : "")")
                 .accessibilityHint("Links it in your message")
             }
@@ -363,12 +403,12 @@ struct RoomSuggestions: View {
 struct MentionPicker: View {
     let session: ServerSession
     let items: [MentionSuggestion]
-    let pick: (MentionSuggestion) -> Void
+    let rows: SuggestionRows
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(items, id: \.self) { item in
-                Button { pick(item) } label: {
+            ForEach(Array(items.enumerated()), id: \.element) { index, item in
+                Button { rows.pick(index) } label: {
                     HStack(spacing: Tokens.Space.s2) {
                         switch item {
                         case .person(let person):
@@ -393,6 +433,7 @@ struct MentionPicker: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .suggestionRow(index, of: rows)
                 .accessibilityLabel(label(item))
             }
         }
@@ -420,30 +461,35 @@ struct MentionPicker: View {
 /// and what it does, scrolling past five rows.
 struct CommandSuggestions: View {
     let commands: [ServerCommand]
-    let pick: (ServerCommand) -> Void
+    let rows: SuggestionRows
     @State private var height: CGFloat = 0
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(commands, id: \.name) { command in
-                    Button { pick(command) } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(command.usage).apText(.ui, .semibold, mono: true).foregroundStyle(Palette.ink).lineLimit(1)
-                            Text(command.summary).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(2)
+        ScrollViewReader { scroller in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(commands.enumerated()), id: \.element.name) { index, command in
+                        Button { rows.pick(index) } label: {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(command.usage).apText(.ui, .semibold, mono: true).foregroundStyle(Palette.ink).lineLimit(1)
+                                Text(command.summary).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(2)
+                            }
+                            .padding(.horizontal, Tokens.Space.s2)
+                            .padding(.vertical, Tokens.Space.s1)
+                            .frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
-                        .padding(.horizontal, Tokens.Space.s2)
-                        .padding(.vertical, Tokens.Space.s1)
-                        .frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget, alignment: .leading)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .suggestionRow(index, of: rows)
+                        .id(index)
+                        .accessibilityLabel(command.usage)
+                        .accessibilityHint(command.summary)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(command.usage)
-                    .accessibilityHint(command.summary)
                 }
+                .padding(Tokens.Space.s1)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
             }
-            .padding(Tokens.Space.s1)
-            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
+            .onChange(of: rows.highlighted) { scroller.scrollTo(rows.highlighted) }
         }
         .scrollBounceBehavior(.basedOnSize)
         .frame(height: min(height, Tokens.Size.touchTarget * 5.5))
@@ -451,5 +497,36 @@ struct CommandSuggestions: View {
         .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
         .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.line))
         .shadow(color: .black.opacity(0.35), radius: 12, y: 8)
+    }
+}
+
+/// What every list above the composer shares, as the web's AutocompletePicker: the highlighted
+/// row (`SuggestionCursor`) on the hover ground, with a Tab key on it where a hardware keyboard
+/// is likely (regular width); the pointer over a row highlights it; a tap or a key picks one.
+struct SuggestionRows {
+    let highlighted: Int
+    let showsKey: Bool
+    let hover: (Int) -> Void
+    let pick: (Int) -> Void
+}
+
+extension View {
+    func suggestionRow(_ index: Int, of rows: SuggestionRows) -> some View {
+        let active = index == rows.highlighted
+        return self
+            .overlay(alignment: .trailing) {
+                if active, rows.showsKey {
+                    Text("Tab")
+                        .apText(.xs)
+                        .foregroundStyle(Palette.inkMuted)
+                        .padding(.horizontal, Tokens.Space.s1)
+                        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.sm).strokeBorder(Palette.lineStrong))
+                        .padding(.trailing, Tokens.Space.s2)
+                        .accessibilityHidden(true)
+                }
+            }
+            .background(active ? Palette.hover : .clear, in: RoundedRectangle(cornerRadius: Tokens.Radius.sm))
+            .onHover { if $0 { rows.hover(index) } }
+            .accessibilityAddTraits(active ? .isSelected : [])
     }
 }

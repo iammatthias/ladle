@@ -53,7 +53,7 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(card.ask(gate: gate)?.kind, .video, "the video waits though the image is the server's own")
 
         let kitchen = home.timeline(PreviewFixtures.emojiRoomID)
-        XCTAssertEqual(home.emojiCatalog?.offered.map(\.key), [":apron:", ":shipit:", ":partyparrot:"], "the hidden one is not offered")
+        XCTAssertEqual(home.emojiCatalog?.offered.map(\.key), [":apron:", ":shipit:", ":smilingpan:", ":partyparrot:"], "the hidden one is not offered")
         XCTAssertEqual(home.store.reactions(on: kitchen[0].messageID)?.map(\.emoji), [":apron:", ":partyparrot:", ":retired:", "👍"],
                        "one key the catalog lacks, for the placeholder")
         XCTAssertEqual(TextDirection(of: kitchen[1].body?["text"]?.stringValue ?? ""), .rightToLeft)

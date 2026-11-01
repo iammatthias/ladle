@@ -40,6 +40,7 @@ enum Screen: String, CaseIterable {
     case reconnectPill = "reconnect-pill", checkingPill = "checking-pill", catchingUpLine = "catching-up-line", olderPill = "older-pill"
     case roomsReconnecting = "rooms-reconnecting", ipadCatchingUp = "ipad-catching-up"
     case commandFailed = "command-failed"
+    case emojiStandard = "emoji-standard"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -393,6 +394,9 @@ enum Renderer {
             AnyView(SignInQRSheet(link: URL(string: PreviewFixtures.inviteDeviceLink)!) {})
         case .signInQRCode:
             AnyView(SignInQRSheet(link: URL(string: PreviewFixtures.inviteDeviceLink)!, revealed: true) {})
+        case .emojiStandard:
+            // `:smi`: the kitchen's custom :smilingpan: first, then the standard emoji, the first row highlighted.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: kept(home, PreviewFixtures.emojiRoomID, ComposerDraft(field: DraftField(text: "Lunch :smi")))) })
         case .commandFailed:
             // `/kick @dev` in ops, which the server refused: its reason as a notice, and the draft given back.
             AnyView(NavigationStack { TimelineView(session: home, roomID: "ops", reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: commandDrafts) })

@@ -138,21 +138,28 @@ struct ReactionGlyph: View {
     }
 }
 
-/// The composer's `:shortcode` list: custom emoji whose name, `alt` or tags match, each with its
-/// image, key and `alt`. Standard emoji come from the system emoji keyboard.
+/// The composer's `:shortcode` list, as the web's: the server's custom emoji that match, then
+/// the standard ones, each its glyph or image, `:shortcode:` and name.
 struct EmojiSuggestions: View {
-    let emoji: [CustomEmoji]
-    let pick: (CustomEmoji) -> Void
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    let emoji: [EmojiSuggestion]
+    let rows: SuggestionRows
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            ForEach(emoji, id: \.key) { emoji in
-                Button { pick(emoji) } label: {
+            ForEach(Array(emoji.enumerated()), id: \.element.inserted) { index, emoji in
+                Button { rows.pick(index) } label: {
                     HStack(spacing: Tokens.Space.s2) {
-                        EmojiTile(emoji: emoji, side: Tokens.AvatarSize.sm)
-                        Text(emoji.key).apText(.field, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
-                        if let alt = emoji.alt { Text(alt).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1) }
+                        Group {
+                            if let custom = emoji.custom {
+                                EmojiTile(emoji: custom, side: Tokens.AvatarSize.sm)
+                            } else {
+                                Text(emoji.inserted).font(.system(size: 20))
+                            }
+                        }
+                        .frame(width: Tokens.AvatarSize.sm, height: Tokens.AvatarSize.sm)
+                        .accessibilityHidden(true)
+                        Text(":\(emoji.id):").apText(.field, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
+                        Text(emoji.name).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, Tokens.Space.s2)
@@ -160,7 +167,8 @@ struct EmojiSuggestions: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Insert \(emoji.label)")
+                .suggestionRow(index, of: rows)
+                .accessibilityLabel("Insert \(emoji.name)")
             }
         }
         .padding(Tokens.Space.s1)

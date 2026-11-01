@@ -30,8 +30,8 @@ final class DraftFieldTests: XCTestCase {
         XCTAssertEqual(people("@eun"), ["eunji"])
         XCTAssertNil(people("@zed"))
         XCTAssertNil(home.suggestions(for: DraftField(text: "@zed"), in: "general"), "nothing matches, no list")
-        XCTAssertEqual(home.suggestions(for: DraftField(text: "Lunch :pa"), in: "kitchen"),
-                       .emoji(home.emojiCatalog.map { $0.offered.filter { $0.key == ":partyparrot:" } } ?? []))
+        guard case .emoji(let emoji) = home.suggestions(for: DraftField(text: "Lunch :pa"), in: "kitchen") else { return XCTFail("emoji") }
+        XCTAssertEqual(emoji.map(\.inserted), [":partyparrot:", ":smilingpan:", "🇵🇦", "🎤", "💯", "👽", "🎨", "🧑‍🎨"], "custom ones by name first, then the standard ones")
         guard case .rooms(let rooms) = home.suggestions(for: DraftField(text: "Moving this to #s"), in: "general") else { return XCTFail("rooms") }
         XCTAssertEqual(rooms.map(\.title), ["2024 offsite", "Benchmarks", "design", "Docs", "Icon sketches", "Icons v1", "Load test", "ops"], "at most 8")
         XCTAssertNil(home.suggestions(for: DraftField(text: "/inv"), in: "general"), "no commands before /help answers")
@@ -48,8 +48,8 @@ final class DraftFieldTests: XCTestCase {
         XCTAssertEqual(field.text, "Thanks @Ada ")
         XCTAssertEqual(field.mentions, ["ada": "Ada"])
         var emoji = DraftField(text: "Lunch :pa")
-        emoji.insert(try XCTUnwrap(home.emojiCatalog?.offered.first { $0.key == ":partyparrot:" }))
-        XCTAssertEqual(emoji.text, "Lunch :partyparrot: ")
+        emoji.insert(EmojiSuggestion(try XCTUnwrap(home.emojiCatalog?.offered.first { $0.key == ":partyparrot:" })))
+        XCTAssertEqual(emoji.text, "Lunch :partyparrot:")
         var room = DraftField(text: "Moving this to #s")
         room.insert(room: "design")
         XCTAssertEqual(room.text, "Moving this to #design ")

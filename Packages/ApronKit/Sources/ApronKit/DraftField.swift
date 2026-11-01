@@ -22,7 +22,7 @@ public struct DraftField: Hashable, Sendable {
         case command(String)
         /// The word after `@`, empty when only `@` is typed.
         case mention(String)
-        /// The name after `:`, while the word could be a custom emoji's key (`ext:emoji`).
+        /// The shortcode after `:` (`StandardEmoji.query(in:)`), for standard and custom emoji.
         case emoji(String)
         /// The room id after `#` (`RoomMentions.query(in:)`).
         case room(String)
@@ -72,7 +72,7 @@ public struct DraftField: Hashable, Sendable {
         if !isEdit, let command = CommandHelp.query(in: text) { return .command(command) }
         let word = text.split(separator: " ", omittingEmptySubsequences: false).last ?? ""
         if word.hasPrefix("@"), !word.contains("\n") { return .mention(String(word.dropFirst())) }
-        if word.hasPrefix(":"), word.count > 1, CustomEmoji.isKey(word + ":") { return .emoji(String(word.dropFirst())) }
+        if let shortcode = StandardEmoji.query(in: text) { return .emoji(shortcode) }
         if let room = RoomMentions.query(in: text) { return .room(room) }
         return nil
     }
@@ -126,10 +126,11 @@ public struct DraftField: Hashable, Sendable {
         mentions[userID] = name
     }
 
-    /// Puts the emoji's key in place of the `:name` being typed, then a space.
-    public mutating func insert(_ emoji: CustomEmoji) {
+    /// Puts the emoji, or a custom emoji's key, in place of the `:shortcode` being typed, as
+    /// apron-web's `pickEmoji` (no space after it).
+    public mutating func insert(_ emoji: EmojiSuggestion) {
         guard let colon = text.range(of: ":", options: .backwards) else { return }
-        text.replaceSubrange(colon.lowerBound..., with: emoji.key + " ")
+        text.replaceSubrange(colon.lowerBound..., with: emoji.inserted)
     }
 
     /// Puts `#room_id ` in place of the `#` being typed.
@@ -147,7 +148,7 @@ public struct DraftField: Hashable, Sendable {
 public enum DraftSuggestions: Hashable, Sendable {
     case commands([ServerCommand])
     case mentions([MentionSuggestion])
-    case emoji([CustomEmoji])
+    case emoji([EmojiSuggestion])
     case rooms([RoomSuggestion])
 }
 
@@ -156,8 +157,8 @@ extension ServerSession {
     public static let mentionRows = 8
 
     /// The list for `field`'s query in `roomID`: the commands `/help` gave that start with the
-    /// word, the `@` list (`mentionSuggestions`), up to six custom emoji, or the `#` list. Nil
-    /// when nothing matches.
+    /// word, the `@` list (`mentionSuggestions`), up to eight emoji (the server's custom ones
+    /// first, `StandardEmoji.suggestions`), or the `#` list. Nil when nothing matches.
     public func suggestions(for field: DraftField, in roomID: String) -> DraftSuggestions? {
         switch field.query {
         case nil:
@@ -169,8 +170,8 @@ extension ServerSession {
             let found = mentionSuggestions(word, in: roomID)
             return found.isEmpty ? nil : .mentions(found)
         case .emoji(let name):
-            guard let found = emojiCatalog?.search(name, limit: 6), !found.isEmpty else { return nil }
-            return .emoji(found)
+            let found = StandardEmoji.suggestions(name, catalog: emojiCatalog)
+            return found.isEmpty ? nil : .emoji(found)
         case .room(let id):
             let found = RoomMentions.search(roomSuggestions, id)
             return found.isEmpty ? nil : .rooms(found)
