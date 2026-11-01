@@ -13,7 +13,7 @@ public struct DraftField: Hashable, Sendable {
     public enum Mode: Hashable, Sendable {
         case new
         case reply(LogID)
-        case edit(MessageSnapshot)
+        case edit(MessageEdit)
     }
 
     /// What is being typed at the end of the text, for the list above the field.
@@ -50,7 +50,7 @@ public struct DraftField: Hashable, Sendable {
             let name = session.users.user(id).flatMap(UserObject.init).map(session.displayName(for:)) ?? id
             if let written = [name, id].first(where: { text.contains("@" + $0) }) { mentions[id] = written }
         }
-        self.init(mode: .edit(message), text: text, mentions: mentions)
+        self.init(mode: .edit(MessageEdit(message)), text: text, mentions: mentions)
     }
 
     /// The message a reply answers.
@@ -60,9 +60,17 @@ public struct DraftField: Hashable, Sendable {
     }
 
     /// The message an edit changes.
-    public var editing: MessageSnapshot? {
-        if case .edit(let message) = mode { return message }
-        return nil
+    public var editing: MessageSnapshot? { edit?.message }
+
+    /// An edit's changes besides the text. Setting it outside an edit does nothing.
+    public var edit: MessageEdit? {
+        get {
+            if case .edit(let edit) = mode { return edit }
+            return nil
+        }
+        set {
+            if isEdit, let newValue { mode = .edit(newValue) }
+        }
     }
 
     public var isEdit: Bool { editing != nil }
@@ -99,9 +107,11 @@ public struct DraftField: Hashable, Sendable {
     }
 
     /// Whether Send is on, given the staged files: none still being prepared, the text within
-    /// `TextLimit`, and text or a file to send. An edit sends no files.
+    /// `TextLimit`, and text or a file to send. An edit sends no files, and may keep only its
+    /// embeds.
     public func canSend(readyFiles: Int, preparing: Bool) -> Bool {
-        !preparing && !TextLimit(text).isOver && (!sentText.isEmpty || (!isEdit && readyFiles > 0))
+        let other = edit.map(\.keepsEmbeds) ?? (readyFiles > 0)
+        return !preparing && !TextLimit(text).isOver && (!sentText.isEmpty || other)
     }
 
     /// Puts `@name ` in place of the `@` word being typed, and mentions the user.
@@ -216,7 +226,7 @@ extension ServerSession {
         let text = field.sentText
         let holders = Dictionary(mentionableRoles(in: roomID).map { ($0.role, $0.members) }, uniquingKeysWith: { first, _ in first })
         let mentions = field.sentMentions(holders: holders)
-        if case .edit(let target) = field.mode {
+        if let target = field.edit {
             try await edit(target, text: text, mentions: mentions)
             return nil
         }

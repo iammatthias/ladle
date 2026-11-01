@@ -29,6 +29,8 @@ public struct MessageMenu: Sendable {
     public var links: [MenuLink]
     /// Edit and Delete: the user's own message, signed in, may write, on a server with `edit`.
     public var editable: Bool
+    /// Remove Reply Reference: an editable message that replies, as apron-web offers it.
+    public var removesReply: Bool
 
     @MainActor
     public init(_ message: MessageSnapshot, in session: ServerSession) {
@@ -42,6 +44,7 @@ public struct MessageMenu: Sendable {
         moveDestinations = session.mayMove(message) ? session.moveDestinations(for: message) : []
         links = MenuLink.links(in: message.body, from: session.record.url)
         editable = session.status == .signedIn && session.mayWrite && session.isYou(message.from.userID) && session.server?.has("edit") == true
+        removesReply = editable && message.replyTo != nil
     }
 }
 

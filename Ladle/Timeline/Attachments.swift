@@ -68,43 +68,88 @@ struct ImportedFile: Transferable {
     }
 }
 
-/// The web's Attachments: the draft's files above the composer, each removable.
-struct AttachmentTray: View {
-    let attachments: [StagedFile]
-    let remove: (UUID) -> Void
+/// The web's Attachments: tiles in a row that scrolls sideways, above the composer.
+struct AttachmentTray<Tiles: View>: View {
+    let label: String
+    @ViewBuilder let tiles: Tiles
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .bottom, spacing: Tokens.Space.s3) {
-                ForEach(attachments) { item in
-                    AttachmentTile(item: item) { remove(item.id) }
-                }
-            }
-            .padding(.horizontal, Tokens.Space.s4)
-            .padding(.top, Tokens.Space.s3)
-            .padding(.bottom, Tokens.Space.s1)
+            HStack(alignment: .bottom, spacing: Tokens.Space.s3) { tiles }
+                .padding(.horizontal, Tokens.Space.s4)
+                .padding(.top, Tokens.Space.s3)
+                .padding(.bottom, Tokens.Space.s1)
         }
-        .accessibilityLabel("Files to send")
+        .accessibilityLabel(label)
     }
 }
 
-/// The web's AttachmentTile: a 96 pt picture for an image, a file card for anything else, with
-/// the name and the size it goes out at ("Preparing…" while an image shrinks), and an (x).
+extension AttachmentTray {
+    /// The draft's files, each renamed or taken off in place.
+    init(files: Binding<[StagedFile]>) where Tiles == ForEach<[StagedFile], UUID, AttachmentTile> {
+        self.init(label: "Files to send") {
+            ForEach(files.wrappedValue) { item in
+                AttachmentTile(name: item.shownName, detail: StagedPreview.detail(item), preview: StagedPreview.of(item),
+                               rename: { name in
+                                   if let index = files.wrappedValue.firstIndex(where: { $0.id == item.id }) { files.wrappedValue[index].rename(to: name) }
+                               },
+                               remove: { files.wrappedValue.removeAll { $0.id == item.id } })
+            }
+        }
+    }
+}
+
+/// What a tile shows of its file.
+enum TilePreview: Hashable {
+    /// A picture at its width over its height.
+    case image(URL, aspect: CGFloat?)
+    case glyph(String)
+}
+
+/// A staged file's tile: the file as fitted, its size, or "Preparing…".
+enum StagedPreview {
+    static func of(_ item: StagedFile) -> TilePreview {
+        guard let attachment = item.attachment else { return .glyph("doc") }
+        if attachment.isImage {
+            let aspect = attachment.pixelWidth.flatMap { width in attachment.pixelHeight.map { CGFloat(width) / CGFloat(max($0, 1)) } }
+            return .image(attachment.fileURL, aspect: aspect)
+        }
+        if attachment.isVideo { return .glyph("film") }
+        if attachment.isAudio { return .glyph("waveform") }
+        return .glyph(FileCard.symbol(for: attachment.title))
+    }
+
+    static func detail(_ item: StagedFile) -> String {
+        item.attachment.map { ByteCountFormatter.string(fromByteCount: Int64($0.byteCount), countStyle: .file) } ?? "Preparing…"
+    }
+}
+
+/// The web's AttachmentTile, for a file on a draft or an embed in the message editor: a 96 pt
+/// picture for an image, a file card for anything else, with its name and a detail under it,
+/// and an (x). A renamable tile's name is a button that opens it for typing in place: Return or
+/// leaving the field keeps the new name, Escape the old one, and an empty name changes nothing.
 struct AttachmentTile: View {
-    let item: StagedFile
-    let remove: () -> Void
+    let name: String
+    let detail: String
+    let preview: TilePreview
+    var rename: ((String) -> Void)?
+    var remove: (() -> Void)?
+    @State private var renaming = false
+    @State private var typed = ""
+    @FocusState private var typing: Bool
+    @Environment(\.shotPins) private var shotPins
 
     var body: some View {
-        let attachment = item.attachment
         Group {
-            if let attachment, attachment.isImage {
-                RemoteImage(url: attachment.fileURL, maxPixel: 400)
-                    .frame(width: thumbWidth(attachment), height: 96)
-                    .overlay(alignment: .bottom) { label(attachment).background(Palette.timeline.opacity(0.88)) }
-            } else {
+            switch preview {
+            case .image(let url, let aspect):
+                RemoteImage(url: url, maxPixel: 400)
+                    .frame(width: min(200, max(120, 96 * (aspect ?? 1))), height: 96)
+                    .overlay(alignment: .bottom) { label.background(Palette.timeline.opacity(0.88)) }
+            case .glyph(let symbol):
                 HStack(spacing: Tokens.Space.s2) {
-                    FileGlyph(symbol: attachment.map(symbol) ?? "doc")
-                    label(attachment)
+                    FileGlyph(symbol: symbol)
+                    label
                 }
                 .padding(Tokens.Space.s2)
                 .frame(width: 200, height: 96, alignment: .leading)
@@ -112,30 +157,66 @@ struct AttachmentTile: View {
         }
         .background(Palette.raised)
         .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.lg))
-        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.lg).strokeBorder(Palette.line))
+        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.lg).strokeBorder(renaming ? Palette.accent : Palette.line))
         .overlay(alignment: .topTrailing) {
-            Button("Remove \(item.name)", systemImage: "xmark", action: remove)
-                .labelStyle(.iconOnly)
-                .font(.caption.weight(.bold))
-                .foregroundStyle(Palette.ink)
-                .frame(width: 24, height: 24)
-                .background(Palette.raised, in: Circle())
-                .overlay(Circle().strokeBorder(Palette.line))
-                .frame(width: Tokens.Size.touchTarget, height: Tokens.Size.touchTarget)
-                .contentShape(Rectangle())
-                .offset(x: 10, y: -10)
+            if let remove, !renaming {
+                Button("Remove \(name)", systemImage: "xmark", action: remove)
+                    .labelStyle(.iconOnly)
+                    .font(.caption.weight(.bold))
+                    .foregroundStyle(Palette.ink)
+                    .frame(width: 24, height: 24)
+                    .background(Palette.raised, in: Circle())
+                    .overlay(Circle().strokeBorder(Palette.line))
+                    .frame(width: Tokens.Size.touchTarget, height: Tokens.Size.touchTarget)
+                    .contentShape(Rectangle())
+                    .offset(x: 10, y: -10)
+            }
         }
         .padding(.top, Tokens.Space.s1)
         .padding(.trailing, Tokens.Space.s1)
         .accessibilityElement(children: .contain)
+        .contextMenu {
+            if rename != nil { Button("Rename", systemImage: "pencil") { startRenaming() } }
+            if let remove { Button("Remove", systemImage: "xmark", role: .destructive, action: remove) }
+        }
+        .onAppear { if shotPins.renaming == name, rename != nil { startRenaming() } }
     }
 
-    private func label(_ attachment: Attachment?) -> some View {
+    @ViewBuilder
+    private var label: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(attachment?.title ?? item.name).fontWeight(.semibold).foregroundStyle(Palette.ink)
-                .lineLimit(1).truncationMode(.middle)
-            Text(attachment.map { ByteCountFormatter.string(fromByteCount: Int64($0.byteCount), countStyle: .file) } ?? "Preparing…")
-                .foregroundStyle(Palette.inkMuted)
+            if renaming {
+                TextField("File name", text: $typed)
+                    .fontWeight(.semibold)
+                    .foregroundStyle(Palette.ink)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .focused($typing)
+                    .onSubmit { finish(keep: true) }
+                    .onKeyPress(.escape) {
+                        finish(keep: false)
+                        return .handled
+                    }
+                    .onChange(of: typing) { if !typing { finish(keep: true) } }
+            } else if rename != nil {
+                Button(action: startRenaming) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        title
+                        HStack(spacing: Tokens.Space.s1) {
+                            Text(detail).lineLimit(1)
+                            Image(systemName: "pencil").imageScale(.small)
+                        }
+                        .foregroundStyle(Palette.inkMuted)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Rename \(name)")
+                .accessibilityValue(detail)
+            } else {
+                title
+                Text(detail).foregroundStyle(Palette.inkMuted)
+            }
         }
         .apText(.xs)
         .padding(.horizontal, Tokens.Space.s2)
@@ -143,15 +224,21 @@ struct AttachmentTile: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func thumbWidth(_ attachment: Attachment) -> CGFloat {
-        guard let width = attachment.pixelWidth, let height = attachment.pixelHeight, height > 0 else { return 96 }
-        return min(200, max(96, 96 * CGFloat(width) / CGFloat(height)))
+    private var title: some View {
+        Text(name).fontWeight(.semibold).foregroundStyle(Palette.ink).lineLimit(1).truncationMode(.middle)
     }
 
-    private func symbol(_ attachment: Attachment) -> String {
-        if attachment.isVideo { return "film" }
-        if attachment.isAudio { return "waveform" }
-        return FileCard.symbol(for: attachment.title)
+    private func startRenaming() {
+        typed = name
+        renaming = true
+        typing = true
+    }
+
+    private func finish(keep: Bool) {
+        guard renaming else { return }
+        renaming = false
+        let next = typed.trimmingCharacters(in: .whitespacesAndNewlines)
+        if keep, !next.isEmpty, next != name { rename?(next) }
     }
 }
 

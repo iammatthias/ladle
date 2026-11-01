@@ -1190,7 +1190,7 @@ final class ServerSessionTests: XCTestCase {
         try await expect(#"{"id":"c3","method":"message","params":{"body":{"format":"markdown","text":"hi"},"reply_to":{"message_id":"200"},"room_id":"general"}}"#,
                          reply: ["message_id": "201"]) { try await self.session.send("hi", in: "general", replyTo: LogID("200")) }
         try await expect(#"{"id":"c4","method":"message","params":{"body":{"format":"markdown","mentions":["bob"],"text":"hello"},"message_id":"200","reply_to":{"message_id":"150"},"room_id":"general"}}"#) {
-            try await self.session.edit(original, text: "hello", mentions: ["bob"])
+            try await self.session.edit(MessageEdit(original), text: "hello", mentions: ["bob"])
         }
         try await expect(#"{"id":"c5","method":"message","params":{"deleted":true,"message_id":"200","room_id":"general"}}"#) {
             try await self.session.delete(original)
@@ -1217,6 +1217,9 @@ final class ServerSessionTests: XCTestCase {
         try await expect(#"{"id":"c10","method":"room_leave","params":{"room_id":"ops"}}"#) { try await self.session.leave("ops") }
         try await expect(#"{"id":"c11","method":"room_set","params":{"parent_room_id":"general","title":"Deploy"}}"#,
                          reply: ["room_id": "300"]) { try await self.session.createRoom(title: "Deploy", parentRoomID: "general") }
+        try await expect(#"{"id":"c12","method":"message","params":{"body":{"format":"markdown","mentions":["bob"],"text":"helo"},"message_id":"200","room_id":"general"}}"#) {
+            try await self.session.removeReply(from: original)
+        }
     }
 
     /// Signs in with a token as `you`, in `general` and its thread `130`, on a server listing `capabilities`.
@@ -1271,7 +1274,7 @@ final class ServerSessionTests: XCTestCase {
         ]])
         await eventually("message installed") { session.store.message(LogID("200")!) != nil }
         let original = try XCTUnwrap(session.store.message(LogID("200")!))
-        let edit = Task { try await session.edit(original, text: "hello", mentions: []) }
+        let edit = Task { try await session.edit(MessageEdit(original), text: "hello", mentions: []) }
         let sent = await frame(socket, 2)
         XCTAssertEqual(sent, #"{"id":"c3","method":"message","params":{"body":{"text":"hello"},"ext":{"k":1},"message_id":"200","reply_to":{"message_id":"150"},"room_id":"general"}}"#)
         await socket.deliver(["id": "c3", "result": [:]])

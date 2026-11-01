@@ -48,7 +48,7 @@ final class TimelineTests: XCTestCase {
         let items = home.timelineItems(PreviewFixtures.linkRoomID, lineBefore: nil, calendar: utc)
         XCTAssertEqual(names(items, in: home).filter { !$0.hasPrefix("day") && !$0.hasPrefix("thread") }, ["eunji", "ada", "sam", "sam", "sam+", "ada"])
         let random = home.timelineItems(PreviewFixtures.mediaRoomID, lineBefore: nil, calendar: utc)
-        XCTAssertEqual(names(random, in: home).filter { !$0.hasPrefix("day") }, ["chiara", "bram", "chiara", "chiara+", "chiara+", "bram", "chiara", "sam"])
+        XCTAssertEqual(names(random, in: home).filter { !$0.hasPrefix("day") }, ["chiara", "bram", "sam", "chiara", "chiara+", "chiara+", "bram", "chiara", "sam"])
     }
 
     func testCountsAndRoomFacts() async throws {
@@ -86,6 +86,8 @@ final class TimelineTests: XCTestCase {
     func testTheMediaViewerPagesTheRoomsLoadableImages() async throws {
         let home = try await home()
         XCTAssertEqual(home.mediaItems(in: PreviewFixtures.mediaRoomID).map { [$0.id, $0.name, $0.sender, $0.alt ?? "", $0.original?.absoluteString ?? ""] },
-                       [["1793088180000#0", "dansk-pot.jpg", "Chiara", "A red enamel pot on a wooden table", "https://home.example/files/embed_1/s1"]])
+                       [["1793088060000#0", "IMG_4021.jpg", "Sam", "", "https://home.example/files/embed_10/s10"],
+                        ["1793088060000#1", "IMG_4022.jpg", "Sam", "", "https://home.example/files/embed_11/s11"],
+                        ["1793088180000#0", "dansk-pot.jpg", "Chiara", "A red enamel pot on a wooden table", "https://home.example/files/embed_1/s1"]])
     }
 }

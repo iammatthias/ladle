@@ -52,6 +52,7 @@ enum Screen: String, CaseIterable {
 
     /// The rooms list in an order of the user's own, rather than as first listed.
     var isReordered: Bool { self == .roomsOrdered || self == .roomsReorder }
+    case editEmbeds = "edit-embeds", stagedRename = "staged-rename"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -232,13 +233,24 @@ enum Renderer {
             AnyView(NavigationStack {
                 TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: kept(home, PreviewFixtures.mediaRoomID, ComposerDraft(field: DraftField(text: "Both sides of mine"), files: staged)))
             })
+        case .stagedRename:
+            AnyView(NavigationStack {
+                TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: kept(home, PreviewFixtures.mediaRoomID, ComposerDraft(field: DraftField(text: "Both sides of mine"), files: staged.suffix(2) + staged.prefix(2))))
+            }
+            .environment(\.shotPins, ShotPins(renaming: "receipt-flea-market.pdf")))
+        case .editEmbeds:
+            // Sam's two photos, a reply, being edited: the first renamed.
+            AnyView(NavigationStack {
+                TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts(),
+                             editing: editedUploads(home))
+            })
         case .media:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .links:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .viewer:
             AnyView(MediaViewer(items: home.mediaItems(in: PreviewFixtures.mediaRoomID),
-                                selection: home.mediaItems(in: PreviewFixtures.mediaRoomID).first?.id ?? ""))
+                                selection: home.mediaItems(in: PreviewFixtures.mediaRoomID).first { $0.name == "dansk-pot.jpg" }?.id ?? ""))
         case .textLimit:
             AnyView(NavigationStack {
                 TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions,
@@ -540,6 +552,14 @@ enum Renderer {
         return selection
     }
 
+    /// The editor on Sam's two photos, the first renamed.
+    static func editedUploads(_ home: ServerSession) -> ComposerDraft? {
+        guard let message = home.store.message(PreviewFixtures.editedUploadsID) else { return nil }
+        var field = DraftField(editing: message, in: home)
+        if let first = field.edit?.tiles.first { field.edit?.rename(first, to: "pot-lid.jpg") }
+        return ComposerDraft(field: field)
+    }
+
     /// Drafts holding one room's draft, for a shot of its composer.
     static func kept(_ session: ServerSession, _ roomID: String, _ draft: ComposerDraft) -> Drafts {
         Drafts([DraftKey(server: session.record.id, roomID: roomID): draft])
@@ -690,6 +710,10 @@ final class FixtureMedia: URLProtocol {
             Self.photo(CGSize(width: 1200, height: 630), hue: 0.75)
         } else if path.contains("embed_9/") {
             Self.photo(CGSize(width: 1200, height: 630), hue: 0.95)
+        } else if path.contains("embed_10/") {
+            Self.photo(CGSize(width: 1200, height: 1600), hue: 0.58)
+        } else if path.contains("embed_11/") {
+            Self.photo(CGSize(width: 1600, height: 1200), hue: 0.58)
         } else {
             nil
         }

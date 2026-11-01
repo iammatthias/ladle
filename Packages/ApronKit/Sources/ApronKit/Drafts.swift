@@ -24,6 +24,9 @@ public struct StagedFile: Identifiable, Hashable, Sendable {
     public let id: UUID
     public var name: String
     public var phase: Phase
+    /// The name the user gave it, sent as the upload's `title` (§4.8.4), as apron-web's
+    /// `StagedFile.title`; it outlasts the fitting, which may change the file's own name.
+    public private(set) var title: String?
 
     public init(id: UUID = UUID(), name: String, phase: Phase) {
         self.id = id
@@ -31,9 +34,20 @@ public struct StagedFile: Identifiable, Hashable, Sendable {
         self.phase = phase
     }
 
+    /// The file as it goes, under the user's name for it.
     public var attachment: Attachment? {
-        if case .ready(let attachment) = phase { return attachment }
-        return nil
+        guard case .ready(var attachment) = phase else { return nil }
+        if let title { attachment.title = title }
+        return attachment
+    }
+
+    /// The tile's name: the user's, else the fitted file's, else the picked file's.
+    public var shownName: String { title ?? attachment?.title ?? name }
+
+    /// Renames it, as apron-web's AttachmentTile: an empty name changes nothing.
+    public mutating func rename(to name: String) {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !name.isEmpty { title = name }
     }
 }
 

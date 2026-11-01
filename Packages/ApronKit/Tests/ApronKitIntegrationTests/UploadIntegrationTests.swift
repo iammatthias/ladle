@@ -86,6 +86,43 @@ final class UploadIntegrationTests: XCTestCase {
         print("round trip: message \(messageID.text), embed \(embed.embedID ?? "?"), \(url.absoluteString), \(bytes.count) bytes, og.image \(media.width ?? 0)x\(media.height ?? 0)")
     }
 
+    func testAnEditRenamesAnUploadRemovesAnotherAndTheReplyReference() async throws {
+        let session = try await signedIn()
+        try await session.open("general")
+        let askedID = try await session.send("Which pot?", in: "general")
+        let asked = try XCTUnwrap(askedID)
+        let photo = try AttachmentPreparer.prepare(try png(width: 320, height: 180), title: "before.png",
+                                                   limits: session.mediaLimits?.upload, into: directory)
+        let second = directory.appending(path: "after.png")
+        try FileManager.default.copyItem(at: try png(width: 200, height: 200), to: second)
+        let file = try AttachmentPreparer.prepare(second, title: "after.png", limits: session.mediaLimits?.upload, into: directory)
+        let postedID = try await session.send("This one.", in: "general", replyTo: asked, attachments: [photo, file])
+        let posted = try XCTUnwrap(postedID)
+        try await waitFor("both uploads complete", timeout: .seconds(10)) {
+            session.store.message(posted)?.embedList.allSatisfy { $0.url != nil } == true && session.uploadProgress.isEmpty
+        }
+        let sent = try XCTUnwrap(session.store.message(posted))
+        XCTAssertEqual(sent.replyTo, asked)
+        let before = sent.embedList
+        XCTAssertEqual(before.map(\.title), ["before.png", "after.png"])
+
+        var edit = MessageEdit(sent)
+        edit.rename(edit.tiles[0], to: "the red pot.png")
+        edit.remove(edit.tiles[1])
+        edit.removesReply = true
+        try await session.edit(edit, text: "This one, renamed.", mentions: [])
+
+        try await waitFor("the edit broadcast", timeout: .seconds(10)) { session.store.message(posted)?.body?["text"] == "This one, renamed." }
+        let saved = try XCTUnwrap(session.store.message(posted))
+        XCTAssertNil(saved.replyTo, "a save without reply_to removes it")
+        let after = saved.embedList
+        XCTAssertEqual(after.map(\.title), ["the red pot.png"])
+        XCTAssertEqual(after.map(\.embedID), [before[0].embedID], "the server keeps the upload's embed_id")
+        XCTAssertEqual(after.first?.url, before[0].url, "and its url")
+        XCTAssertEqual(after.first?.upload, before[0].upload, "and its og")
+        print("edited: \(saved.body?.serialized() ?? "")")
+    }
+
     func testAFileOverTheServersLimitIsDroppedAndComesBackAsNotSent() async throws {
         let session = try await signedIn(["--upload.max-mb", "1"])
         try await session.open("general")

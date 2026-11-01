@@ -257,11 +257,11 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | React (full picker) | #10 | has | `Timeline/ReactionPicker.swift` | Quick six, then the emoji keyboard and custom emoji. |
 | Start thread | bh | has | `Kit/MessageMenu.swift` (`startsThread`) | In a room's messages, not a thread's. |
 | Edit (own) | bh | has | `Kit/DraftField.swift` (edit mode) | |
-| Edit keeps and edits embeds as tiles, rename uploads | #70 | missing | | Edit changes text and mentions only. |
+| Edit keeps and edits embeds as tiles, rename uploads | #70 | has | `Kit/MessageEdit.swift`, `Timeline/ComposerView.swift`, `Timeline/Attachments.swift` (`AttachmentTile`) | Tiles above the editor's field with ×; an upload's name renames in place and goes as its `title`; the save sends the kept embeds as stored (`testAnEditRenamesAnUploadRemovesAnotherAndTheReplyReference` against aprond). |
 | Select (enter select mode) | #14, #54 | has | `Timeline/TimelineView.swift` (Select) | In the message's menu, on any message in the room that isn't deleted. |
 | Copy text | bh | has | `Kit/MessageMenu.swift` | |
 | Copy link | #112 | has | `Kit/MessageMenu.swift` | Web form. |
-| Remove reply reference | bh | missing | | |
+| Remove reply reference | bh | has | `Kit/MessageMenu.swift` (`removesReply`), `Kit/ServerSession.swift` (`removeReply`), `Kit/MessageEdit.swift` (`removesReply`) | In your own reply's menu, as the web's, and as an × on the editor's reply line, which waits for Save. A save without `reply_to` clears it on aprond. |
 | Delete with confirm | bh | has | `Timeline/TimelineView.swift` | |
 | Move to thread or back to room | #54 | has | `Kit/MessageMenu.swift` (`moveDestinations`) | One message at a time. |
 | Second tap puts the toolbar away | #118 | N/A-iOS | | The context menu dismisses natively. |
@@ -334,14 +334,14 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Voice clips | #96 | has | `Timeline/VoiceRecorder.swift` | |
 | Staged files with thumbnails, players, file cards, × | #49 | has | `Timeline/Attachments.swift` | |
 | "Preparing…" while an image shrinks, then its new size | #35 | has | `Timeline/Attachments.swift:151` | |
-| Rename a file before sending | #70 | missing | `Timeline/ComposerView.swift` (`rename` is internal) | |
-| Rename an upload after sending (in the editor) | #70 | missing | | |
+| Rename a file before sending | #70 | has | `Kit/Drafts.swift` (`StagedFile.rename`), `Timeline/Attachments.swift` (`AttachmentTile`) | Tap the tile's name, or Rename in its long-press menu. A rename while the file is still being fitted holds. Kept with the draft. |
+| Rename an upload after sending (in the editor) | #70 | has | `Kit/MessageEdit.swift` (`rename`) | `og.title` follows when it showed the old name, as the web's `renamedEmbed`; aprond restores its own. |
 | Fit to `ext:media` types and limits | #35 | has | `Kit/UploadPlan.swift`, `Kit/MediaLimits.swift` | |
 | Pending card with progress | bh | has | `Timeline/EmbedViews.swift` | |
 | "Upload failed" with reason; 10-minute stale pending fails | #136 | partial | `Kit/ServerSession+Uploads.swift` | A failed write becomes a Not sent item. Not verified in code: the 10-minute rule for others' uploads. |
 | Image, video, audio players for uploads | bh | has | `Timeline/EmbedViews.swift` | |
 | Full-screen image viewer, paging, Open original | #53 | has | `Media/MediaViewer.swift` | |
-| Remove an embed from a sent message (×, asks for uploads) | #13, #20 | missing | | |
+| Remove an embed from a sent message (×, asks for uploads) | #13, #20 | partial | `Kit/MessageEdit.swift` (`EmbedTile.removeQuestion`), `Timeline/ComposerView.swift` | In the editor: the tile's × asks in the web's words for an upload, a terminal or live text, and Save leaves it out. The web also puts an × on the embed in the timeline row; Ladle's rows keep their long-press menu, and Edit reaches the same ×. An upload still being written has none. |
 | `og` link card | bh | has | `Timeline/EmbedViews.swift` | |
 | `og.video` and `og.audio` play in the card (fork) | fork "Play og.video and og.audio in link preview cards" | has | `Timeline/EmbedViews.swift` | |
 | Fallback card with kind and url or text | bh | has | `Timeline/EmbedViews.swift` | |
@@ -543,7 +543,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 14. ~~**Member management.**~~ Done (`Kit/Members.swift`, `Timeline/AddMembersSheet.swift`, `Timeline/MemberList.swift`): Add People with the people picker, Remove from Room after a confirmation, and the member menu (Profile, Direct Message, Remove) on a long press, a tap opening the card. A server that answers `unsupported` stops the offers.
 15. ~~**Select mode.**~~ Done (`Kit/MessageSelection.swift`, `Kit/ServerSession+Selection.swift`, `Kit/MessageLog.swift`, `Timeline/SelectionBar.swift`), but for the HTML copy and `x`. Select several messages, move them to a thread or a new thread, add authors to the thread, and copy them as a Markdown log with quotes, cut marks, and reactions. M.
 16. ~~**Search local history.**~~ Done (`Kit/LocalSearch.swift`, `Kit/ServerSession+Search.swift`, `Timeline/SearchView.swift`). As-you-type search with `user:` and `room:`, narrowed to the open room, opening results in place. Also search rooms by name. Depends on item 11. M.
-17. **Message editing with embeds.** Edit shows embeds as tiles with ×. Remove an embed from a sent message (asking for uploads). Rename a file before and after sending. Remove reply reference. M.
+17. ~~**Message editing with embeds.**~~ Done (`Kit/MessageEdit.swift`, `Timeline/Attachments.swift`): the editor shows embeds as tiles with ×, asking for uploads; a staged file and a sent upload rename in place as `title`; Remove Reply Reference in the menu and on the editor's reply line, proven against aprond. Left out: the web's × on an embed in the timeline row (the editor holds it), and an unchanged Save still sends (the web closes the editor instead). In-place renaming with the keyboard needs a device.
 18. ~~**Rooms list order and folding.**~~ Done (`Kit/RoomArrangement.swift`, `Kit/ServerSession+RoomOrder.swift`, `Rooms/RoomListView.swift`): room order kept per account with Reorder Rooms' drag and Option+↑/↓, Rooms and Private folding to rooms with news with "…", remembered, the open room's threads folded by picking it again, and Browse Rooms with descriptions and member counts opening a room to read before Join. Left out: the web's Other Rooms as a section in the list (Browse stays a sheet), and folding the open room's threads on iPhone, whose list has no open room. The drag and the keys are not yet tried on a device.
 19. **Streams and terminal output.** Read a stream's `url` live with a Live badge. Render `terminal` with ANSI colors and carriage-return overwrite. Only from the server's origin. M.
 20. ~~**Apron link chips.**~~ Done (`Kit/LinkChips.swift`, `Timeline/LinkChipViews.swift`). The chip keeps the link as written, not the web's https form under it; Copy Link and Share already hand on the web form. A link that repeats a key or carries `state` alone still reads as a place, since `ApronLink` takes first values where the web's `readPlaceLink` refuses it.

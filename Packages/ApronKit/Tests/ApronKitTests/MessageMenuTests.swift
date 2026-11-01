@@ -11,6 +11,10 @@ final class MessageMenuTests: XCTestCase {
         let ada = try XCTUnwrap(general.first { $0.from.userID == "ada" })
         let mine = MessageMenu(own, in: home), theirs = MessageMenu(ada, in: home)
         XCTAssertEqual([mine.reacts, mine.mayWrite, mine.editable, theirs.editable], [true, true, true, false])
+        let ownReply = try XCTUnwrap(general.first { $0.from.userID == "sam" && $0.replyTo != nil })
+        let adaReply = try XCTUnwrap(general.first { $0.from.userID != "sam" && $0.replyTo != nil })
+        XCTAssertEqual([MessageMenu(ownReply, in: home).removesReply, mine.removesReply, MessageMenu(adaReply, in: home).removesReply], [true, false, false],
+                       "Remove Reply Reference: your own reply only")
         XCTAssertEqual(mine.moveDestinations.map(home.title(of:)), ["2024 offsite", "Archive 2025", "Benchmarks", "Docs", "Hiring", "Icons v1", "Load test", "Origin check", "Passkeys", "Release 0.2", "Untitled"],
                        "your own message moves to the room's threads, by title")
         XCTAssertEqual(theirs.moveDestinations, [], "someone else's needs move_any")

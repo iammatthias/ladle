@@ -8,6 +8,8 @@ struct ShotPins: Hashable {
     var floatingDay = false
     var pulse: Double?
     var scrollTo: String?
+    /// The attachment tile, by name, held open for renaming.
+    var renaming: String?
 }
 
 extension EnvironmentValues {

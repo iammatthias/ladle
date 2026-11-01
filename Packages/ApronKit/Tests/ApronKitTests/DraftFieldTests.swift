@@ -10,7 +10,7 @@ final class DraftFieldTests: XCTestCase {
 
     func testTheQueryIsWhatTheEndOfTheTextTypes() async throws {
         let home = try await home()
-        let edit = DraftField(mode: .edit(home.timeline("general")[0]), text: "/inv")
+        let edit = DraftField(mode: .edit(MessageEdit(home.timeline("general")[0])), text: "/inv")
         XCTAssertEqual(["/inv", "/inv x", "//inv", "Thanks @", "hi @ad", "line\n@ad", "Lunch :pa", ":", "Lunch :p a", "Moving this to #s", "a#s", "plain", ""]
             .map { DraftField(text: $0).query }, [.command("inv"), nil, nil, .mention(""), .mention("ad"), nil, .emoji("pa"), nil, nil, .room("s"), nil, nil, nil])
         XCTAssertNil(edit.query, "an edit is never a command")
@@ -85,7 +85,7 @@ final class DraftFieldTests: XCTestCase {
                         DraftField(text: "").canSend(readyFiles: 1, preparing: false),
                         DraftField(text: "hi").canSend(readyFiles: 1, preparing: true),
                         DraftField(text: String(repeating: "a", count: TextLimit.maxBytes + 1)).canSend(readyFiles: 0, preparing: false),
-                        DraftField(mode: .edit(home.timeline("general")[0]), text: "").canSend(readyFiles: 1, preparing: false)],
+                        DraftField(mode: .edit(MessageEdit(home.timeline("general")[0])), text: "").canSend(readyFiles: 1, preparing: false)],
                        [true, false, true, false, false, false])
     }
 }

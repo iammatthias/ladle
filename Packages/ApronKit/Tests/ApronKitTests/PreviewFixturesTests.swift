@@ -89,7 +89,9 @@ final class PreviewFixturesTests: XCTestCase {
             case .audio: "audio"
             case .file: "file"
             }
-        }, ["image 1600x1200", "video", "file", "audio", "pending"])
+        }, ["image 1200x1600", "image 1600x1200", "image 1600x1200", "video", "file", "audio", "pending"])
+        let mine = try XCTUnwrap(home.timeline(PreviewFixtures.mediaRoomID).first { $0.messageID == PreviewFixtures.editedUploadsID })
+        XCTAssertEqual([MessageMenu(mine, in: home).editable, mine.replyTo != nil], [true, true], "Sam's two photos, a reply, for the editor shot")
         XCTAssertTrue(home.canAttach)
         XCTAssertEqual(home.timeline(PreviewFixtures.releaseThreadID).count, 4, "Release 0.2")
         XCTAssertEqual(home.unreadCount(in: PreviewFixtures.releaseThreadID), 2)

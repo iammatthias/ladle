@@ -40,6 +40,8 @@ struct ComposerView: View {
     @State private var usingCamera = false
     @State private var recorder = VoiceRecorder()
     @State private var cursor = SuggestionCursor()
+    /// The embed whose × is asking before the edit leaves it out.
+    @State private var removing: EmbedTile?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.horizontalSizeClass) private var sizeClass
 
@@ -77,6 +79,21 @@ struct ComposerView: View {
                 .padding(.leading, Tokens.Space.s4)
                 .padding(.trailing, Tokens.Space.s2)
             }
+            if let edit = draft.field.edit, let reply = edit.replyTo {
+                HStack(spacing: Tokens.Space.s2) {
+                    replyLine(reply)
+                        .apText(.ui)
+                        .foregroundStyle(Palette.inkMuted)
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
+                    Button("Remove Reply Reference", systemImage: "xmark") { draft.field.edit?.removesReply = true }
+                        .labelStyle(.iconOnly)
+                        .foregroundStyle(Palette.inkMuted)
+                        .touchTarget()
+                }
+                .padding(.leading, Tokens.Space.s4)
+                .padding(.trailing, Tokens.Space.s2)
+            }
             if textLimit.isOver {
                 Label("Too long to send by \(-textLimit.remaining) bytes. A message holds \(TextLimit.maxBytes.formatted()) bytes of text; emoji and accented letters take more than one.",
                       systemImage: "exclamationmark.circle")
@@ -90,8 +107,18 @@ struct ComposerView: View {
                     focused = true
                 }
             }
-            if !draft.files.isEmpty, !draft.field.isEdit {
-                AttachmentTray(attachments: draft.files) { id in draft.files.removeAll { $0.id == id } }
+            if let edit = draft.field.edit {
+                if !edit.tiles.isEmpty {
+                    AttachmentTray(label: "Attachments") {
+                        ForEach(edit.tiles) { tile in
+                            AttachmentTile(name: tile.name, detail: tile.detail, preview: preview(of: tile),
+                                           rename: tile.renamable ? { draft.field.edit?.rename(tile, to: $0) } : nil,
+                                           remove: session.mayRemove(tile) ? { removeEmbed(tile) } : nil)
+                        }
+                    }
+                }
+            } else if !draft.files.isEmpty {
+                AttachmentTray(files: $draft.files)
             }
             HStack(alignment: .bottom, spacing: Tokens.Space.s2) {
                 if case .recording(let since) = recorder.state {
@@ -157,6 +184,35 @@ struct ComposerView: View {
         .onChange(of: recorder.state) {
             if recorder.state == .denied { onProblem("Ladle can't use the microphone. Allow it in Settings to record voice notes.") }
         }
+        .confirmationDialog(removing?.removeQuestion ?? "", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+                            titleVisibility: .visible, presenting: removing) { tile in
+            Button(tile.embed.kind == "upload" ? "Remove" : "Stop", role: .destructive) { draft.field.edit?.remove(tile) }
+        }
+    }
+
+    /// An embed's × in the editor, which asks first where something goes with it, as apron-web
+    /// asks before removing one; the save then leaves it out.
+    private func removeEmbed(_ tile: EmbedTile) {
+        if tile.removeQuestion == nil { draft.field.edit?.remove(tile) } else { removing = tile }
+    }
+
+    private func preview(of tile: EmbedTile) -> TilePreview {
+        let gate = session.mediaGate
+        switch tile.embed.upload {
+        case .image(let media):
+            return gate.allows(media.url) ? .image(media.url, aspect: media.aspectRatio.map { CGFloat($0) }) : .glyph("photo")
+        case .video: return .glyph("film")
+        case .audio: return .glyph("waveform")
+        case .file: return .glyph(FileCard.symbol(for: tile.name))
+        case .pending: return .glyph("arrow.up.circle")
+        case nil: return .glyph("link")
+        }
+    }
+
+    private func replyLine(_ id: LogID) -> Text {
+        guard let message = session.store.message(id) else { return Text("Replying to a message") }
+        let who = Text(TextDirection.isolated(session.displayName(for: message.from))).fontWeight(.semibold).foregroundStyle(Palette.ink)
+        return Text("Replying to \(who)")
     }
 
     @ViewBuilder
@@ -254,9 +310,8 @@ struct ComposerView: View {
     /// yet says only that it is a reply.
     private var targetLine: Text {
         if draft.field.isEdit { return Text("Editing your message") }
-        guard let id = draft.field.replyTo, let message = session.store.message(id) else { return Text("Replying to a message") }
-        let who = Text(TextDirection.isolated(session.displayName(for: message.from))).fontWeight(.semibold).foregroundStyle(Palette.ink)
-        return Text("Replying to \(who)")
+        guard let id = draft.field.replyTo else { return Text("Replying to a message") }
+        return replyLine(id)
     }
 
     private var canAttach: Bool { session.canAttach && !draft.field.isEdit }

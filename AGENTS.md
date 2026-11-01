@@ -94,7 +94,7 @@ clone), which is only a worked example.
     - `permissions` is `Permissions`, `you.ext.permissions` under capability `ext:permissions`
       (EXTENSIONS.md): `write`, `add_members` and `move_any`, each defaulting when absent or not
       a boolean, and all of them when `permissions` is not an object.
-      `edit` and `move` share one save that sends the message's `body`, `reply_to` and `ext` as stored (§4.4 replaces client fields); `edit` replaces the text and `body.mentions`, `move` adds the new `room_id`;
+      `edit` and `move` share one save that sends the message's `body`, `reply_to` and `ext` as stored (§4.4 replaces client fields); `edit` takes a `MessageEdit` and replaces the text, `body.mentions`, the embeds it keeps and the reply, `removeReply` drops `reply_to` alone (omitted, which clears it on aprond), `move` adds the new `room_id`;
       `mayMove` allows your own messages, and anyone's with `move_any`. The message menu offers
       Move To the room's threads, or out of a thread to its room and that room's other threads.
     - Reconnect: pending requests fail with `Connection.Failure.closed` (no same-id resend),
@@ -265,7 +265,16 @@ clone), which is only a worked example.
     message's mentions whose `@name` or `@user_id` its text shows, and saves `body.mentions`
     from the field (§3.5.5, §4.4: a save replaces it). `ServerSession.submit` takes a
     `ComposerDraft` and runs a command, posts, or saves the edit. A reply names its message by `LogID` alone, as
-    apron-web's kept `reply`; the composer shows what the session holds of it.
+    apron-web's kept `reply`; the composer shows what the session holds of it. An edit's mode
+    carries a `MessageEdit`.
+  - `MessageEdit` (`MessageEdit.swift`): what an edit changes besides the text, as apron-web's
+    MessageEditor (#70): embeds removed and uploads renamed, by their place in the stored
+    `body.embeds`, and `removesReply`. `tiles` are the `EmbedTile`s shown (name and detail as
+    apron-web's `embedTile`, `renamable` for uploads, `removeQuestion` as its
+    `removeEmbedQuestion`); `saved(text:mentions:)` is the snapshot the save sends, the kept
+    embeds as stored, a renamed one's `og.title` following as `renamedEmbed`.
+    `ServerSession.mayRemove` refuses an upload this device is still writing. A `StagedFile`'s
+    `title` is the user's rename, which its `attachment` carries and outlives the fitting.
   - `StandardEmoji` (`StandardEmoji.swift`, generated `StandardEmojiData.swift`), as apron-web's
     `emoji-autocomplete.ts`: `query(in:)` is the `:shortcode` the text ends with (2 to 32 of
     `[A-Za-z0-9_+-]` after a `:` that starts a word); `search` ranks @emoji-mart/data's emoji
@@ -669,7 +678,7 @@ clone), which is only a worked example.
   LinkPresentation's `LPMetadataProvider` when the row appears, while Show Link Previews (Ladle's
   page in the Settings app, `Settings.bundle`, on by default) is on; it replaces a bare `link` embed's
   fallback card, and plays the page's `remoteVideoURL` (`LinkPreview.playableVideo`) inline; upload embeds as a picture, an inline video, an audio player, a file card that opens in
-  Quick Look, or a pending card with progress; `Attachments`: the draft's tiles, picked files
+  Quick Look, or a pending card with progress; `Attachments`: the draft's tiles and the editor's embeds (`AttachmentTile`, renamed in place), picked files
   in the temporary directory (cleared at launch) until `AttachmentStaging.prepare` fits them into
   `Drafts.staging`, the camera; `TimelineView` binds the composer to the room's kept draft, or to
   an open edit beside it, and fits dropped and picked files into that room's draft by key, so one
@@ -787,7 +796,7 @@ never restart its services or kill its processes). Screens are reviewed on this 
 `LadleShots` is a debug-only Mac Catalyst app target built from `Ladle/` (minus `LadleApp.swift`)
 plus `LadleShots/ShotsApp.swift`. It seeds `PreviewFixtures` (and a fetched preview for the busy room's wiki link) and renders, at 390x844 pt
 (compact width) in dark and light: the first run (no servers), the server list, Connect, Connect after a scanned sign-in, the room list, the busy room (opened at its New line), the
-mention list, the member list and the reaction picker, the composer with attachments, a room
+mention list, the member list and the reaction picker, the composer with attachments, its PDF being renamed in place (`ladle-staged-rename`), the editor on Sam's two photos with their tiles, the first renamed, and his reply's line with its × (`ladle-edit-embeds`), a room
 of uploads (image, video, file, audio, pending), the media viewer, the composer over the text
 limit, a read-only guest's sign-in prompt on the demo server, custom emoji in text, a
 description and reactions with a right-to-left line (the kitchen room), the reaction picker

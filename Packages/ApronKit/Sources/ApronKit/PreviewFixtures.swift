@@ -231,6 +231,9 @@ public enum PreviewFixtures {
     /// The room whose uploads the media screenshots show.
     public static let mediaRoomID = "random"
 
+    /// Sam's two photos in the media room, a reply: the message the editor shot edits.
+    public static var editedUploadsID: LogID { LogID(message(-59))! }
+
     /// The room whose link cards play `og` video and audio.
     public static let linkRoomID = "design"
 
@@ -479,6 +482,10 @@ public enum PreviewFixtures {
             "random": history("random", [
                 line(-90, "chiara", "Found a 1970s Dansk enamel pot at the flea market."),
                 line(-60, "bram", "Photos or it didn't happen."),
+                line(-59, "sam", "Mine first: lid and base.", reply: -60, embeds: [
+                    upload(10, "IMG_4021.jpg", og: ["image": media(10, "image/jpeg", 1200, 1600)]),
+                    upload(11, "IMG_4022.jpg", og: ["image": media(11, "image/jpeg", 1600, 1200)]),
+                ]),
                 line(-58, "chiara", "Tomorrow, the light is bad now."),
                 line(-57, "chiara", "Fine, one with the flash.", embeds: [upload(1, "dansk-pot.jpg", og: ["image": media(1, "image/jpeg", 1600, 1200, alt: "A red enamel pot on a wooden table")])]),
                 line(-56, "chiara", "", embeds: [upload(2, "lid-handle.mov", og: ["video": media(2, "video/quicktime", 1920, 1080)])]),

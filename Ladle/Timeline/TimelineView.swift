@@ -74,13 +74,15 @@ struct TimelineView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     init(session: ServerSession, roomID: String, reminders: Reminders, hidden: HiddenDescriptions, drafts: Drafts,
-         place: Binding<ApronLink?> = .constant(nil), showingMembers: Bool = false, picking: MessageSelection? = nil) {
+         place: Binding<ApronLink?> = .constant(nil), showingMembers: Bool = false, picking: MessageSelection? = nil,
+         editing: ComposerDraft? = nil) {
         self.session = session
         self.roomID = roomID
         self.drafts = drafts
         self.hidden = hidden
         _place = place
         _picking = State(initialValue: picking)
+        _editing = State(initialValue: editing)
         _reminding = State(initialValue: MessageReminders(session: session, reminders: reminders))
         _showingMembers = State(initialValue: showingMembers)
     }
@@ -747,6 +749,11 @@ struct TimelineView: View {
         linkActions(menu.links)
         if menu.editable {
             Button("Edit", systemImage: "pencil") { editing = ComposerDraft(field: DraftField(editing: message, in: session)) }
+        }
+        if menu.removesReply {
+            Button("Remove Reply Reference", systemImage: "arrowshape.turn.up.left") { perform { try await session.removeReply(from: message) } }
+        }
+        if menu.editable {
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
         }
     }
