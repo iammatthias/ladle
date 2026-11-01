@@ -47,6 +47,8 @@ struct RoomListView: View {
     @Environment(\.fixedNow) private var fixedNow
     @Environment(\.heldAwayWords) private var heldAwayWords
     @State private var problem: String?
+    /// The protocol version whose warning was dismissed on this launch.
+    @State private var versionWarningSeen: Int?
     @State private var leaving: String?
     /// The room a swipe asked to mute, whose choices a dialog lists.
     @State private var muting: String?
@@ -427,6 +429,14 @@ struct RoomListView: View {
             return AnyView(ActionBanner(symbol: "person.crop.circle.badge.exclamationmark", title: "Sign in to \(session.serverName)",
                                         detail: session.signInNeeded) {
                 Button("Sign In", action: onSignIn).buttonStyle(PrimaryButtonStyle())
+            })
+        case .signedIn where session.server?.versionWarning != nil && versionWarningSeen != session.server?.apron:
+            // §3.1: a server on a version Ladle doesn't read is said once a launch, then the
+            // server pane keeps saying it.
+            return AnyView(ActionBanner(symbol: "exclamationmark.triangle", title: "Some features may not work",
+                                        detail: session.server?.versionWarning, tone: Palette.warn) {
+                Button("Dismiss", systemImage: "xmark") { versionWarningSeen = session.server?.apron }
+                    .labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
             })
         default:
             // A short drop's way back says so only in your own dot, as on the web.

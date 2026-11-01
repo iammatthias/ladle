@@ -973,6 +973,71 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(positions.positions(server: record.id, user: "ada"), ["general": LogID("260")!])
     }
 
+    /// Signs in on a server that shows read receipts, joined to `general` and the private room `p1` with Bob.
+    private func signInWithReceipts() async throws -> FakeTransport {
+        let socket = queueTransport(capabilities: ["history", "rooms", "activity", "ext:settings"], ext: ["settings": ["read_receipts": "private"]])
+        session.start()
+        await eventually("signed out") { session.status == .signedOut }
+        let signIn = Task { try await session.signIn(.guest(name: nil)) }
+        _ = await frames(socket, count: 2)
+        await socket.deliver(["id": "c1", "result": ["you": ["user_id": "ada", "name": "Ada"], "token": "t1"]])
+        await socket.deliver(["id": "c2", "result": ["joined": [
+            ["room_id": "general", "log_id": "100", "title": "General", "latest_log_id": "100", "history_log_id": "100"],
+            ["room_id": "p1", "log_id": "110", "private": true, "latest_log_id": "110", "history_log_id": "110",
+             "members": [["user_id": "ada", "name": "Ada"], ["user_id": "bob", "name": "Bob"]]],
+        ]]])
+        _ = try await signIn.value
+        return socket
+    }
+
+    func testReadReceiptsPlaceEachOtherMemberUnderTheNewestMessageTheyReadInAPrivateRoom() async throws {
+        let socket = try await signInWithReceipts()
+        for (id, from) in [("201", "bob"), ("202", "ada"), ("203", "~room"), ("204", "ada")] {
+            await socket.deliver(["method": "message", "params": ["message_id": .string(id), "log_id": .string(id), "room_id": "p1",
+                                                                   "from": ["user_id": .string(from)], "body": ["text": "hi"]]])
+        }
+        await socket.deliver(["method": "message", "params": message("205", "x")])
+        func read(_ from: JSONValue, _ room: String, _ id: String) -> JSONValue {
+            ["method": "activity", "params": ["room_id": .string(room), "from": from, "read_message_id": .string(id)]]
+        }
+        await socket.deliver(read(["user_id": "bob", "name": "Bob"], "p1", "203"))
+        await socket.deliver(read(["user_id": "carol"], "p1", "204"))
+        await socket.deliver(read(["user_id": "bob"], "general", "205"))
+        await socket.deliver(read(["user_id": "bob"], "p1", "150"))
+        await eventually("cursors applied") { session.readers["p1"]?["carol"] != nil && session.readers["general"] != nil }
+        XCTAssertEqual(session.readers["p1"], ["bob": LogID("203")!, "carol": LogID("204")!], "a cursor only moves forward")
+        let placed = session.receipts(in: "p1", shown: session.timeline("p1"))
+        XCTAssertEqual(placed.mapValues { $0.map(\.name) }, [LogID("202")!: ["Bob"]],
+                       "under the newest message read through that is not a system one; Carol is no member")
+        XCTAssertEqual(session.receipts(in: "general", shown: session.timeline("general")), [:], "none in a public room")
+        XCTAssertEqual(SeenBy.words(["Bob"]), "Seen by Bob")
+        XCTAssertEqual(SeenBy.words(["Bob", "Carol", "Dev"]), "Seen by Bob, Carol and Dev")
+        XCTAssertEqual(SeenBy.words(["Bob", "Carol", "Dev", "Eve", "Fay"]), "Seen by Bob, Carol, Dev and 2 more")
+        session.receiptSettings.set(false)
+        XCTAssertEqual(session.receipts(in: "p1", shown: session.timeline("p1")), [:], "off, nobody's show")
+    }
+
+    func testWithReadReceiptsOffYourCursorInAPrivateRoomStaysHereUntilTheyComeBackOn() async throws {
+        let socket = try await signInWithReceipts()
+        XCTAssertTrue(session.offersReadReceipts)
+        session.receiptSettings.set(false)
+        await session.markRead("p1", through: LogID("120")!)
+        await session.markRead("general", through: LogID("130")!)
+        _ = await frames(socket, count: 3)
+        XCTAssertEqual(session.readCursors["p1"], LogID("120"), "the cursor still moves here")
+        session.receiptSettings.set(true)
+        await session.readReceiptsTurnedOn()
+        await session.readReceiptsTurnedOn()
+        let sent = await frames(socket, count: 4)
+        XCTAssertEqual(Array(sent[2...]), [
+            #"{"method":"activity","params":{"read_message_id":"130","room_id":"general"}}"#,
+            #"{"method":"activity","params":{"read_message_id":"120","room_id":"p1"}}"#,
+        ], "public rooms keep syncing; back on, only the cursor that moved goes, once")
+        try await Task.sleep(for: .milliseconds(50))
+        let all = await socket.sentLog
+        XCTAssertEqual(all.count, 4)
+    }
+
     func testReadCursorsAreThrottledToTheNewestOncePerInterval() async throws {
         let socket = queueTransport(capabilities: ["history", "rooms", "activity"])
         session.start()

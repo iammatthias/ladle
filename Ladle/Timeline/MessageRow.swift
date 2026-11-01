@@ -19,6 +19,8 @@ struct MessageRow: View {
     var onJump: (LogID) -> Void = { _ in }
     /// Opens the sender's profile card, from their avatar or name.
     var onProfile: () -> Void = {}
+    /// Read receipts: the other members who read up to this message and no further.
+    var seenBy: [Reader] = []
     @Environment(\.dynamicTypeSize) private var typeSize
     @Environment(\.fixedTypeSize) private var fixedTypeSize
     @Environment(\.liveSessions) private var liveSessions
@@ -68,6 +70,9 @@ struct MessageRow: View {
                     content(row)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                if !seenBy.isEmpty {
+                    ReadReceipts(session: session, readers: seenBy).padding(.top, continues ? 2 : 4)
+                }
             }
         }
         .padding(.vertical, Tokens.Space.s1)
@@ -90,10 +95,13 @@ struct MessageRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(row.spoken(reminderDue: reminderDue, now: .now))
+        .accessibilityLabel(row.spoken(reminderDue: reminderDue, now: .now) + (seenBy.isEmpty ? "" : ", " + SeenBy.words(seenBy.map(\.name))))
         .accessibilityAction(named: "\(name)’s Profile", onProfile)
         .task(id: session.server?.emojiCatalogURL) {
             if session.needsEmojiCatalog(message) { await session.loadEmojiCatalog() }
+        }
+        .task(id: row.liveAppend.map(ObjectIdentifier.init)) {
+            if let live = row.liveAppend { await session.follow(live) }
         }
     }
 
@@ -119,14 +127,18 @@ struct MessageRow: View {
 
     @ViewBuilder
     private func content(_ row: MessageRowModel) -> some View {
-        if !message.plainText.isEmpty {
+        if !row.blocks.isEmpty {
             MessageBlocksView(blocks: row.blocks, catalog: session.emojiCatalog, gate: session.mediaGate, settings: session.mediaSettings)
                 .apText(.body)
                 .environment(\.textFace, .chat)
                 .foregroundStyle(Palette.ink)
                 .tint(Palette.denim)
                 .fixedSize(horizontal: false, vertical: true)
-                .written(in: TextDirection(of: message.plainText))
+                .written(in: TextDirection(of: message.plainText.isEmpty ? row.liveAppend?.text ?? "" : message.plainText))
+        }
+        if row.isWriting {
+            Text("Writing…").apText(.sm, italic: true).foregroundStyle(Palette.inkMuted)
+                .padding(.top, Tokens.Space.s1)
         }
         if let room = message.prevRoomID {
             Text("Moved from \(Text(TextDirection.isolated(session.title(of: room))).foregroundStyle(Palette.denim))")
@@ -202,9 +214,10 @@ func styled(_ text: AttributedString) -> AttributedString {
 /// A one-line preview of a body inside a control (a reply quote, a room or thread row): its
 /// first line as plain text (`MessageText.snippet`, so markdown shows without its syntax), with
 /// no links, so a tap goes to the control and the line keeps its color, isolated from the words
-/// around it (§3.5.2).
+/// around it (§3.5.2). A message with no text reads as its embeds (`MessageText.embedsLabel`).
 func previewText(_ body: JSONValue?) -> AttributedString {
-    AttributedString("\u{2068}" + MessageText.snippet(body) + "\u{2069}")
+    let snippet = MessageText.snippet(body)
+    return AttributedString("\u{2068}" + (snippet.isEmpty ? MessageText.embedsLabel(body) ?? "" : snippet) + "\u{2069}")
 }
 
 extension View {

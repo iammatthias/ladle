@@ -134,7 +134,13 @@ final class ServerIntegrationTests: XCTestCase {
         let guest = try await signedInGuest(server)
         await guest.loadCommands(in: "general")
         try await waitFor("guest commands") { guest.commands != nil }
-        XCTAssertEqual(guest.commands?.commands, [ServerCommand(name: "help", usage: "/help", summary: "list the commands you can use here")])
+        XCTAssertEqual(guest.commands?.commands, [
+            ServerCommand(name: "embed-append", usage: "/embed-append [markdown]",
+                          summary: "get a link to stream text into a message that starts with [markdown], such as an LLM's reply: the message appears when the stream starts"),
+            ServerCommand(name: "embed-terminal", usage: "/embed-terminal [title]",
+                          summary: "get a link to stream a terminal (80×40) into this room, such as a build: the message appears when the stream starts"),
+            ServerCommand(name: "help", usage: "/help", summary: "list the commands you can use here"),
+        ], "v10's live text commands are a guest's too")
 
         let admin = makeSession(server)
         admin.start()

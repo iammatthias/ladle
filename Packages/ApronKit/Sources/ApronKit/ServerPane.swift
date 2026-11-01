@@ -20,8 +20,10 @@ public struct ServerPane: Hashable, Sendable {
     public let signedInAs: String?
     /// The WebSocket address, to copy.
     public let address: String
-    /// "Apron 9", from the `server` frame.
+    /// "Apron 10", from the `server` frame.
     public let protocolVersion: String?
+    /// `ServerInfo.versionWarning`: the server speaks a version Ladle does not read.
+    public let versionWarning: String?
 }
 
 extension ServerSession {
@@ -45,7 +47,8 @@ extension ServerSession {
             tone: tone,
             signedInAs: you.map { "Signed in as \(TextDirection.isolated(displayName(for: $0)))" + (isGuest ? " (guest)" : "") },
             address: record.url.absoluteString,
-            protocolVersion: server.map { "Apron \($0.apron)" }
+            protocolVersion: server.map { "Apron \($0.apron)" },
+            versionWarning: server?.versionWarning
         )
     }
 }

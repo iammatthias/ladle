@@ -1,8 +1,22 @@
 /// The `server` frame (§3.1). Each one fully replaces the previous.
 public struct ServerInfo: Hashable, Sendable {
-    /// The protocol versions Ladle reads: v9, and v10's finished live text (a terminal's
-    /// `output`, an append merged into `body.text`) without the live reading.
-    public static let supportedVersions: ClosedRange<Int> = 9...10
+    /// The protocol version Ladle speaks.
+    public static let version = 10
+    /// The versions Ladle reads in full: v10, and v9, whose `stream` embeds v10 dropped (a
+    /// finished one still shows its text).
+    public static let supportedVersions: ClosedRange<Int> = 9...version
+
+    /// What the user is told when the server speaks a version Ladle does not read (§3.1: the
+    /// client should warn that some features may not work, and carry on); nil for 9 and 10.
+    public var versionWarning: String? {
+        if apron > Self.version {
+            return "This server speaks Apron \(apron), newer than this version of Ladle knows (Apron \(Self.version)). Some features may not work until Ladle is updated."
+        }
+        if apron < Self.supportedVersions.lowerBound {
+            return "This server speaks Apron \(apron), older than Ladle reads (Apron \(Self.supportedVersions.lowerBound) and \(Self.version)). Some features may not work."
+        }
+        return nil
+    }
 
     public var apron: Int
     /// Sign-in schemes in the server's preference order.

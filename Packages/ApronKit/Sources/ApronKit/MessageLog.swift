@@ -230,7 +230,7 @@ public enum MessageLog {
     /// The first line of a reply's target, ending in `…` wherever it leaves later lines out too.
     private static func replySnippet(_ target: MessageSnapshot) -> String {
         var snippet = MessageText.snippet(target.body)
-        if snippet.isEmpty { return target.embedList.isEmpty ? "Empty message" : "Attachment" }
+        if snippet.isEmpty { return MessageText.embedsLabel(target.body) ?? "Empty message" }
         let lines = MessageText.plain(target.body).split(separator: "\n").count { !$0.trimmingCharacters(in: .whitespaces).isEmpty }
         if lines > 1, !snippet.hasSuffix("…") { snippet += "…" }
         return snippet

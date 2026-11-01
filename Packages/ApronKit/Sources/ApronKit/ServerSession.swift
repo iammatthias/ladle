@@ -80,6 +80,8 @@ public final class ServerSession {
         public var threadsWait: Duration
         /// The domains this build may ask passkeys for (`PasskeyDomains.app`).
         public var passkeyDomains: PasskeyDomains
+        /// The streaming `GET` of live text (v10 §4.8.5).
+        public var readLiveText: LiveTextRead
 
         public init(
             makeTransport: @escaping @Sendable (ServerRecord) -> any FrameTransport,
@@ -98,8 +100,10 @@ public final class ServerSession {
             typing: TypingTimes = TypingTimes(),
             now: @escaping @Sendable () -> Date = { Date() },
             threadsWait: Duration = .seconds(3),
-            passkeyDomains: PasskeyDomains = .app
+            passkeyDomains: PasskeyDomains = .app,
+            readLiveText: @escaping LiveTextRead = LiveTextFetch.live
         ) {
+            self.readLiveText = readLiveText
             self.passkeyDomains = passkeyDomains
             self.makeTransport = makeTransport
             self.sleep = sleep
@@ -160,6 +164,16 @@ public final class ServerSession {
     @ObservationIgnored private var onScreen: Set<String> = []
     /// This user's read cursor per room (§4.6): the server's, or the one this device sent.
     public private(set) var readCursors: [String: LogID] = [:]
+    /// The other members' read cursors in each room, by `user_id` (§4.6), for read receipts.
+    public private(set) var readers: [String: [String: LogID]] = [:]
+    /// Read Receipts on this device, shared with every other server's session.
+    public let receiptSettings: ReceiptSettings
+    /// The cursor last sent for each room, so turning Read Receipts back on sends only what moved.
+    @ObservationIgnored var readSent: [String: LogID] = [:]
+    /// Live texts read or being read, by `url` (`ServerSession+LiveText`), the most recently
+    /// asked for last.
+    @ObservationIgnored var liveTexts: [URL: LiveText] = [:]
+    @ObservationIgnored var liveTextOrder: [URL] = []
     /// How far this user has read each room on this device.
     public private(set) var readPositions: [String: LogID] = [:]
     /// Everyone else typing, by `room_id` (§4.6), in the order they last started or refreshed.
@@ -284,8 +298,10 @@ public final class ServerSession {
     public init(record: ServerRecord, tokens: any TokenStore, positions: any ReadPositionStore = InMemoryReadPositionStore(),
                 mediaSettings: MediaSettings = MediaSettings(), addedRooms: AddedRooms = AddedRooms(),
                 roomArrangement: RoomArrangement = RoomArrangement(), keeping: HistoryKeeping? = nil,
-                proposals: Proposals = Proposals(), linkPreviews: DraftLinkPreviews? = nil, environment: Environment = .live) {
+                proposals: Proposals = Proposals(), linkPreviews: DraftLinkPreviews? = nil, receiptSettings: ReceiptSettings = ReceiptSettings(),
+                environment: Environment = .live) {
         self.record = record
+        self.receiptSettings = receiptSettings
         self.linkPreviews = linkPreviews ?? DraftLinkPreviews(fetch: environment.fetchLinkSite, now: environment.now)
         self.mediaSettings = mediaSettings
         self.addedRooms = addedRooms
@@ -642,6 +658,8 @@ public final class ServerSession {
         commandsNoticeAwaited = nil
         histories = [:]
         readCursors = [:]
+        readers = [:]
+        readSent = [:]
         addedTo = []
         readPositions = [:]
         formerUserIDs = []
@@ -700,11 +718,17 @@ public final class ServerSession {
                 if current.userID == you?.userID, let kept = users.user(current.userID) { you = UserObject(kept) }
             }
         case "activity":
-            if you != nil, let sender = params?["from"]?["user_id"]?.stringValue, isYou(sender),
-               let roomID = OpaqueID.validated(params?["room_id"]), let read = LogID(params?["read_message_id"]),
-               readCursors[roomID].map({ $0 < read }) ?? true {
-                readCursors[roomID] = read
-                advancePosition(roomID, to: read)
+            if you != nil, let sender = params?["from"]?["user_id"]?.stringValue,
+               let roomID = OpaqueID.validated(params?["room_id"]), let read = LogID(params?["read_message_id"]) {
+                if isYou(sender) {
+                    if readCursors[roomID].map({ $0 < read }) ?? true {
+                        readCursors[roomID] = read
+                        advancePosition(roomID, to: read)
+                    }
+                } else if readers[roomID]?[sender].map({ $0 < read }) ?? true {
+                    readers[roomID, default: [:]][sender] = read
+                    if let from = UserObject(params?["from"]), from.json["name"]?.stringValue != nil { users.merge(from) }
+                }
             }
             applyTyping(params)
         case "status":
@@ -1264,13 +1288,15 @@ public final class ServerSession {
     /// kept on this device moves forward, and with capability `activity` so does the read cursor,
     /// which goes to the server (§4.6) when it keeps cursors, for this user's other devices.
     /// Neither ever moves back. A room's cursor goes at most once a `readCursorInterval`; one
-    /// that moves sooner goes when the interval is up, as the newest then.
+    /// that moves sooner goes when the interval is up, as the newest then. Only an account's goes,
+    /// as apron-web's since #187 (a guest's is dropped by the server), and none in a private room
+    /// where Read Receipts are off and the server would show it (`withholdsRead`).
     public func markRead(_ roomID: String, through messageID: LogID) async {
         guard status == .signedIn, let server, connection != nil, you != nil else { return }
         advancePosition(roomID, to: messageID)
         guard server.has("activity"), readCursors[roomID].map({ $0 < messageID }) ?? true else { return }
         readCursors[roomID] = messageID
-        guard server.keepsReadCursors, !cursorsWaiting.contains(roomID) else { return }
+        guard server.keepsReadCursors, resumable, !withholdsRead(roomID), !cursorsWaiting.contains(roomID) else { return }
         if let last = cursorSentAt[roomID] {
             let wait = environment.readCursorInterval - (ContinuousClock.now - last)
             if wait > .zero {
@@ -1279,8 +1305,9 @@ public final class ServerSession {
                 cursorsWaiting.remove(roomID)
             }
         }
-        guard status == .signedIn, let connection, let cursor = readCursors[roomID] else { return }
+        guard status == .signedIn, let connection, let cursor = readCursors[roomID], !withholdsRead(roomID) else { return }
         cursorSentAt[roomID] = .now
+        readSent[roomID] = cursor
         try? await connection.notify("activity", params: ["room_id": .string(roomID), "read_message_id": cursor.json])
     }
 

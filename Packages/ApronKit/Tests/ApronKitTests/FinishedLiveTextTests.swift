@@ -10,22 +10,15 @@ final class FinishedLiveTextTests: XCTestCase {
                         from: UserObject(["user_id": "ada", "name": "Ada"])!, body: body)
     }
 
-    func testAFinishedTerminalShowsItsOutputWithoutEscapes() throws {
+    func testAFinishedTerminalShowsItsOutputAsATerminalWould() throws {
         let finished = try XCTUnwrap(Embed(["embed_id": "embed_1234", "kind": "terminal", "title": "make test",
                                             "output": "\u{1B}[32mok\u{1B}[0m  42 tests  0.41s\r\n"]))
-        XCTAssertEqual(finished.terminalOutput, "ok  42 tests  0.41s")
+        XCTAssertEqual(TerminalScreen.showing(finished.output ?? "").plainText, "ok  42 tests  0.41s")
         XCTAssertEqual(finished.kindLabel, "Terminal")
+        XCTAssertFalse(finished.isLiveText)
         let live = try XCTUnwrap(Embed(["embed_id": "embed_1234", "kind": "terminal", "title": "make test", "url": "https://chat.example/t/p3Wn9d"]))
-        XCTAssertNil(live.terminalOutput, "live output is not read yet; the card links its url")
-        XCTAssertNil(Embed(["kind": "link", "output": "x"])?.terminalOutput)
-    }
-
-    func testTerminalTextOverwritesOnCarriageReturnAndKeepsTheLastLines() {
-        XCTAssertEqual(TerminalText.plain("Downloading  10%\rDownloading 100%\r\ndone\n\n"), "Downloading 100%\ndone")
-        XCTAssertEqual(TerminalText.plain("abc\rX\n"), "Xbc", "a carriage return draws over, it does not clear")
-        XCTAssertEqual(TerminalText.plain("\u{1B}]0;title\u{07}a\u{1B}[2K\u{1B}(Bb\tc\u{08}d"), "ab      d")
-        XCTAssertEqual(TerminalText.plain((1...20).map(String.init).joined(separator: "\n"), maxLines: 3), "18\n19\n20")
-        XCTAssertEqual(TerminalText.plain("\u{1B}P1;2q\u{1B}\\x"), "x", "a DCS string ends at ST")
+        XCTAssertNil(live.output)
+        XCTAssertTrue(live.isLiveText, "a terminal without output is live; its screen reads url (LiveText)")
     }
 
     func testAnAppendShowsNoCardLiveAndTheMergedTextOnceFinished() async throws {
@@ -37,6 +30,14 @@ final class FinishedLiveTextTests: XCTestCase {
         XCTAssertEqual(String(MessageBlock.flattened(live.blocks).characters), "Here is the plan:")
         let finished = MessageRowModel(message(["text": "Here is the plan:\n\n1. Roll back.\n2. Renew the cert.\n", "format": "markdown"]), in: home)
         XCTAssertEqual(String(MessageBlock.flattened(finished.blocks).characters), "Here is the plan:\nRoll back.\nRenew the cert.")
+    }
+
+    func testAMessageWithoutTextReadsAsItsEmbedsInPreviews() {
+        XCTAssertEqual(MessageText.embedsLabel(["text": "", "embeds": [["kind": "append", "url": "https://chat.example/a/1"]]]), "Live text")
+        XCTAssertEqual(MessageText.embedsLabel(["embeds": [["kind": "terminal", "title": " make\n test "]]]), "Terminal: make test")
+        XCTAssertEqual(MessageText.embedsLabel(["embeds": [["kind": "terminal"]]]), "Terminal")
+        XCTAssertEqual(MessageText.embedsLabel(["embeds": [["kind": "upload", "title": "a.png"]]]), "Attachment")
+        XCTAssertNil(MessageText.embedsLabel(["text": "hi"]))
     }
 
     func testVersionsNineAndTenAreRead() {

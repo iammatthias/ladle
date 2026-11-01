@@ -17,7 +17,7 @@ public enum PreviewFixtures {
     /// two rooms on one server share a minute.
     private static let start: Int64 = 1_793_091_600_000
 
-    private static func message(_ minute: Int) -> String { String(start + Int64(minute) * 60_000) }
+    static func message(_ minute: Int) -> String { String(start + Int64(minute) * 60_000) }
 
     /// Signs both servers in and opens every joined room. Returns once the stores hold it all.
     @MainActor
@@ -33,7 +33,8 @@ public enum PreviewFixtures {
                 guard let answer = linkSiteAnswers[url.host() ?? ""] else { throw URLError(.notConnectedToInternet) }
                 return DraftLinkPreviews.Response(status: 200, body: answer.serializedData())
             },
-            typing: TypingTimes(longest: .seconds(3600))
+            typing: TypingTimes(longest: .seconds(3600)),
+            readLiveText: readLiveText
         )
         let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment)
         try? tokens.setToken("preview", for: homeID)
@@ -65,10 +66,11 @@ public enum PreviewFixtures {
     // MARK: Scripts
 
     private static let greeting: JSONValue = [
-        "apron": 9, "auth": ["token", "guest"], "agent": "aprond/0.9",
-        "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity", "command", "embed:upload", "ext", "ext:emoji", "ext:limits", "ext:settings"],
+        "apron": 10, "auth": ["token", "guest"], "agent": "aprond/0.10",
+        "capabilities": ["history", "edit", "rooms", "reactions", "status", "activity", "command", "embed:upload", "embed:terminal", "embed:append",
+                         "ext", "ext:emoji", "ext:limits", "ext:settings"],
         "status": ["dnd", "invisible"],
-        "ext": ["emoji": ["catalog_url": "https://home.example/emoji/catalog.json"], "settings": ["private_rooms": 5]],
+        "ext": ["emoji": ["catalog_url": "https://home.example/emoji/catalog.json"], "settings": ["private_rooms": 5, "read_receipts": "private"]],
     ]
 
     /// Home's custom emoji: the demo's `:apron:`, an animated one with a still copy, a wide one,
@@ -359,7 +361,8 @@ public enum PreviewFixtures {
     /// The thread whose messages link to a message, a thread and a private room's unloaded
     /// message, for the link cards; one link also comes with a sender's preview the card hides.
     public static let linkCardRoomID = iconThread
-    /// The thread with a finished terminal's output and a finished append (v10).
+    /// The thread with a finished terminal's output and a finished append, then a live terminal
+    /// and a live append (v10).
     public static let liveTextRoomID = loadTestThread
     private static let notesLink = "https://link.apron.chat/#server=wss://home.example/ws&room=general&message=\(message(5))"
 
@@ -443,6 +446,12 @@ public enum PreviewFixtures {
                 ]]),
                 line(-141, "bram", "Plan for the ramp:\n\n1. 100 connections, hold five minutes.\n2. 500 at noon.\n3. Roll back if fan-out passes a second."),
                 line(-140, "bram", "Ramping to 500 connections at noon."),
+                line(-139, "dev", "Watching the ramp live:", embeds: [[
+                    "embed_id": "embed_t2", "kind": "terminal", "title": "make ramp", "url": .string(liveTerminalURL.absoluteString),
+                ]]),
+                line(-138, "ada", "Asked the planner what to do if it fails:\n\n", embeds: [[
+                    "embed_id": "embed_a2", "kind": "append", "url": .string(liveAppendURL.absoluteString),
+                ]]),
             ]),
             originThread: history(originThread, [line(-480, "ada", "Both boxes send the right Origin now.")]),
             docsThread: history(docsThread, [line(-1100, "eunji", "The sign-in section needs a QR screenshot.")]),
@@ -537,7 +546,7 @@ public enum PreviewFixtures {
         readCursors: [
             "general": message(9), releaseThread: message(17), "design": message(-22),
             iconThread: message(-18), "random": message(-90),
-            loadTestThread: message(-140), originThread: message(-480), docsThread: message(-1100), passkeyThread: message(-5000),
+            loadTestThread: message(-138), originThread: message(-480), docsThread: message(-1100), passkeyThread: message(-5000),
             untitledThreadID: message(-9000), archiveThread: message(-600_000), "ops": message(-290), "kitchen": message(-126),
             "markdown": message(-399), "remote": message(-408),
             directRoomID: message(31), groupRoomID: message(34), addedRoomID: message(35),
@@ -552,6 +561,10 @@ public enum PreviewFixtures {
         activities: [
             ["room_id": .string(typingRoomID), "from": people["ada"]!, "typing": 3600],
             ["room_id": .string(typingRoomID), "from": people["bram"]!, "typing": 3600],
+            // Read receipts: Ada read through Sam's reply; Bram and Chiara read the crew's last message.
+            ["room_id": .string(directRoomID), "from": ["user_id": "ada"], "read_message_id": .string(message(31))],
+            ["room_id": .string(groupRoomID), "from": ["user_id": "bram"], "read_message_id": .string(message(34))],
+            ["room_id": .string(groupRoomID), "from": ["user_id": "chiara"], "read_message_id": .string(message(34))],
         ],
         statuses: [["room_id": .string(mutedRoomID), "mute": true]],
         unjoinedThreads: ["general": .array(otherThreads)],

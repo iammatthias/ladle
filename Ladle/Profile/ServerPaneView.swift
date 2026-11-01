@@ -64,6 +64,14 @@ struct ServerPaneView: View {
                     }
                     if let version = pane.protocolVersion { Text(version).apText(.sm).foregroundStyle(Palette.inkMuted) }
                 }
+                if let warning = pane.versionWarning {
+                    Label(warning, systemImage: "exclamationmark.triangle")
+                        .apText(.sm).foregroundStyle(Palette.ink)
+                        .padding(Tokens.Space.s3)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
+                        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.warn))
+                }
                 HStack(spacing: Tokens.Space.s2) {
                     Button("Connect to Another Server…") {
                         dismiss()

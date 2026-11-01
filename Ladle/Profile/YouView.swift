@@ -54,6 +54,7 @@ struct YouView: View {
                     identity(you)
                     if session.keepsBio { bio }
                     if session.maySetStatus { status }
+                    if session.offersReadReceipts { readReceipts }
                 }
                 signIn
             }
@@ -151,6 +152,19 @@ struct YouView: View {
     }
 
     private var hasAvatar: Bool { !(session.you?.json["avatar"]?.stringValue ?? "").isEmpty }
+
+    // MARK: Read receipts
+
+    /// apron-web's Read Receipts switch (#187), on this device for every server.
+    private var readReceipts: some View {
+        Section {
+            Toggle("Read Receipts", isOn: Binding(get: { session.receiptSettings.isOn }, set: { session.receiptSettings.set($0) }))
+                .tint(Palette.accent)
+        } footer: {
+            Text("See how far others have read in private rooms, and let them see how far you have. Sent while you’re online, not while invisible.")
+                .formFooter()
+        }
+    }
 
     // MARK: Status
 

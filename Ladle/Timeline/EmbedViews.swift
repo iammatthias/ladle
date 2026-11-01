@@ -17,6 +17,8 @@ struct EmbedView: View {
     var body: some View {
         if let upload = embed.upload {
             UploadEmbedView(session: session, embed: embed, upload: upload, mediaID: mediaID)
+        } else if embed.kind == "terminal" {
+            TerminalEmbedView(session: session, embed: embed)
         } else {
             EmbedCard(embed: embed, gate: session.mediaGate, settings: session.mediaSettings)
         }
@@ -338,17 +340,14 @@ struct AudioCard: View {
 /// server hosts it, the site, the title (else the embed's title or URL, else its kind), and two
 /// lines of description. Without `og`, the labeled fallback card: the kind, and its title, URL
 /// or text. `iframe` and `html`, which Ladle does not load, take the same two shapes. The card
-/// is the link; tapping it opens `url` in the browser. A finished terminal shows its output's
-/// last lines as text in the mono face, until Ladle renders a terminal.
+/// is the link; tapping it opens `url` in the browser. A terminal is `TerminalEmbedView`'s.
 struct EmbedCard: View {
     let embed: Embed
     let gate: MediaGate
     let settings: MediaSettings
 
     var body: some View {
-        if let output = embed.terminalOutput {
-            terminal(output)
-        } else if let og = embed.og {
+        if let og = embed.og {
             VStack(alignment: .leading, spacing: Tokens.Space.s2) {
                 openGraph(og)
                 if let asked = og.ask(gate: gate) {
@@ -388,23 +387,6 @@ struct EmbedCard: View {
             .aspectRatio(1.91, contentMode: .fit)
             .accessibilityLabel(image.alt ?? "")
             .accessibilityHidden(image.alt == nil)
-    }
-
-    private func terminal(_ output: String) -> some View {
-        VStack(alignment: .leading, spacing: Tokens.Space.s1) {
-            Label(embed.title ?? embed.kindLabel, systemImage: "terminal")
-                .apText(.sm, .semibold).foregroundStyle(Palette.inkMuted)
-            ScrollView(.horizontal) {
-                Text(output).apText(.sm, mono: true).foregroundStyle(Palette.ink)
-                    .fixedSize().textSelection(.enabled)
-            }
-            .scrollIndicators(.hidden)
-        }
-        .frame(maxWidth: Tokens.Size.embedMaxW, alignment: .leading)
-        .padding(Tokens.Space.s3)
-        .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
-        .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.line))
-        .accessibilityElement(children: .combine)
     }
 
     private var fallback: some View {

@@ -44,7 +44,9 @@ enum Screen: String, CaseIterable {
     case floatingDay = "floating-day", mentionPulse = "mention-pulse", welcome
     case connectPasskey = "connect-passkey", connectPasskeyCreate = "connect-passkey-create", connectPasskeyUnavailable = "connect-passkey-unavailable"
     case connectExternalCode = "connect-external-code", youSignIn = "you-signin", youAddEmail = "you-add-email", roomsHeld = "rooms-held", roomsNudge = "rooms-nudge"
-    case liveTextFinished = "live-text-finished"
+    case liveTextFinished = "live-text-finished", liveText = "live-text", terminalViewer = "terminal-viewer"
+    case readReceipts = "read-receipts", profileReceipts = "profile-receipts"
+    case roomsNewerServer = "rooms-newer-server", serverPaneNewer = "server-pane-newer"
     // Last of the phone shots: Browse Rooms lists the garden and the book club into home's store,
     // which the `#` list would then offer.
     case roomsOrdered = "rooms-ordered", roomsFolded = "rooms-folded", roomsThreadsFolded = "rooms-threads-folded", roomsReorder = "rooms-reorder"
@@ -97,6 +99,7 @@ enum Renderer {
         let store = await PreviewFixtures.makeStore()
         guard let home = store.session(for: PreviewFixtures.homeID) else { exit(1) }
         signIn = await PreviewFixtures.makeSignInStore()
+        newer = await PreviewFixtures.makeNewerServerStore()
         let firstListed = home.roomTree.map(\.roomID)
 
         var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool, look: Look?)] = []
@@ -175,6 +178,8 @@ enum Renderer {
 
     /// The sign-in shots' own world (`PreviewFixtures.makeSignInStore`).
     static var signIn = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
+    /// A server on a newer protocol version (`PreviewFixtures.makeNewerServerStore`).
+    static var newer = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
 
     static func view(_ screen: Screen, store: SessionStore, home: ServerSession, staged: [StagedFile]) -> AnyView {
         let owner = signIn.session(for: PreviewFixtures.ownerID)
@@ -195,6 +200,10 @@ enum Renderer {
             AnyView(signIn.session(for: PreviewFixtures.heldID).map { held in NavigationStack { RoomListView(session: held, open: { _ in }) } })
         case .roomsNudge:
             AnyView(owner.map { owner in NavigationStack { RoomListView(session: owner, open: { _ in }) } })
+        case .roomsNewerServer:
+            AnyView(newer.session(for: PreviewFixtures.newerID).map { next in NavigationStack { RoomListView(session: next, open: { _ in }) } })
+        case .serverPaneNewer:
+            AnyView(newer.session(for: PreviewFixtures.newerID).map { ServerPaneView(session: $0) })
         default:
             screens(screen, store: store, home: home, staged: staged)
         }
@@ -269,7 +278,21 @@ enum Renderer {
         case .commands:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: kept(home, PreviewFixtures.busyRoomID, ComposerDraft(field: DraftField(text: "/inv")))) })
         case .liveTextFinished:
+            // Scrolled to the finished terminal, above the live ones.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.liveTextRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
+                .environment(\.shotPins, ShotPins(scrollTo: PreviewFixtures.finishedTerminalMessageID)))
+        case .liveText:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.liveTextRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
+        case .terminalViewer:
+            AnyView(Group {
+                if let embed = home.store.message(LogID(PreviewFixtures.liveTerminalMessageID)!)?.embedList.first {
+                    TerminalViewer(title: embed.title ?? "Terminal", embed: embed, session: home)
+                }
+            })
+        case .readReceipts:
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.groupRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
+        case .profileReceipts:
+            AnyView(PreferencesView(store: store, request: PreferencesRequest(section: .profile, server: PreviewFixtures.homeID)))
         case .linkCards:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .composerLinkPreviews:
@@ -475,7 +498,7 @@ enum Renderer {
             // Eun-ji's mention of Sam as it arrives, its ring a third of the way out.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
                 .environment(\.shotPins, ShotPins(pulse: 0.35, scrollTo: "1793092500000")))
-        case .connectPasskey, .connectPasskeyCreate, .connectPasskeyUnavailable, .connectExternalCode, .youSignIn, .youAddEmail, .roomsHeld, .roomsNudge:
+        case .connectPasskey, .connectPasskeyCreate, .connectPasskeyUnavailable, .connectExternalCode, .youSignIn, .youAddEmail, .roomsHeld, .roomsNudge, .roomsNewerServer, .serverPaneNewer:
             // Drawn by `view` from the sign-in store.
             AnyView(EmptyView())
         case .welcome:

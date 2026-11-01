@@ -43,4 +43,26 @@ extension PreviewFixtures {
         }
         return store
     }
+
+    public static let newerID = UUID(uuidString: "6C61646C-0000-4000-8000-000000000014")!
+
+    /// A server speaking a protocol version newer than Ladle's, for the version warning's shots.
+    @MainActor
+    public static func makeNewerServerStore() async -> SessionStore {
+        let tokens = InMemoryTokenStore()
+        let greeting: JSONValue = ["apron": 11, "auth": ["token", "guest"], "agent": "aprond/0.11", "title": "Next", "capabilities": ["history", "rooms"]]
+        let script = PreviewServer.Script(greeting: greeting, you: ["user_id": "sam", "name": "Sam"],
+                                          roomList: ["joined": [["room_id": "general", "log_id": "1", "title": "general", "latest_log_id": "1", "history_log_id": "1"]]],
+                                          histories: [:], readCursors: [:])
+        let environment = ServerSession.Environment(
+            makeTransport: { _ in PreviewServer(script: script) },
+            sleep: { _ in try await Task.sleep(for: .seconds(3600)) },
+            jitter: { 1 }
+        )
+        let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment)
+        try? tokens.setToken("preview", for: newerID)
+        store.add(ServerRecord(id: newerID, url: URL(string: "wss://next.example/ws")!, label: "Next", account: .init(userID: "sam", name: "Sam", scheme: "token")))
+        if let session = store.session(for: newerID) { await until { session.status == .signedIn } }
+        return store
+    }
 }

@@ -1,13 +1,15 @@
 # Ladle, agent notes
 
-Ladle is a native iOS client for the Apron chat protocol v9. Apron is the protocol; Ladle is the
+Ladle is a native iOS client for the Apron chat protocol v10. Apron is the protocol; Ladle is the
 client. Single-user: one identity per server, with several servers. Swift 6, SwiftUI, Apple frameworks only. Phase 1 is the scaffold and the
 protocol core behind the protocol's client conformance fixtures. Phase 2 adds the session layer
 (`ServerSession`, `SessionStore`) and a thin SwiftUI client over it.
 
 The spec is `PROTOCOL.md` and `EXTENSIONS.md` in the protocol repository, cloned read-only at
-`~/Developer/forks/apron-server-go/testdata/apron`, at the commit `scripts/SPEC` pins (read it
-with `git show <pin>:PROTOCOL.md`; the clone's checkout may be older). Implement to the spec and
+`~/Developer/forks/apron-server-go/testdata/apron` and as a bare clone at
+`~/.cache/apron-reference/shazow_apron.git`, at the commit `scripts/SPEC` pins (read it
+with `git show <pin>:PROTOCOL.md`; a clone may not have it yet, and `scripts/sync-fixtures.sh`
+takes the first that does). Implement to the spec and
 its fixtures, not to the TypeScript reference client (`.apron-web/src/lib/protocol/` in the same
 clone), which is only a worked example.
 
@@ -24,11 +26,37 @@ clone), which is only a worked example.
     that imports both.)
   - `LogID`: a validated decimal string compared numerically (`"9" < "10"`). `codePointLess` is the
     protocol's "string order"; never sort IDs or emoji with `String.<`.
-  - `ServerInfo`: the typed `server` frame. `supportedVersions` is 9...10: v10's finished live
-    text reads (a terminal's `output` through `Embed.terminalOutput` and `TerminalText`, an
-    `append` merged into `body.text`, its embed drawn as nothing), not yet live reading. The spec
-    pin stays at v9 until the v10 commit reaches the spec clone; the integration tests accept
-    either version.
+  - `ServerInfo`: the typed `server` frame. `version` is 10, the version Ladle speaks;
+    `supportedVersions` is 9...10, since v9 differs only by `stream` embeds (a finished one shows
+    its `text` on the fallback card). `versionWarning` is §3.1's warning for any other version:
+    a banner over the rooms list, dismissed for the launch, and a line in the server pane.
+  - Live text (v10 §4.8.5, §4.8.6; `LiveText.swift`, `ServerSession+LiveText.swift`), as
+    apron-web's `live-text.ts`, `live-append.svelte.ts` and `terminal-feed.ts`: `LiveTextFollow`
+    reads a `url` through `Environment.readLiveText` (`LiveTextFetch.live`, an ephemeral
+    URLSession, chunks as they come), tries again after 1, 2, 4, 8, 15 s (never less than a
+    429's `Retry-After`), and stops at a definitive 4xx; `LiveTextDecoder` is the WHATWG UTF-8
+    decode the server uses, carried across chunks; `LiveTextEdit` applies an append's backspace
+    and form feed (#189); `LiveMarkdown.settle` is `settleMarkdown`; `TerminalFeed.keepLast` the
+    256 KiB cut. `ServerSession.liveText(of:)` gives one `LiveText` per `url` on the server's own
+    origin (nil elsewhere, or once finished), kept for 16 urls; `follow` reads it while a view's
+    task runs, the first follower starting the request and the last cancelling it. A
+    `LiveText` applies what arrives at once and shows it at most once a frame (33 ms), so a
+    writer's small chunks don't each redraw the timeline. `MessageRowModel` puts an append's text
+    after `body.text` (`liveAppend`, `isWriting`); a terminal's `screen` is its message's, and
+    `viewerScreen`, with 5,000 lines of scrollback, the viewer's while it is open.
+  - `TerminalScreen` (`TerminalScreen.swift`): the terminal, 80×40, Ladle's own model in place of
+    apron-web's xterm.js: a parser that keeps its state across writes, SGR (16, 256, true color,
+    bold, dim, italic, underline, inverse, hidden, struck), CR, LF as CR LF, BS, tab, cursor
+    movement, erase, insert and delete, scroll regions, autowrap, the alternate screens, DEC line
+    drawing, wide characters and marks, reset; OSC, DCS and reports are parsed and dropped.
+    `shownRowCount` is apron-web's `shownRows`; `plainText` what VoiceOver reads.
+  - Read receipts (`ReadReceipts.swift`, #187): `ServerSession.readers` keeps the others' cursors
+    per room from `activity`, live or after a joined listing; `receipts(in:shown:)` is
+    `receiptsByMessage`; `ReceiptSettings` (`read-receipts.json`, owned by `SessionStore`) is the
+    device's Read Receipts switch, offered where `ServerInfo.showsReadReceipts` and the account
+    is `resumable`. Off, `markRead` withholds the cursor in a private room (`withholdsRead`) and no
+    receipts show; back on, `readReceiptsTurnedOn` sends those that moved (`readSent`). Guests
+    send no cursor at all.
   - `Records` and `ReplayStore`: the four record stores (room records by `room_id`, message
     snapshots by `message_id`, reaction sets by `(message_id, user_id)`, memberships by
     `(room_id, user_id)`) under the replay rule, member-list seeding as of a position, re-homing
@@ -580,7 +608,7 @@ clone), which is only a worked example.
     declarations into the CSS for the color pickers.
   - `ServerPane` (`ServerPane.swift`): `ServerSession.pane`, the server pane's facts as
     apron-web's ServerPane: name, host, description, the connection in words with a tone,
-    "Signed in as Ada (guest)", the address, and "Apron 9".
+    "Signed in as Ada (guest)", the address, "Apron 10", and `versionWarning`.
   - `UserProfile` (`UserProfile.swift`): what a profile card shows, as apron-web's ProfileCard:
     `ServerSession.profile(of:in:)` gives the plain name (`UserDirectory.plainName`) and
     `sharesName`, the status in words, `LastSeen` (only while offline, never yours), roles, bio,
@@ -656,7 +684,7 @@ clone), which is only a worked example.
   with its Private toggle, New Thread, Start Thread and Edit Room or Thread), `Rooms/NewPrivateSheet.swift`
   (the + beside Private: the web's PrivateRoomForm, with `QuotaLine` and the limit's Leave list),
   `Rooms/PeoplePickerView.swift` (`PeoplePickerSections`: chips, field and people as form sections),
-  `Timeline/PrivateRoomViews.swift` (`PrivateIntroCard`, `AddedBanner`), `Timeline/AddMembersSheet.swift` (the member
+  `Timeline/PrivateRoomViews.swift` (`PrivateIntroCard`, `AddedBanner`), `Timeline/TerminalViews.swift` (`TerminalEmbedView`, `TerminalScreenView`, which fits the 80 columns to the message from the width offered, and `TerminalViewer`, full screen), `Timeline/ReadReceiptsView.swift` (the faces at the end of a message's first line), `Timeline/AddMembersSheet.swift` (the member
   list's Add People; the list's long-press menu and Remove's confirmation are in `MemberList`), `Faces` in `Design/People.swift`, `PinnedDescription` in `Timeline/TimelineView.swift`, `FoldHeading`, `FoldPill` (the web's "…"), `SectionFoldHead` (Rooms and Private fold to rooms with news), Reorder Rooms' edit mode, Option+↑/↓ (`moveKeys`), `BrowseRoomsView` (descriptions, member counts, a tap reads a room before Join) and the `fixedNow` environment value (the renderer
   pins the rooms list's clock to `PreviewFixtures.now`) in `Rooms/RoomListView.swift`,
     `Rooms/MuteMenu.swift` (`MuteActions`: Mute Room or Thread's submenu, or Unmute, in a row's
@@ -802,7 +830,7 @@ limit, a read-only guest's sign-in prompt on the demo server, custom emoji in te
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list (`:pa`), `:smi` with the custom `:smilingpan:` first, the standard emoji and the first row highlighted (`ladle-emoji-standard`), its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards, a sender-built GitHub card as others see it (`ladle-sent-link-preview`), the composer's link previews for a pull request and a Wikipedia article (`ladle-composer-link-previews`), a room chip and Apron link chips for a message, a room, a thread, a user and another server (the Icon sketches thread), the `#` room
-list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block and highlighted code in python, diff, json and an unknown language left plain (the markdown room, also in Ferrous as `ladle-markdown-ferrous-<mode>`, where inline code takes Rec Mono), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the Release thread's rename line (and Dev's join line in the busy room), the Start Thread form on Bram's message, #general's threads in the room list (five joined, Inactive folded, Other Threads with "4d", "9w", "2y" and "1 more…"), and Inactive unfolded with its untitled thread open, the busy room's "Reconnecting…" and "Checking for new messages…" pills, its "Loading earlier messages…" pill, its catching-up line under the bar (`ladle-catching-up-line`, and on iPad `ladle-ipad-catching-up`), the room list with your dot as the dashed ring (`ladle-rooms-reconnecting`), each held through the renderer-only `heldPaneLoading` and `heldAwayWords` environment values, the kitchen's pinned description (the emoji shot), put away (its first line under the title), and Edit Room, the Private section with faces (`ladle-rooms-private`), the conversation with Ada (faces, plum header and its line, the intro card), Launch plan's "You were added" banner, New private conversation empty and with two picked (chips, Name), New Room with Private, and at the limit after starting home's fifth private room (`ladle-private-full`, taken after the others), Add People to ops with Ada picked and "@carol" typed, `/invite-device add phone`'s notice in ops with Show QR Code, and its sheet's warning and code (`ladle-signin-qr-*`), Launch plan's members with Add People, a refused `/kick @Dev` in ops (its reason as a notice, the draft given back; `PreviewServer` refuses removing someone else), #general's members with Offline folded (`ladle-members-folded`), the demo lobby's truncated listing ("Showing 3 of 1204") and a profile card for someone it leaves out ("Not among the recently active members"), the room list and Preferences > Notifications while paused (`ladle-notifications-paused`), and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the rooms list in an order of your own (`ladle-rooms-ordered`: random and kitchen moved up, Ada's conversation last of Private), Rooms and Private folded to their rooms with news with their "…" (`ladle-rooms-folded`), #general picked again with its threads folded and its "…" (`ladle-rooms-threads-folded`), Reorder Rooms' edit mode (`ladle-rooms-reorder`), Browse Rooms with descriptions and member counts (`ladle-browse-rooms`, after the other phone shots, as its listing adds rooms to home), and the garden open to read before joining with Join in its header (`ladle-room-peek`); the floating day over the busy room scrolled back to Eun-ji's mention (`ladle-floating-day`), that mention mid-pulse (`ladle-mention-pulse`), the demo's welcome before `auth` in its first room, help (`ladle-welcome`); the Load test thread with a v10 server's finished terminal output and finished append (`ladle-live-text-finished`); the busy room at AX3; the busy room in Ferrous, Gumball, Linocut and a custom CSS theme (`ladle-timeline-<theme>-<mode>`), the markdown room in Ferrous, Gumball and the custom theme (`ladle-markdown-<theme>-<mode>`: bold and oblique emphasis in Recursive, Nunito and SF Rounded), and drawn in Apron then given Linocut in place (`ladle-timeline-switched-linocut-dark`: a new theme redraws open screens); Preferences' sections and History; Search Local History for "icon" across rooms, and started narrowed to the design room with `room:` suggesting rooms at the caret (`ladle-search-filtered`; the renderer opens it unfocused, as a focused Catalyst field selects all of itself), and Search Rooms for "des" with Search Messages under it (`ladle-rooms-search`); the busy room in select mode with its last three messages picked (`ladle-select`), and what Copy puts on the pasteboard for them, shown as text (`ladle-select-log`); home exported and opened: "Load its images?" (`ladle-archive-ask`), its rooms (`ladle-archive-rooms`) and the busy room read-only with the export's line in the composer's place (`ladle-archive-timeline`); Appearance with Ferrous chosen, and the custom theme's CSS with its "not used on iOS" line; and the iPad
+list, the Select Text sheet, a reminded message, Remind Me's Custom… sheet, every markdown block and highlighted code in python, diff, json and an unknown language left plain (the markdown room, also in Ferrous as `ladle-markdown-ferrous-<mode>`, where inline code takes Rec Mono), media from untrusted sites waiting for Load and then loaded, one of them on a host that never answers (the remote room), the You sheet, and profile cards for Ada (Mention and Add to Room in the private ops room) and Dev (offline, last seen), the server pane for Home and the demo, and a mention of you as a chip (the busy room opened at it), a kept draft (a reply, text and a photo), Ada and Bram typing in the random room (the denim line under the bar), the `@&` role list and a role chip in the design room, the muted design room (its header's bell-off), the Release thread's rename line (and Dev's join line in the busy room), the Start Thread form on Bram's message, #general's threads in the room list (five joined, Inactive folded, Other Threads with "4d", "9w", "2y" and "1 more…"), and Inactive unfolded with its untitled thread open, the busy room's "Reconnecting…" and "Checking for new messages…" pills, its "Loading earlier messages…" pill, its catching-up line under the bar (`ladle-catching-up-line`, and on iPad `ladle-ipad-catching-up`), the room list with your dot as the dashed ring (`ladle-rooms-reconnecting`), each held through the renderer-only `heldPaneLoading` and `heldAwayWords` environment values, the kitchen's pinned description (the emoji shot), put away (its first line under the title), and Edit Room, the Private section with faces (`ladle-rooms-private`), the conversation with Ada (faces, plum header and its line, the intro card), Launch plan's "You were added" banner, New private conversation empty and with two picked (chips, Name), New Room with Private, and at the limit after starting home's fifth private room (`ladle-private-full`, taken after the others), Add People to ops with Ada picked and "@carol" typed, `/invite-device add phone`'s notice in ops with Show QR Code, and its sheet's warning and code (`ladle-signin-qr-*`), Launch plan's members with Add People, a refused `/kick @Dev` in ops (its reason as a notice, the draft given back; `PreviewServer` refuses removing someone else), #general's members with Offline folded (`ladle-members-folded`), the demo lobby's truncated listing ("Showing 3 of 1204") and a profile card for someone it leaves out ("Not among the recently active members"), the room list and Preferences > Notifications while paused (`ladle-notifications-paused`), and sending and uploads paused over the busy room's composer (taken last, as its waits hold home back); the rooms list in an order of your own (`ladle-rooms-ordered`: random and kitchen moved up, Ada's conversation last of Private), Rooms and Private folded to their rooms with news with their "…" (`ladle-rooms-folded`), #general picked again with its threads folded and its "…" (`ladle-rooms-threads-folded`), Reorder Rooms' edit mode (`ladle-rooms-reorder`), Browse Rooms with descriptions and member counts (`ladle-browse-rooms`, after the other phone shots, as its listing adds rooms to home), and the garden open to read before joining with Join in its header (`ladle-room-peek`); the floating day over the busy room scrolled back to Eun-ji's mention (`ladle-floating-day`), that mention mid-pulse (`ladle-mention-pulse`), the demo's welcome before `auth` in its first room, help (`ladle-welcome`); the Load test thread with a v10 server's finished terminal output and finished append (`ladle-live-text-finished`), its live terminal playing apron-web's ANSI demo and a live append mid-code-fence with "Writing…" (`ladle-live-text`), the terminal full screen (`ladle-terminal-viewer`), read receipts in the crew's private room (`ladle-read-receipts`, and Ada's face in `ladle-direct-message`), Preferences > Profile with Read Receipts (`ladle-profile-receipts`), and a server on Apron 11 with its warning over the rooms list and in the server pane (`ladle-rooms-newer-server`, `ladle-server-pane-newer`, from `PreviewFixtures.makeNewerServerStore`); the busy room at AX3; the busy room in Ferrous, Gumball, Linocut and a custom CSS theme (`ladle-timeline-<theme>-<mode>`), the markdown room in Ferrous, Gumball and the custom theme (`ladle-markdown-<theme>-<mode>`: bold and oblique emphasis in Recursive, Nunito and SF Rounded), and drawn in Apron then given Linocut in place (`ladle-timeline-switched-linocut-dark`: a new theme redraws open screens); Preferences' sections and History; Search Local History for "icon" across rooms, and started narrowed to the design room with `room:` suggesting rooms at the caret (`ladle-search-filtered`; the renderer opens it unfocused, as a focused Catalyst field selects all of itself), and Search Rooms for "des" with Search Messages under it (`ladle-rooms-search`); the busy room in select mode with its last three messages picked (`ladle-select`), and what Copy puts on the pasteboard for them, shown as text (`ladle-select-log`); home exported and opened: "Load its images?" (`ladle-archive-ask`), its rooms (`ladle-archive-rooms`) and the busy room read-only with the export's line in the composer's place (`ladle-archive-timeline`); Appearance with Ferrous chosen, and the custom theme's CSS with its "not used on iOS" line; and the iPad
 split view at 1180x820 pt (regular width) in dark and light, on the busy room and on the random room with its typing line. Sheets render as root views,
 because `drawHierarchy` does not see a sheet's window. It captures in process with
 `UIView.drawHierarchy` at 2x (a `URLProtocol` answers the fixtures' hosted files with
@@ -857,8 +885,8 @@ worked.
 
 `ReplayFixtureTests` runs every file in `Packages/ApronKit/Tests/ApronKitTests/Fixtures/wire/
 replay/`, every variant twice (literal frames, and with `"jsonrpc":"2.0"` added to each frame),
-checking each `expect` step and the final `expected` projection. Currently 18 files, 42 variants,
-84 runs; the aggregate test pins those counts, so bump them when fixtures are added upstream.
+checking each `expect` step and the final `expected` projection. Currently 19 files, 44 variants,
+88 runs; the aggregate test pins those counts, so bump them when fixtures are added upstream.
 The fixtures are copies: `scripts/sync-fixtures.sh --check` fails when they drift from the
 pinned commit. Run it before `swift test` (the gate line above does), and `./build.sh test` runs it too. The session fixtures (`wire/session/`) are phase 2.
 
@@ -882,7 +910,9 @@ pinned commit. Run it before `swift test` (the gate line above does), and `./bui
   preview goes nowhere but the screen and the cache. A draft's link previews ask the five
   sites' public APIs with URLSession (`LinkSiteFetch`), no required-reason API; what they
   answer goes to the server with the message, as on the web. The Show Link Previews setting is read
-  from `UserDefaults`, which is, so `PrivacyInfo.xcprivacy` declares it with reason `CA92.1`. A third-party package needs a justified entry here. None so far.
+  from `UserDefaults`, which is, so `PrivacyInfo.xcprivacy` declares it with reason `CA92.1`. A third-party package needs a justified entry here. None so far: the terminal is Ladle's own
+  model (`TerminalScreen`) rather than SwiftTerm, since it covers what apron-web's terminals show
+  and draws as SwiftUI text in the theme's colors.
 - Bundled fonts: only the faces apron-web carries for its themes (#174), Recursive's casual
   sans and mono and Nunito, under the SIL Open Font License 1.1. `tools/design/fonts.py` (run
   with `uv`, which brings fontTools) converts apron-web's WOFF2 files at the pin into

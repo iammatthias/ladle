@@ -126,8 +126,12 @@ struct TimelineView: View {
                                 do { try await session.loadOlder(roomID) } catch { problem = errorText(error) }
                             }
                     }
-                    ForEach(held ? [] : items) { item in
-                        row(item).id(item.id)
+                    let shown = held ? [] : items
+                    let receipts = session.receipts(in: roomID, shown: shown.compactMap {
+                        if case .message(let message, _) = $0 { message } else { nil }
+                    })
+                    ForEach(shown) { item in
+                        row(item, receipts: receipts).id(item.id)
                     }
                     ForEach(Array((held ? [] : session.notices(in: roomID)).enumerated()), id: \.offset) { _, notice in
                         let menu = NoticeMenu(notice, in: session)
@@ -152,6 +156,10 @@ struct TimelineView: View {
                 }
                 .scrollTargetLayout()
             }
+            // The bottom anchor also holds through size changes (apron-web #190): a row that grows
+            // without a scroll, such as an image's size arriving or live text, keeps the latest in
+            // view. `atBottom`, which the jump bar reads, is measured from the geometry after each
+            // change, so it never stays behind a latest message that is in view.
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
             .onScrollGeometryChange(for: Bool.self) { geometry in
@@ -631,7 +639,7 @@ struct TimelineView: View {
     }
 
     @ViewBuilder
-    private func row(_ item: TimelineItem) -> some View {
+    private func row(_ item: TimelineItem, receipts: [LogID: [Reader]]) -> some View {
         switch item {
         case .message(let message, let continues):
             HStack(alignment: .top, spacing: 0) {
@@ -648,7 +656,8 @@ struct TimelineView: View {
                            onReact: { emoji in perform { try await session.toggleReaction(emoji, on: message.messageID) } },
                            onAddReaction: { reacting = message },
                            onJump: { jumpTarget = $0.text },
-                           onProfile: { profile = ProfileRequest(user: message.from, roomID: roomID) })
+                           onProfile: { profile = ProfileRequest(user: message.from, roomID: roomID) },
+                           seenBy: editing?.field.editing?.messageID == message.messageID ? [] : receipts[message.messageID] ?? [])
                     .allowsHitTesting(picking == nil)
             }
             .padding(.horizontal, Tokens.Space.s2)

@@ -15,8 +15,14 @@ public struct MessageRowModel {
     public let cards: [PlaceCard]
     /// The embeds to draw with their index in the message, which names their media; a sender's
     /// preview of a place a card shows is left out (`PlaceCard.previews`), and so is an `append`,
-    /// whose text Ladle shows once it is in the body.
+    /// whose text continues the body (§4.8.5).
     public let embeds: [(index: Int, embed: Embed)]
+    /// The message's `append` embed while this device may read it: its text so far follows
+    /// `body.text` in `blocks`, as one text in the body's format, Markdown cut off mid-construct
+    /// settled while it arrives (`LiveMarkdown`), as apron-web's `appendedBody`. The row follows it.
+    public let liveAppend: LiveText?
+    /// The live text is still arriving: "Writing…" under the text.
+    @MainActor public var isWriting: Bool { liveAppend?.isLive == true }
     /// The link to fetch a preview for (`unfurlURL`).
     public let unfurl: URL?
     /// The `link` embed for `unfurl`, which the fetched preview takes the place of. Without one,
@@ -36,7 +42,9 @@ public struct MessageRowModel {
         let names = Dictionary(message.mentionIDs.map { id in
             (id, session.users.user(id).flatMap(UserObject.init).map(session.displayName(for:)) ?? id)
         }, uniquingKeysWith: { first, _ in first })
-        blocks = MessageText.blocks(message.body, emoji: session.emojiCatalog, rooms: session.referencedTitle, links: session.linkChip, mentions: names,
+        liveAppend = session.appendedText(of: message)
+        let shown = Self.appended(message, liveAppend)
+        blocks = MessageText.blocks(shown.body, emoji: session.emojiCatalog, rooms: session.referencedTitle, links: session.linkChip, mentions: names,
                                       you: session.you?.userID)
         cards = session.placeCards(in: message, sessions: sessions)
         embeds = message.embedList.enumerated()
@@ -44,7 +52,7 @@ public struct MessageRowModel {
             .map { (index: $0.offset, embed: $0.element) }
         unfurl = message.unfurlURL
         unfurledEmbed = unfurl.flatMap { [embeds] url in embeds.first { $0.embed.kind == "link" && $0.embed.url == url }?.index }
-        spokenText = EmojiKeys.spoken(Self.chipsSpoken(message.plainText, in: blocks, session: session), catalog: session.emojiCatalog)
+        spokenText = EmojiKeys.spoken(Self.chipsSpoken(shown.plainText, in: blocks, session: session), catalog: session.emojiCatalog)
         replyLine = message.replyTo.map { target in
             let quoted = session.store.message(target)
             return "replying to " + (quoted.map { $0.isTombstone ? "a deleted message" : session.displayName(for: $0.from) } ?? "an unavailable message")
@@ -53,6 +61,18 @@ public struct MessageRowModel {
         reactions = session.store.reactions(on: message.messageID).map { summaries in
             summaries.map { "\(ReactionEntry.label($0.emoji, catalog: session.emojiCatalog)) \($0.userIDs.count)" }.joined(separator: ", ")
         }
+    }
+
+    /// The message with an append's streamed text after `body.text`.
+    @MainActor
+    private static func appended(_ message: MessageSnapshot, _ live: LiveText?) -> MessageSnapshot {
+        guard let live, !live.text.isEmpty, case .object(var body) = message.body else { return message }
+        let text = (body["text"]?.stringValue ?? "") + live.text
+        let markdown = body["format"]?.stringValue == "markdown"
+        body["text"] = .string(markdown && live.isLive ? LiveMarkdown.settle(text) : text)
+        var shown = message
+        shown.body = .object(body)
+        return shown
     }
 
     /// The text with each link drawn as a chip read as its words, as the row shows it.

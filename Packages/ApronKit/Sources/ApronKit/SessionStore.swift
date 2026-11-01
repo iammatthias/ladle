@@ -30,6 +30,8 @@ public final class SessionStore {
     public let roomArrangement: RoomArrangement
     /// Whether anyone attends the app, which every session tells its server (§4.5 `idle`).
     public let attention: Attention
+    /// Read Receipts on this device, for every server, kept beside `servers.json`.
+    public let receiptSettings: ReceiptSettings
     /// How long history is kept on this device, for every server, kept beside `servers.json`.
     public let historySettings: HistorySettings
     /// Where each server's history is kept (`History`, beside `servers.json`); nil keeps none.
@@ -52,6 +54,7 @@ public final class SessionStore {
         reminders = Reminders(store: serverStore.map { FileReminderStore(directory: $0.directory) } ?? InMemoryReminderStore(),
                               notifier: notifier)
         mediaSettings = MediaSettings(directory: serverStore?.directory)
+        receiptSettings = ReceiptSettings(directory: serverStore?.directory)
         linkPreviews = DraftLinkPreviews(fetch: environment.fetchLinkSite, now: environment.now)
         appearance = AppearanceSettings(directory: serverStore?.directory)
         hiddenDescriptions = HiddenDescriptions(directory: serverStore?.directory)
@@ -66,6 +69,11 @@ public final class SessionStore {
         }
         self.environment = environment
         attention = Attention(now: environment.now)
+        // Read Receipts back on: every server sends how far you read meanwhile.
+        receiptSettings.onTurnedOn = { [weak self] in
+            guard let self else { return }
+            for session in sessions.values { Task { await session.readReceiptsTurnedOn() } }
+        }
         attention.onChange = { [weak self] idle, inputAt in
             guard let self else { return }
             for session in sessions.values { session.setIdle(idle, inputAt: inputAt) }
@@ -130,7 +138,8 @@ public final class SessionStore {
         let keeping = historyFiles.map { HistoryKeeping(files: $0, settings: historySettings) }
         let session = ServerSession(record: record, tokens: tokens, positions: positions, mediaSettings: mediaSettings, addedRooms: addedRooms,
                                     roomArrangement: roomArrangement,
-                                    keeping: keeping, proposals: proposals, linkPreviews: linkPreviews, environment: environment)
+                                    keeping: keeping, proposals: proposals, linkPreviews: linkPreviews, receiptSettings: receiptSettings,
+                                    environment: environment)
         session.onRecordChange = { [weak self] changed in self?.accountChanged(changed) }
         session.onInput = { [weak self] in self?.attention.input() }
         if attention.idle { session.setIdle(true, inputAt: attention.inputAt) }

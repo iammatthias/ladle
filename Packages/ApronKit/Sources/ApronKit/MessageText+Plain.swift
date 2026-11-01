@@ -28,6 +28,20 @@ extension MessageText {
         return lines.filter { !$0.isEmpty }.joined(separator: "\n")
     }
 
+    /// What a body's embeds are, in a word, for a preview of a message with no text (a quote, a
+    /// room's last message, a reminder), as apron-web's `embedsLabel`: live text still being
+    /// appended, a terminal by its title, else an attachment. Nil without any.
+    public static func embedsLabel(_ body: JSONValue?) -> String? {
+        let embeds = (body?["embeds"]?.arrayValue ?? []).compactMap(Embed.init)
+        guard !embeds.isEmpty else { return nil }
+        if embeds.contains(where: \.isAppend) { return "Live text" }
+        if let terminal = embeds.first(where: { $0.kind == "terminal" }) {
+            let title = TextDirection.withoutOverrides(terminal.title ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
+            return title.isEmpty ? "Terminal" : "Terminal: \(title)"
+        }
+        return "Attachment"
+    }
+
     /// `@&role` as its chip reads, `@role`.
     private static func roleChips(_ text: String) -> String {
         RoleMentions.reference.stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "@$1")

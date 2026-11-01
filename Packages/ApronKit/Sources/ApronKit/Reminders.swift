@@ -224,7 +224,7 @@ extension ServerSession {
         let preview = MessageText.snippet(message.body)
         return Reminder(key: reminderKey(for: message), due: due,
                         title: "\(displayName(for: message.from)) in \(room)",
-                        body: preview.isEmpty ? "Attachment" : preview)
+                        body: preview.isEmpty ? MessageText.embedsLabel(message.body) ?? "Attachment" : preview)
     }
 }
 

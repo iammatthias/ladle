@@ -43,66 +43,6 @@ public struct Embed: Hashable, Sendable {
     /// A v10 `append` embed: live text growing at the end of `body.text` (§4.8.5). Its
     /// finished snapshot has the text in the body and no embed, so the row draws none for it.
     public var isAppend: Bool { kind == "append" }
-
-    /// A finished terminal's output as plain lines (`TerminalText.plain`), or nil while live.
-    public var terminalOutput: String? {
-        guard kind == "terminal", let output else { return nil }
-        return TerminalText.plain(output)
-    }
-}
-
-/// Terminal output as text, until Ladle renders a terminal: escape sequences dropped, and each
-/// carriage return starting its line over, as a terminal would draw it.
-public enum TerminalText {
-    /// The last `maxLines` lines, without trailing blank ones.
-    public static func plain(_ output: String, maxLines: Int = 13) -> String {
-        var lines: [String] = []
-        var line: [Character] = []
-        var column = 0
-        var scalars = output.unicodeScalars.makeIterator()
-        func put(_ c: Character) {
-            if column < line.count { line[column] = c } else { line.append(c) }
-            column += 1
-        }
-        while let scalar = scalars.next() {
-            switch scalar {
-            case "\u{1B}":
-                skipEscape(&scalars)
-            case "\n":
-                lines.append(String(line)); line = []; column = 0
-            case "\r":
-                column = 0
-            case "\u{08}":
-                column = max(0, column - 1)
-            case "\t":
-                repeat { put(" ") } while column % 8 != 0
-            default:
-                if scalar.value >= 0x20, scalar.value != 0x7F { put(Character(scalar)) }
-            }
-        }
-        lines.append(String(line))
-        while let last = lines.last, last.trimmingCharacters(in: .whitespaces).isEmpty { lines.removeLast() }
-        return lines.suffix(maxLines).joined(separator: "\n")
-    }
-
-    /// Skips one sequence after ESC: CSI up to its final byte, OSC, DCS, SOS, PM and APC up to
-    /// BEL or ST, and any other as ESC plus its intermediates and final byte.
-    private static func skipEscape(_ scalars: inout String.UnicodeScalarView.Iterator) {
-        guard let next = scalars.next() else { return }
-        switch next {
-        case "[":
-            while let s = scalars.next(), !(0x40...0x7E).contains(s.value) {}
-        case "]", "P", "X", "^", "_":
-            var previous: Unicode.Scalar?
-            while let s = scalars.next() {
-                if s == "\u{07}" || (previous == "\u{1B}" && s == "\\") { break }
-                previous = s
-            }
-        default:
-            var s: Unicode.Scalar? = next
-            while let c = s, (0x20...0x2F).contains(c.value) { s = scalars.next() }
-        }
-    }
 }
 
 /// An upload while `url` is absent, then by the media the server described in `og` (§4.8.4).
