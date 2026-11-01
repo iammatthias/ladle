@@ -56,7 +56,7 @@ struct RootView: View {
             // An export handed over from Files or another app opens read-only.
             if url.isFileURL { readingExport = OpenedExport(url: url) } else { ApronLink(url).map(open) }
         }
-        .fullScreenCover(item: $readingExport) { ArchiveViewer(opened: $0) }
+        .fullScreenCover(item: $readingExport) { ArchiveViewer(opened: $0, mediaSettings: store.mediaSettings) }
         .environment(\.openURL, OpenURLAction { url in
             guard let link = ApronLink(url) else { return .systemAction }
             open(link)

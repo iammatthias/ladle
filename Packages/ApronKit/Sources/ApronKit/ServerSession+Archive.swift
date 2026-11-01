@@ -107,14 +107,16 @@ extension ServerSession {
 
     /// A session that reads `archive` read-only through an `ArchiveServer`, as apron-web's
     /// `/archive` page does: its media loads from the sites the archive names only `withImages`,
-    /// and from nowhere else, whatever Preferences say, since a file says what it likes. Nothing
-    /// is kept and no token saved. Start it, then sign in as a guest.
-    public static func reading(_ archive: Archive, withImages: Bool, environment: Environment = .live) -> ServerSession {
+    /// and from nowhere else, whatever Preferences say, since a file says what it likes; the
+    /// viewer's blocked sites in `mediaSettings` still never load, and Block there adds to them.
+    /// Nothing is kept and no token saved. Start it, then sign in as a guest.
+    public static func reading(_ archive: Archive, withImages: Bool, mediaSettings: MediaSettings = MediaSettings(),
+                               environment: Environment = .live) -> ServerSession {
         var environment = environment
         environment.makeTransport = { _ in ArchiveServer(archive: archive, withImages: withImages) }
         let host = URL(string: archive.server)?.host(percentEncoded: false)
         let record = ServerRecord(url: archiveURL, label: host.map { "Export from \($0)" } ?? "Export")
-        return ServerSession(record: record, tokens: InMemoryTokenStore(), environment: environment)
+        return ServerSession(record: record, tokens: InMemoryTokenStore(), mediaSettings: mediaSettings, environment: environment)
     }
 
     /// What an archive's server says of it (`ext:archive`, ARCHIVE.md §4.1), in place of the

@@ -4,8 +4,9 @@ import SwiftUI
 /// Media the gate holds back (`MediaDecision.ask`), as the web's MediaAsk: a dashed tile in the
 /// media's place showing what it is (its alt text, else its kind) and its full URL, so the viewer
 /// can judge it (apron-web #186), cut in the middle past two lines. A tap loads this one, this
-/// launch (Load). The tile's menu and its long press add Always Load from the site,
-/// which trusts the site from then on; Preferences lists it.
+/// launch (Load). The tile's menu and its long press add Always Load from the site, which trusts
+/// the site from then on, and Block, which hides everything from it from then on, whatever trusts
+/// it; Preferences lists either. Both only where the site can be trusted (`https:`).
 struct MediaAskTile: View {
     let ask: MediaAsk
     let what: String
@@ -56,23 +57,20 @@ struct MediaAskTile: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { settings.loadOnce(ask.url) }
         .accessibilityActions {
-            if let alwaysTitle { Button(alwaysTitle) { trust() } }
+            if let origin = ask.origin {
+                Button("Always Load from \(ask.host)") { settings.trust(origin) }
+                Button("Block \(ask.host)") { settings.block(origin) }
+            }
         }
     }
 
     @ViewBuilder private var actions: some View {
         Button("Load", systemImage: "arrow.down.circle") { settings.loadOnce(ask.url) }
-        if let alwaysTitle {
-            Button(alwaysTitle, systemImage: "checkmark.shield") { trust() }
+        if let origin = ask.origin {
+            Button("Always Load from \(ask.host)", systemImage: "checkmark.shield") { settings.trust(origin) }
+            Divider()
+            Button("Block \(ask.host)", systemImage: "hand.raised", role: .destructive) { settings.block(origin) }
         }
-    }
-
-    private var alwaysTitle: String? {
-        ask.origin == nil ? nil : "Always Load from \(ask.host)"
-    }
-
-    private func trust() {
-        if let origin = ask.origin { settings.trust(origin) }
     }
 }
 

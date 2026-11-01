@@ -2,7 +2,7 @@
 
 This is the backlog of record for parity with apron-web. The rule is that every apron-web feature exists in Ladle. The iOS form may differ. Ladle may do more. Nothing is left out.
 
-The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`. It carries upstream through #178 and #179, role mentions (#181), themes (#174), Preferences sections (#184), #186, the Inactive threads section (#185), protocol v10 live text (#162), read receipts (#187), append edits (#189) and the jump-to-latest fix (#190), at 0811a18 for the design tokens, plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
+The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`. It carries upstream through #178 and #179, role mentions (#181), themes (#174), Preferences sections (#184), #186, the Inactive threads section (#185), protocol v10 live text (#162), read receipts (#187), append edits (#189), the jump-to-latest fix (#190) and blocked origins (#193), at 0811a18 for the design tokens, plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
 
 Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections 3.10 to 3.12 describe the profile card, You and the server pane as built.
 
@@ -371,6 +371,11 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Always load adds the site to Trusted origins | #163 | has | `Media/MediaAskTile.swift` | |
 | The Load tile shows the media's full URL; Always load names its host | #186 | has | `Media/MediaAskTile.swift` | Two lines, cut in the middle; VoiceOver reads the whole URL. |
 | Preferences, Media: Server and trusted sites, or Any site; Trusted origins field | #137, #163 | has | `Servers/PreferencesView.swift` (`MediaPreferences`) | |
+| Blocked origins: never load nor ask, by host whatever the scheme, port, case or trailing dot, over trusted origins, the server's, Any site and Load | #193 | has | `Kit/MediaGate.swift` (`blockedHosts`), `Kit/MediaSettings.swift` (`blocked`, `parseBlockedOrigins`) | Avatars and custom emoji too. Kept in `media-settings.json`. The web's literal cases ported (`UploadTests`, `CustomEmojiTests`). |
+| Block on a media prompt, beside Load and Always load, only where the site can be trusted (`https:`) | #193 | has | `Media/MediaAskTile.swift` | In the tile's menu, long press and VoiceOver actions, destructive with `hand.raised`. Shot: `ladle-media-gate-blocked`. |
+| Preferences, Media: Blocked origins field (one host per line) | #193 | has | `Servers/PreferencesView.swift` (`SiteListSection`) | Blocked Sites as a list like Trusted Sites: add a host or URL, swipe to Delete. Shot: `ladle-preferences-media`. |
+| Blocking on an export page keeps it held to its own origins | #193 | has | `Kit/MediaSettings.swift` (`gate(heldToServer:)`), `Kit/ServerSession+Archive.swift` | The export's session reads the shared settings held to its own sites, so a block there is saved and the policy is left as chosen; the web's `limit()` has no other caller in Ladle. Load is shared too: a URL loaded in an export loads in a live room for that launch. |
+| Prompt buttons on one line, a long host cut at its start | #193 | N/A-iOS | `Media/MediaAskTile.swift` | Always Load and Block are menu items, which iOS lays out and truncates itself; the tile shows the full URL above. |
 | Custom emoji and avatars from untrusted sites wait or fall back | #163 | has | `Kit/MediaGate.swift` (`.avatar`) | |
 | HTML embeds never load `srcset`, `background`, `ping` | #163 | missing | | Depends on `html` embeds (section 16). Build it with them. |
 | Live text only from the server's origin | bh | has | `Kit/ServerSession+LiveText.swift` (`liveText(of:)`) | A `url` elsewhere is never read; the card says Unavailable. |

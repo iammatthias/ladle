@@ -26,7 +26,7 @@ public enum MediaDecision: Hashable, Sendable {
 }
 
 /// Media that waits for a tap: where it is, its host, and its origin when Always Load can trust
-/// it (`https:` with a dotted host, as `MediaSettings.parseOrigins` keeps).
+/// it and Block can block it (`https:` with a dotted host, as `MediaSettings.parseOrigins` keeps).
 public struct MediaAsk: Hashable, Sendable {
     public var url: URL
     public var host: String
@@ -49,9 +49,9 @@ public struct MediaAsk: Hashable, Sendable {
 /// The one place a media URL is decided for one server (§4.8.1, §4.8.6), as apron-web's
 /// `mediaGate`: every image, video, audio, avatar, custom emoji and emoji catalog the app loads
 /// asks `decide` first. It knows the chat server's HTTP origin, the origins `ext:media` names
-/// (EXT.md §6), the viewer's policy and trusted sites, and the URLs tapped to load this launch.
-/// Small inline images (`data:`) load from nowhere, so they always show. Links a tap opens are
-/// not limited by it.
+/// (EXT.md §6), the viewer's policy, trusted and blocked sites, and the URLs tapped to load this
+/// launch. A blocked host wins over everything else: nothing from it loads or asks. Small inline
+/// images (`data:`) load from nowhere, so they always show. Links a tap opens are not limited by it.
 public struct MediaGate: Hashable, Sendable {
     /// What the media is for. Timeline media from elsewhere waits for a tap; an avatar, a custom
     /// emoji or a catalog never asks, and from anywhere but the server itself loads only over
@@ -70,19 +70,24 @@ public struct MediaGate: Hashable, Sendable {
     public var viewerOrigins: Set<String>
     /// URLs tapped to load (Load), which load wherever they are.
     public var loadedOnce: Set<URL>
+    /// The hosts of the viewer's blocked sites (`blockableHost`), matched whatever the scheme or
+    /// port, and not the hosts under them.
+    public var blockedHosts: Set<String>
 
     public init(serverURL: URL, server: ServerInfo?, policy: MediaPolicy = .trusted, viewerOrigins: some Sequence<String> = [String](),
-                loadedOnce: Set<URL> = []) {
+                loadedOnce: Set<URL> = [], blocked: some Sequence<String> = [String]()) {
         origin = Self.httpOrigin(of: serverURL)
         serverOrigins = Set(MediaLimits(server: server)?.origins ?? [])
         self.policy = policy
         self.viewerOrigins = Set(viewerOrigins)
         self.loadedOnce = loadedOnce
+        blockedHosts = Set(blocked.compactMap { URL(string: $0).flatMap(Self.blockableHost) })
     }
 
     public func decide(_ url: URL, for use: Use = .timeline) -> MediaDecision {
         if Self.isSmallDataImage(url) { return .load(url) }
         guard let candidate = Self.origin(of: url) else { return .hidden }
+        if let host = Self.blockableHost(of: url), blockedHosts.contains(host) { return .hidden }
         if candidate == origin || serverOrigins.contains(candidate) { return .load(url) }
         if policy == .trusted, viewerOrigins.contains(candidate) { return .load(url) }
         switch use {
@@ -118,6 +123,14 @@ public struct MediaGate: Hashable, Sendable {
         let shownHost = host.contains(":") ? "[\(host)]" : host
         guard let port = url.port, port != defaultPort else { return "\(scheme)://\(shownHost)" }
         return "\(scheme)://\(shownHost):\(port)"
+    }
+
+    /// The host a blocked one is compared with: lowercased, without a trailing dot, whatever the
+    /// scheme or port.
+    static func blockableHost(of url: URL) -> String? {
+        guard var host = url.host(percentEncoded: false)?.lowercased() else { return nil }
+        if host.hasSuffix(".") { host.removeLast() }
+        return host.isEmpty ? nil : host
     }
 
     static func isSmallDataImage(_ url: URL) -> Bool {

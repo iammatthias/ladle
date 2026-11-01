@@ -153,12 +153,10 @@ private struct NotificationsPreferences: View {
     }
 }
 
-/// Media, as apron-web's: where media loads from, the viewer's trusted sites (on every server),
-/// and, read-only, the sites each server trusts for its own media.
+/// Media, as apron-web's: where media loads from, the viewer's trusted and blocked sites (on
+/// every server), and, read-only, the sites each server trusts for its own media.
 private struct MediaPreferences: View {
     let store: SessionStore
-    @State private var draft = ""
-    @State private var refused = false
 
     var body: some View {
         let settings = store.mediaSettings
@@ -176,33 +174,15 @@ private struct MediaPreferences: View {
                 Text("Loading an image, a video or an avatar tells the site that hosts it that you are reading. Under This Server and Trusted Sites, media from anywhere else waits for a tap, and avatars and custom emoji from elsewhere don't show.").formFooter()
             }
 
-            Section {
-                ForEach(settings.origins, id: \.self) { origin in
-                    Text(Self.host(origin)).apText(.body).foregroundStyle(Palette.ink)
-                        .accessibilityHint("Swipe up or down for Delete")
-                }
-                .onDelete { offsets in
-                    for origin in offsets.map({ settings.origins[$0] }) { settings.remove(origin) }
-                }
-                HStack {
-                    TextField("Add a site, such as cdn.example", text: $draft)
-                        .keyboardType(.URL)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .submitLabel(.done)
-                        .onSubmit(add)
-                        .onChange(of: draft) { refused = false }
-                    Button("Add", action: add).disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
-                }
-                if refused {
-                    Text("Enter an https site or address, such as cdn.example or https://cdn.example/a.png.")
-                        .apText(.sm).foregroundStyle(Palette.danger)
-                }
-            } header: {
-                Text("Trusted Sites").formHeader()
-            } footer: {
-                Text("Your trusted sites apply on every server. Always Load on a waiting image adds its site here. Under Any Site they stay listed for when you switch back.").formFooter()
-            }
+            SiteListSection(title: "Trusted Sites", sites: settings.origins, prompt: "Add a site, such as cdn.example",
+                            refusal: "Enter an https site or address, such as cdn.example or https://cdn.example/a.png.",
+                            footer: "Your trusted sites apply on every server. Always Load on a waiting image adds its site here. Under Any Site they stay listed for when you switch back.",
+                            parse: MediaSettings.parseOrigins, add: { settings.add($0) }, remove: settings.remove)
+
+            SiteListSection(title: "Blocked Sites", sites: settings.blocked, prompt: "Block a site, such as ads.example",
+                            refusal: "Enter a site or address, such as ads.example or https://ads.example/a.png.",
+                            footer: "Media from a blocked site never shows on any server, even from a trusted site or under Any Site. Block on a waiting image adds its site here.",
+                            parse: MediaSettings.parseBlockedOrigins, add: { settings.addBlocked($0) }, remove: settings.unblock)
 
             let named = serverSites
             if !named.isEmpty {
@@ -221,17 +201,6 @@ private struct MediaPreferences: View {
         .navigationBarTitleDisplayMode(.inline)
     }
 
-    private func add() {
-        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        if MediaSettings.parseOrigins(text).isEmpty {
-            refused = true
-            return
-        }
-        store.mediaSettings.add(text)
-        draft = ""
-    }
-
     /// Each signed-in server's own origin and the ones `ext:media` names, by host.
     private var serverSites: [(name: String, sites: [String])] {
         store.records.compactMap { record in
@@ -244,6 +213,61 @@ private struct MediaPreferences: View {
 
     static func host(_ origin: String) -> String {
         origin.replacingOccurrences(of: "https://", with: "").replacingOccurrences(of: "http://", with: "")
+    }
+}
+
+/// A list of sites by host, each removed with Delete, and a field that adds what it names: Media's
+/// Trusted Sites and Blocked Sites. Text in which `parse` finds no site shows `refusal`.
+private struct SiteListSection: View {
+    let title: String
+    let sites: [String]
+    let prompt: String
+    let refusal: String
+    let footer: String
+    let parse: (String) -> [String]
+    let add: (String) -> Void
+    let remove: (String) -> Void
+    @State private var draft = ""
+    @State private var refused = false
+
+    var body: some View {
+        Section {
+            ForEach(sites, id: \.self) { site in
+                Text(MediaPreferences.host(site)).apText(.body).foregroundStyle(Palette.ink)
+                    .accessibilityHint("Swipe up or down for Delete")
+            }
+            .onDelete { offsets in
+                for site in offsets.map({ sites[$0] }) { remove(site) }
+            }
+            HStack {
+                TextField(prompt, text: $draft)
+                    .keyboardType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .onSubmit(submit)
+                    .onChange(of: draft) { refused = false }
+                Button("Add", action: submit).disabled(draft.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+            if refused {
+                Text(refusal).apText(.sm).foregroundStyle(Palette.danger)
+            }
+        } header: {
+            Text(title).formHeader()
+        } footer: {
+            Text(footer).formFooter()
+        }
+    }
+
+    private func submit() {
+        let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty else { return }
+        guard !parse(text).isEmpty else {
+            refused = true
+            return
+        }
+        add(text)
+        draft = ""
     }
 }
 
@@ -298,7 +322,7 @@ private struct HistoryPreferences: View {
         .fileImporter(isPresented: $importing, allowedContentTypes: [.jsonLines, .json, .plainText, .data]) { result in
             if case .success(let url) = result { reading = OpenedExport(url: url) }
         }
-        .fullScreenCover(item: $reading) { ArchiveViewer(opened: $0) }
+        .fullScreenCover(item: $reading) { ArchiveViewer(opened: $0, mediaSettings: store.mediaSettings) }
     }
 
     /// apron-web's "Include private rooms", off until asked (#171), for this visit to History.

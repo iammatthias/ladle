@@ -36,6 +36,8 @@ struct OpenedExport: Identifiable {
 /// composer's place.
 struct ArchiveViewer: View {
     let opened: OpenedExport
+    /// The viewer's media choices, whose blocked sites hold in an export too.
+    let mediaSettings: MediaSettings
     @State private var session: ServerSession?
     @State private var asked = false
     /// The rooms open in the viewer, and a link's place in the one on top.
@@ -99,7 +101,7 @@ struct ArchiveViewer: View {
     private func open(_ archive: Archive, withImages: Bool) {
         asked = true
         guard session == nil else { return }
-        let reader = ServerSession.reading(archive, withImages: withImages)
+        let reader = ServerSession.reading(archive, withImages: withImages, mediaSettings: mediaSettings)
         session = reader
         reader.start()
         Task {

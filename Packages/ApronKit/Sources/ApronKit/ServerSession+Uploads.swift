@@ -10,8 +10,9 @@ extension ServerSession {
     public var canSetAvatar: Bool { canAttach && server?.has("command") == true }
 
     /// Where this server's media, avatars and custom emoji may load from, under the viewer's
-    /// choices: the one place a media URL is decided.
-    public var mediaGate: MediaGate { mediaSettings.gate(serverURL: record.url, server: server) }
+    /// choices: the one place a media URL is decided. An export's is held to the sites the export
+    /// names, whatever Preferences say, but the viewer's blocked sites hold there too.
+    public var mediaGate: MediaGate { mediaSettings.gate(serverURL: record.url, server: server, heldToServer: record.url == Self.archiveURL) }
 
     /// What the server says it takes (EXT.md §6), or nil when it says nothing.
     public var mediaLimits: MediaLimits? { MediaLimits(server: server) }

@@ -173,6 +173,10 @@ final class CustomEmojiTests: XCTestCase {
         XCTAssertEqual(Set(session.emojiCatalog?.emoji.keys ?? [:].keys), [":apron:", ":far:"])
         session.mediaSettings.remove("https://emoji.example")
         XCTAssertEqual(Set(session.emojiCatalog?.emoji.keys ?? [:].keys), [":apron:"], "an emoji elsewhere shows as its key")
+        session.mediaSettings.update(policy: .any)
+        XCTAssertEqual(Set(session.emojiCatalog?.emoji.keys ?? [:].keys), [":apron:", ":far:"])
+        session.mediaSettings.block("emoji.example")
+        XCTAssertEqual(Set(session.emojiCatalog?.emoji.keys ?? [:].keys), [":apron:"], "a blocked site's emoji shows as its key under Any Site")
         await session.stop()
     }
 }

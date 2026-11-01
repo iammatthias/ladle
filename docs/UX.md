@@ -637,24 +637,26 @@ Connection state is not a screen. It is one model, rendered in the Rooms section
 
 1. **Load Media From.** An inline picker: **This Server and Trusted Sites** (the default) or **Any Site**. The footer says what each does.
 2. **Trusted Sites.** Your sites, one row each, swipe to delete. A field takes a site as a bare host (`cdn.example`) or any URL on it, several at once separated by spaces or commas. Only `https:` with a dotted host is kept, reduced to its origin and listed once, as apron-web's `parseMediaOrigins`. Anything else shows "Enter an https site or address…" under the field.
-3. **Trusted by Your Servers.** Read-only. Each signed-in server's own origin and the origins its `ext:media` names.
+3. **Blocked Sites.** Shaped like Trusted Sites. A field takes a bare host or any `http(s)` URL; each is kept as its host, lowercased, without a trailing dot, its scheme and port dropped, listed once, as apron-web's `parseBlockedOrigins` (#193). `localhost` is kept; a wildcard (`*.example`) is not. Anything else shows "Enter a site or address…" under the field.
+4. **Trusted by Your Servers.** Read-only. Each signed-in server's own origin and the origins its `ext:media` names.
 
-**Scope.** Your trusted sites are global: they are sites you trust, so they apply on every server. A server's own origins apply on that server only. The choice is kept in `media-settings.json` beside `servers.json`. Under **Any Site**, the list stays for when you switch back.
+**Scope.** Your trusted and blocked sites are global: they are sites you trust, so they apply on every server. A server's own origins apply on that server only. The choice is kept in `media-settings.json` beside `servers.json`. Under **Any Site**, the list stays for when you switch back.
 
 **Rules** (one decision point, `MediaGate.decide(url, for:)`):
 
 | Media | This Server and Trusted Sites | Any Site |
 |---|---|---|
 | Inline `data:` image | Shows | Shows |
+| A blocked site, whatever else lists it, and after Load | Hidden, no tile | Hidden, no tile |
 | Server's origin, its `ext:media` origins | Shows | Shows |
 | A trusted site | Shows | Shows |
 | Timeline media elsewhere (uploads, link card images, video and audio, markdown images) | Load tile | Shows |
 | Avatar or custom emoji elsewhere | Initials, or the key as text. The emoji picker leaves it out. | Shows over `https:` only |
 | Custom emoji catalog elsewhere | Not fetched | Fetched over `https:` |
 
-**Load tile.** A tap is **Load**: that one URL loads, until Ladle quits. The tile's `ellipsis.circle` menu and its long press offer **Load** and, for an `https:` site, **Always Load from host**, which adds the site to Trusted Sites. A link card whose `og.video` waits shows a Video tile under the card even when its image loads, so the video is never silently dropped. A loaded image that fails (an unreachable host, a bad file) shows the `photo` glyph in its box and never spins.
+**Load tile.** A tap is **Load**: that one URL loads, until Ladle quits. The tile's `ellipsis.circle` menu and its long press offer **Load** and, for an `https:` site, **Always Load from host**, which adds the site to Trusted Sites, and below a divider **Block host** (destructive, `hand.raised`), which adds it to Blocked Sites. The tile and every other tile from that host go at once; a markdown image gives way to its address. A link card whose `og.video` waits shows a Video tile under the card even when its image loads, so the video is never silently dropped. A loaded image that fails (an unreachable host, a bad file) shows the `photo` glyph in its box and never spins.
 
-**Accessibility.** The tile reads its kind and its full URL, "Image, https://shazow.net/images/icon.png, not loaded", with the hint "Loads it". **Always Load from host** is a custom action.
+**Accessibility.** The tile reads its kind and its full URL, "Image, https://shazow.net/images/icon.png, not loaded", with the hint "Loads it". **Always Load from host** and **Block host** are custom actions.
 
 ### 3.15 Appearance
 
@@ -782,7 +784,7 @@ As built (`Kit/PaneLoading.swift`, `Timeline/PaneLoadingViews.swift`), as apron-
 - Tokens live only in the Keychain, as one generic password per server id with `kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly` (`KeychainStore`). [privacy] says "Store sensitive information in a keychain." They are never in `servers.json`, the message cache, logs, or state restoration.
 - Kept history is one file per server with complete-until-first-auth protection, excluded from backup (2.5). Sign-out, a refused token, another account and server removal delete it.
 - The camera purpose string is "Ladle uses the camera to scan sign-in QR codes, and to take photos and videos you attach to messages." It is a full sentence in sentence case, active voice, ending with a period ([privacy]: "Aim for a brief, complete sentence that's straightforward, specific, and easy to understand."). Ladle asks only when you tap Scan QR Code or take a photo or video.
-- Ladle loads media where Preferences says (3.14): by default from the server's own origin, the origins it names with `ext:media`, and your trusted sites (§4.8.1, §5.5). Media in the timeline from anywhere else waits for a tap. Avatars and custom emoji from anywhere else don't load, so initials and keys show instead. `MediaGate.decide` is the one place this is decided.
+- Ladle loads media where Preferences says (3.14): by default from the server's own origin, the origins it names with `ext:media`, and your trusted sites (§4.8.1, §5.5), and never from a site you blocked. Media in the timeline from anywhere else waits for a tap. Avatars and custom emoji from anywhere else don't load, so initials and keys show instead. `MediaGate.decide` is the one place this is decided.
 - Ladle connects to a new server only after you tap Connect (§A.4).
 - The token field is a `SecureField`. The token never appears on screen after you enter it.
 

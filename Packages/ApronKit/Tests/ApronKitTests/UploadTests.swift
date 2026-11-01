@@ -128,6 +128,31 @@ final class MediaGateTests: XCTestCase {
         XCTAssertEqual(any.decide(URL(string: "data:text/html;base64,PGI+")!), .hidden)
     }
 
+    func testBlockedSitesNeitherLoadNorAskWhateverTrustsThemOrWasTappedByHost() {
+        let serverURL = URL(string: "wss://chat.example/ws")!
+        let blocked = ["https://tracker.example", "https://media.example"]
+        let gate = MediaGate(serverURL: serverURL, server: server(), policy: .any, viewerOrigins: ["https://media.example"],
+                             loadedOnce: [URL(string: "https://tracker.example/t.gif")!], blocked: blocked)
+        for text in ["https://tracker.example/t.gif", "http://tracker.example/t.gif", "https://media.example/b.png", "https://tracker.example./t.gif",
+                     "https://tracker.example:8443/t.gif", "http://tracker.example:443/t.gif", "https://TRACKER.example/t.gif"] {
+            let url = URL(string: text)!
+            XCTAssertEqual(gate.decide(url), .hidden, text)
+            XCTAssertEqual(gate.decide(url, for: .avatar), .hidden, text)
+        }
+        XCTAssertEqual(MediaGate(serverURL: serverURL, server: server(), blocked: blocked).decide(URL(string: "https://tracker.example/t.gif")!), .hidden,
+                       "under This Server and Trusted Sites it does not ask either")
+        XCTAssertEqual(gate.decide(URL(string: "https://elsewhere.example/a.png")!), .load(URL(string: "https://elsewhere.example/a.png")!))
+        XCTAssertEqual(gate.decide(URL(string: "https://a.tracker.example/t.gif")!), .load(URL(string: "https://a.tracker.example/t.gif")!),
+                       "a block is of that host, not the ones under it")
+        XCTAssertEqual(gate.decide(URL(string: "https://chat.example/a.png")!), .load(URL(string: "https://chat.example/a.png")!))
+        let pixel = URL(string: "data:image/png;base64,iVBORw0KGgo=")!
+        XCTAssertEqual(gate.decide(pixel), .load(pixel))
+        XCTAssertEqual(MediaGate(serverURL: serverURL, server: server(), blocked: ["https://chat.example"]).decide(URL(string: "https://chat.example/a.png")!),
+                       .hidden, "over the server's own origin too")
+        XCTAssertNotEqual(gate, MediaGate(serverURL: serverURL, server: server(), policy: .any, viewerOrigins: ["https://media.example"],
+                                          loadedOnce: [URL(string: "https://tracker.example/t.gif")!]))
+    }
+
     func testAvatarsAndCustomEmojiFromElsewhereShowOnlyFromTrustedSitesOrUnderAny() {
         let serverURL = URL(string: "wss://chat.example/ws")!
         let gravatar = URL(string: "https://gravatar.example/a.png")!
@@ -182,6 +207,8 @@ final class MediaGateTests: XCTestCase {
         XCTAssertEqual(again.origins, ["https://cdn.example", "https://shazow.net"], "the sites stay listed under Any Site")
         XCTAssertEqual(again.loadedOnce, [], "Load lasts one launch")
 
+        XCTAssertEqual(again.blocked, [])
+
         for (saved, policy) in [("all", MediaPolicy.any), ("server", .trusted), ("everything", .trusted)] {
             try Data(#"{"policy": "\#(saved)", "origins": ["https://kept.example", "http://x.example", 7]}"#.utf8)
                 .write(to: directory.appending(path: "media-settings.json"))
@@ -189,6 +216,56 @@ final class MediaGateTests: XCTestCase {
             XCTAssertEqual(old.policy, policy)
             XCTAssertEqual(old.origins, ["https://kept.example"])
         }
+    }
+
+    @MainActor
+    func testBlockingKeepsTheSiteOverTheTrustedOnesAndIsSaved() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let settings = MediaSettings(directory: directory)
+        settings.update(policy: .trusted, origins: ["https://cdn.example"])
+        settings.block("https://cdn.example/a.png")
+        settings.block("cdn.example")
+        settings.block("ads.example")
+        XCTAssertEqual(settings.blocked, ["https://cdn.example", "https://ads.example"])
+        XCTAssertEqual(settings.origins, ["https://cdn.example"], "Trusted Sites still lists it: the gates leave it out")
+        let serverURL = URL(string: "wss://chat.example/ws")!
+        XCTAssertEqual(settings.gate(serverURL: serverURL, server: nil).decide(URL(string: "https://cdn.example/a.png")!), .hidden)
+        settings.update(policy: .any)
+        XCTAssertEqual(settings.blocked, ["https://cdn.example", "https://ads.example"])
+        XCTAssertFalse(settings.addBlocked("ADS.example."), "each site once")
+        XCTAssertEqual(MediaSettings(directory: directory).blocked, ["https://cdn.example", "https://ads.example"])
+        settings.unblock("https://cdn.example")
+        XCTAssertEqual(MediaSettings(directory: directory).blocked, ["https://ads.example"])
+        XCTAssertEqual(MediaSettings(directory: directory).policy, .any)
+
+        try Data(#"{"policy": "trusted", "origins": [], "blocked": ["https://kept.example", "ftp://x.example", 7]}"#.utf8)
+            .write(to: directory.appending(path: "media-settings.json"))
+        XCTAssertEqual(MediaSettings(directory: directory).blocked, ["https://kept.example"])
+    }
+
+    func testSitesToBlockAreReadByHostWhateverTheSchemePortOrTrailingDotWithoutWildcards() {
+        XCTAssertEqual(MediaSettings.parseBlockedOrigins("http://plain.example:8080/a.png TRACKER.example. localhost https://cdn.example:443 *.wild.example ftp://x.example plain.example"),
+                       ["https://plain.example", "https://tracker.example", "https://localhost", "https://cdn.example"])
+    }
+
+    @MainActor
+    func testAnExportsGateKeepsToItsOwnSitesButNotToBlockedOnes() throws {
+        let settings = MediaSettings()
+        settings.update(policy: .any, origins: ["https://cdn.example"])
+        settings.block("https://tracker.example")
+        let archive = ServerSession.archiveURL
+        let held = settings.gate(serverURL: archive, server: nil, heldToServer: true)
+        XCTAssertEqual(held.decide(URL(string: "https://cdn.example/a.png")!), .ask(MediaAsk(URL(string: "https://cdn.example/a.png")!)),
+                       "neither Any Site nor the trusted sites")
+        XCTAssertEqual(held.decide(URL(string: "https://tracker.example/t.gif")!), .hidden)
+        settings.loadOnce(URL(string: "https://cdn.example/a.png")!)
+        XCTAssertEqual(settings.gate(serverURL: archive, server: nil, heldToServer: true).decide(URL(string: "https://cdn.example/a.png")!),
+                       .load(URL(string: "https://cdn.example/a.png")!))
+        XCTAssertEqual(settings.policy, .any, "blocking there keeps the policy chosen")
+        let reader = ServerSession.reading(try Archive(text: #"{"apron_archive":1}"#), withImages: false, mediaSettings: settings)
+        XCTAssertEqual(reader.mediaGate.decide(URL(string: "https://elsewhere.example/a.png")!), .ask(MediaAsk(URL(string: "https://elsewhere.example/a.png")!)))
+        XCTAssertEqual(reader.mediaGate.decide(URL(string: "https://tracker.example/t.gif")!), .hidden)
     }
 
     func testTheMostSpecificPatternGivesAFilesLimits() throws {
@@ -548,7 +625,12 @@ final class UploadSessionTests: XCTestCase {
         XCTAssertNil(session.avatarURL(of: "cy"), "not from a site nobody trusts")
         session.mediaSettings.trust("gravatar.example")
         XCTAssertEqual(session.avatarURL(of: "cy")?.absoluteString, "https://gravatar.example/c.png")
+        session.mediaSettings.block("https://gravatar.example")
+        XCTAssertNil(session.avatarURL(of: "cy"), "a block wins over the trust")
         session.mediaSettings.update(policy: .any, origins: [])
+        XCTAssertNil(session.avatarURL(of: "cy"), "and over Any Site")
+        session.mediaSettings.unblock("https://gravatar.example")
+        XCTAssertEqual(session.avatarURL(of: "cy")?.absoluteString, "https://gravatar.example/c.png")
         XCTAssertNil(session.avatarURL(of: "bob"), "http from elsewhere never")
     }
 }

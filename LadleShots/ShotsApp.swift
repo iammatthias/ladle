@@ -23,11 +23,11 @@ enum Screen: String, CaseIterable {
     case emoji, emojiPicker = "emoji-picker", emojiShortcode = "emoji-shortcode", commands
     case linkCards = "link-cards", composerLinkPreviews = "composer-link-previews", sentLinkPreview = "sent-link-preview", roomMention = "room-mention", selectText = "select-text"
     case reminder, reminderCustom = "reminder-custom"
-    case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded"
+    case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded", mediaGateBlocked = "media-gate-blocked"
     case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline", serverPane = "server-pane", serverPaneDemo = "server-pane-demo", mentionChip = "mention-chip"
     case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing", rolePicker = "role-picker", roleChip = "role-chip"
     case muted, paused, notificationsPaused = "notifications-paused", limited
-    case appearance, appearanceCustom = "appearance-custom", preferences, history
+    case appearance, appearanceCustom = "appearance-custom", preferences, preferencesMedia = "preferences-media", history
     case search, searchFiltered = "search-filtered", roomsSearch = "rooms-search"
     case select, selectLog = "select-log"
     case archiveAsk = "archive-ask", archiveRooms = "archive-rooms", archiveTimeline = "archive-timeline"
@@ -58,6 +58,9 @@ enum Screen: String, CaseIterable {
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
+
+    /// Shots with sites blocked and trusted in Preferences > Media.
+    var hasSiteLists: Bool { self == .mediaGateBlocked || self == .preferencesMedia }
 
     var isPad: Bool { self == .ipad || self == .ipadTyping || self == .ipadCatchingUp }
 
@@ -144,6 +147,7 @@ enum Renderer {
             ActiveTheme.shared.theme = shot.look?.drawnIn ?? store.appearance.shown
             await seedReminder(shot.screen == .reminder, in: store, home: home)
             await seedPause(shot.screen.isPaused, home: home)
+            seedSites(shot.screen.hasSiteLists, in: store)
             UserDefaults.standard.set(shot.screen == .roomsInactive, forKey: "inactiveThreadsOpen")
             UserDefaults.standard.set(shot.screen == .roomsFolded, forKey: "roomsSectionFolded")
             UserDefaults.standard.set(shot.screen == .roomsFolded, forKey: "privateSectionFolded")
@@ -448,6 +452,11 @@ enum Renderer {
             AnyView(PreferencesView(store: store, request: PreferencesRequest(section: .notifications, server: PreviewFixtures.homeID)))
         case .preferences:
             AnyView(PreferencesView(store: store))
+        case .preferencesMedia:
+            AnyView(PreferencesView(store: store, request: PreferencesRequest(section: .media)))
+        case .mediaGateBlocked:
+            // The remote room with evildomain.example.com blocked after Load in the shot before: its image gives way to its address.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.elsewhereRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .history:
             AnyView(PreferencesView(store: store, request: PreferencesRequest(section: .history)))
         case .search:
@@ -467,9 +476,9 @@ enum Renderer {
             AnyView(SelectTextSheet(text: home.markdownLog(of: lastThree(home)?.ids ?? [], in: PreviewFixtures.busyRoomID, now: PreviewFixtures.now)) {})
         case .archiveAsk:
             // Home exported, then opened: first, whether its images may load from the site it names.
-            AnyView(ArchiveViewer(opened: OpenedExport(archive: exported(home, media: true))))
+            AnyView(ArchiveViewer(opened: OpenedExport(archive: exported(home, media: true)), mediaSettings: store.mediaSettings))
         case .archiveRooms:
-            AnyView(ArchiveViewer(opened: OpenedExport(archive: exported(home, media: false))))
+            AnyView(ArchiveViewer(opened: OpenedExport(archive: exported(home, media: false)), mediaSettings: store.mediaSettings))
         case .archiveTimeline:
             AnyView(ArchiveTimelineShot(archive: exported(home, media: false), roomID: PreviewFixtures.busyRoomID))
         case .roomsSearch:
@@ -614,6 +623,14 @@ enum Renderer {
     }
 
     /// Pauses home until resumed for the paused shots (the preview server echoes it), else resumes.
+    /// A trusted site and two blocked ones for `hasSiteLists`, else none, so no other shot sees them.
+    static func seedSites(_ shown: Bool, in store: SessionStore) {
+        let settings = store.mediaSettings
+        settings.update(policy: settings.policy, origins: shown ? ["https://cdn.example"] : [])
+        for site in settings.blocked { settings.unblock(site) }
+        if shown { settings.addBlocked("evildomain.example.com ads.example") }
+    }
+
     static func seedPause(_ paused: Bool, home: ServerSession) async {
         guard (home.pause != nil) != paused else { return }
         try? await home.setPause(paused ? .untilChanged : nil)
