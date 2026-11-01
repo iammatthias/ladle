@@ -57,6 +57,50 @@ final class LiveTextSessionTests: XCTestCase {
         await eventually("the read stops") { live.reading == nil }
     }
 
+    func testLiveTextWaitsForItsWriterUntilASnapshotAddsItsURL() async throws {
+        let session = try await home()
+        let terminal = try XCTUnwrap(message(PreviewFixtures.waitingTerminalMessageID, in: session).embedList.first)
+        XCTAssertTrue(terminal.isWaitingForWriter)
+        XCTAssertNil(session.liveText(of: terminal), "nothing to read before the write starts")
+        let waiting = try message(PreviewFixtures.waitingAppendMessageID, in: session)
+        let before = MessageRowModel(waiting, in: session)
+        XCTAssertEqual([before.isWaiting, before.isWriting], [true, false])
+        XCTAssertEqual(before.liveLine, "Waiting to stream…")
+        XCTAssertNil(before.liveAppend)
+        XCTAssertEqual(String(MessageBlock.flattened(before.blocks).characters), "Drafting the ramp report:")
+
+        var started = waiting
+        started.body = ["text": "Drafting the ramp report:\n\n", "embeds": [["embed_id": "embed_a3", "kind": "append", "url": .string(PreviewFixtures.liveAppendURL.absoluteString)]]]
+        let after = MessageRowModel(started, in: session)
+        XCTAssertFalse(after.isWaiting)
+        let live = try XCTUnwrap(after.liveAppend, "the snapshot that adds url starts the read")
+        let following = Task { await session.follow(live) }
+        await eventually("the reply arrived") { live.text.hasSuffix("kubectl rollout") }
+        XCTAssertEqual(MessageRowModel(started, in: session).liveLine, "Writing…")
+        following.cancel()
+    }
+
+    func testAURLElsewhereIsUnavailableNotWaiting() throws {
+        let elsewhere = try XCTUnwrap(Embed(["embed_id": "e", "kind": "terminal", "url": "https://elsewhere.example/live/x"]))
+        XCTAssertFalse(elsewhere.isWaitingForWriter)
+        let finished = try XCTUnwrap(Embed(["embed_id": "e", "kind": "terminal", "output": "ok"]))
+        XCTAssertFalse(finished.isWaitingForWriter, "a terminal with output is finished")
+    }
+
+    func testATextThatEndedIsNotReadAgain() async throws {
+        let session = try await home()
+        let gone = try XCTUnwrap(Embed(["embed_id": "e", "kind": "terminal", "url": "https://home.example/live/gone"]))
+        let live = try XCTUnwrap(session.liveText(of: gone))
+        let first = Task { await session.follow(live) }
+        await eventually("the read ended") { live.phase == .ended }
+        first.cancel()
+        await eventually("the first follower left") { live.watchers == 0 }
+        let again = Task { await session.follow(live) }
+        try await Task.sleep(for: .milliseconds(20))
+        XCTAssertNil(live.reading, "no grace period: the url's end is final, and a new view reads nothing")
+        again.cancel()
+    }
+
     func testLiveTextLoadsOnlyFromTheChatServersOrigin() async throws {
         let session = try await home()
         let elsewhere = try XCTUnwrap(Embed(["embed_id": "e", "kind": "terminal", "url": "https://elsewhere.example/live/x"]))

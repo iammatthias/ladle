@@ -95,7 +95,8 @@ struct MessageRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(row.spoken(reminderDue: reminderDue, now: .now) + (seenBy.isEmpty ? "" : ", " + SeenBy.words(seenBy.map(\.name))))
+        .accessibilityLabel(row.spoken(reminderDue: reminderDue, now: .now) + (row.liveLine.map { ", " + $0 } ?? "")
+            + (seenBy.isEmpty ? "" : ", " + SeenBy.words(seenBy.map(\.name))))
         .accessibilityAction(named: "\(name)’s Profile", onProfile)
         .task(id: session.server?.emojiCatalogURL) {
             if session.needsEmojiCatalog(message) { await session.loadEmojiCatalog() }
@@ -136,8 +137,8 @@ struct MessageRow: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .written(in: TextDirection(of: message.plainText.isEmpty ? row.liveAppend?.text ?? "" : message.plainText))
         }
-        if row.isWriting {
-            Text("Writing…").apText(.sm, italic: true).foregroundStyle(Palette.inkMuted)
+        if let line = row.liveLine {
+            Text(line).apText(.sm, italic: true).foregroundStyle(Palette.inkMuted)
                 .padding(.top, Tokens.Space.s1)
         }
         if let room = message.prevRoomID {

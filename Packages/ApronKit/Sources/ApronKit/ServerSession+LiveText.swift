@@ -112,6 +112,10 @@ extension Embed {
     public var isLiveText: Bool {
         (kind == "terminal" && output == nil) || kind == "append"
     }
+
+    /// Live text whose write has not started: it has no `url` until then, when a snapshot adds
+    /// one (§4.8.5). A `url` this device may not read is not waiting; it is unavailable.
+    public var isWaitingForWriter: Bool { isLiveText && json["url"] == nil }
 }
 
 extension ServerSession {

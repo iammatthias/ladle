@@ -362,7 +362,7 @@ public enum PreviewFixtures {
     /// message, for the link cards; one link also comes with a sender's preview the card hides.
     public static let linkCardRoomID = iconThread
     /// The thread with a finished terminal's output and a finished append, then a live terminal
-    /// and a live append (v10).
+    /// and a live append, then a terminal and an append waiting for their writer (v10).
     public static let liveTextRoomID = loadTestThread
     private static let notesLink = "https://link.apron.chat/#server=wss://home.example/ws&room=general&message=\(message(5))"
 
@@ -451,6 +451,13 @@ public enum PreviewFixtures {
                 ]]),
                 line(-138, "ada", "Asked the planner what to do if it fails:\n\n", embeds: [[
                     "embed_id": "embed_a2", "kind": "append", "url": .string(liveAppendURL.absoluteString),
+                ]]),
+                // Live text whose writer has not started: no url yet (§4.8.5).
+                line(-137, "dev", "Next, the soak test:", embeds: [[
+                    "embed_id": "embed_t3", "kind": "terminal", "title": "make soak",
+                ]]),
+                line(-136, "bram", "Drafting the ramp report:\n\n", embeds: [[
+                    "embed_id": "embed_a3", "kind": "append",
                 ]]),
             ]),
             originThread: history(originThread, [line(-480, "ada", "Both boxes send the right Origin now.")]),
@@ -546,7 +553,7 @@ public enum PreviewFixtures {
         readCursors: [
             "general": message(9), releaseThread: message(17), "design": message(-22),
             iconThread: message(-18), "random": message(-90),
-            loadTestThread: message(-138), originThread: message(-480), docsThread: message(-1100), passkeyThread: message(-5000),
+            loadTestThread: message(-136), originThread: message(-480), docsThread: message(-1100), passkeyThread: message(-5000),
             untitledThreadID: message(-9000), archiveThread: message(-600_000), "ops": message(-290), "kitchen": message(-126),
             "markdown": message(-399), "remote": message(-408),
             directRoomID: message(31), groupRoomID: message(34), addedRoomID: message(35),

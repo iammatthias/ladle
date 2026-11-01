@@ -4,7 +4,8 @@ import UIKit
 
 /// A `terminal` embed (v10 §4.8.6), as apron-web's EmbedTerminal: a card titled by the embed's
 /// title (else "Terminal") over its 80-column screen, scaled so the columns fit the message's
-/// width, its rows down to the last one written. While the embed has no `output` it is live
+/// width, its rows down to the last one written. Until its write starts it has no `url` and
+/// says "Waiting to stream…". While the embed has `url` it is live
 /// under a Live badge, the screen following `url` (`ServerSession.follow`); then "Ended", and
 /// once a snapshot carries `output`, that, as "Finished". A tap on the screen, or Expand, opens
 /// it full screen in `TerminalViewer`. It only reads: nothing typed reaches it.
@@ -43,11 +44,13 @@ struct TerminalEmbedView: View {
 
     private var title: String { embed.title ?? "Terminal" }
 
-    /// What a stopped terminal says, as apron-web's: Finished with its `output`, Ended once
-    /// `GET url` ended or was refused, Unavailable without a `url` it may read.
+    /// What a terminal that isn't live says, as apron-web's: Finished with its `output`, Ended
+    /// once `GET url` ended or was refused, Waiting to stream… before its write starts (no
+    /// `url`, §4.8.5), Unavailable with a `url` it may not read.
     static func status(embed: Embed, live: LiveText?) -> String {
         if embed.output != nil { return "Finished" }
-        return live == nil ? "Unavailable" : "Ended"
+        if live != nil { return "Ended" }
+        return embed.isWaitingForWriter ? "Waiting to stream…" : "Unavailable"
     }
 
     private func header(isLive: Bool, status: String) -> some View {

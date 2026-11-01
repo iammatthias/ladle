@@ -14,6 +14,8 @@ extension PreviewFixtures {
     public static let liveTerminalMessageID = message(-139)
     public static let finishedTerminalMessageID = message(-142)
     public static let liveAppendMessageID = message(-138)
+    public static let waitingTerminalMessageID = message(-137)
+    public static let waitingAppendMessageID = message(-136)
 
     /// Answers the two live texts at once and then holds them open, so they stay live.
     static let readLiveText: LiveTextRead = { url in

@@ -45,7 +45,7 @@ enum Screen: String, CaseIterable {
     case floatingDay = "floating-day", mentionPulse = "mention-pulse", welcome
     case connectPasskey = "connect-passkey", connectPasskeyCreate = "connect-passkey-create", connectPasskeyUnavailable = "connect-passkey-unavailable"
     case connectExternalCode = "connect-external-code", youSignIn = "you-signin", youAddEmail = "you-add-email", roomsHeld = "rooms-held", roomsNudge = "rooms-nudge"
-    case liveTextFinished = "live-text-finished", liveText = "live-text", terminalViewer = "terminal-viewer"
+    case liveTextFinished = "live-text-finished", liveText = "live-text", liveTextWaiting = "live-text-waiting", terminalViewer = "terminal-viewer"
     case readReceipts = "read-receipts", profileReceipts = "profile-receipts"
     case roomsNewerServer = "rooms-newer-server", serverPaneNewer = "server-pane-newer"
     // Last of the phone shots: Browse Rooms lists the garden and the book club into home's store,
@@ -295,6 +295,10 @@ enum Renderer {
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.liveTextRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
                 .environment(\.shotPins, ShotPins(scrollTo: PreviewFixtures.finishedTerminalMessageID)))
         case .liveText:
+            // Scrolled to the live terminal, above the two waiting for their writer.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.liveTextRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
+                .environment(\.shotPins, ShotPins(scrollTo: PreviewFixtures.liveTerminalMessageID)))
+        case .liveTextWaiting:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.liveTextRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .terminalViewer:
             AnyView(Group {

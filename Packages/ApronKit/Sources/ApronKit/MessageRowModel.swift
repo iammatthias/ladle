@@ -23,6 +23,11 @@ public struct MessageRowModel {
     public let liveAppend: LiveText?
     /// The live text is still arriving: "Writing…" under the text.
     @MainActor public var isWriting: Bool { liveAppend?.isLive == true }
+    /// The message's `append` embed has no `url` yet, its write not started (§4.8.5): "Waiting
+    /// to stream…" under the text, as apron-web's `waiting`, and nothing is read.
+    public let isWaiting: Bool
+    /// What shows under the text, and VoiceOver reads after it, while an append is live.
+    @MainActor public var liveLine: String? { isWriting ? "Writing…" : isWaiting ? "Waiting to stream…" : nil }
     /// The link to fetch a preview for (`unfurlURL`).
     public let unfurl: URL?
     /// The `link` embed for `unfurl`, which the fetched preview takes the place of. Without one,
@@ -43,6 +48,7 @@ public struct MessageRowModel {
             (id, session.users.user(id).flatMap(UserObject.init).map(session.displayName(for:)) ?? id)
         }, uniquingKeysWith: { first, _ in first })
         liveAppend = session.appendedText(of: message)
+        isWaiting = message.embedList.first(where: \.isAppend)?.isWaitingForWriter == true
         let shown = Self.appended(message, liveAppend)
         blocks = MessageText.blocks(shown.body, emoji: session.emojiCatalog, rooms: session.referencedTitle, links: session.linkChip, mentions: names,
                                       you: session.you?.userID)
