@@ -331,6 +331,8 @@ public enum PreviewFixtures {
     /// The thread whose messages link to a message, a thread and a private room's unloaded
     /// message, for the link cards; one link also comes with a sender's preview the card hides.
     public static let linkCardRoomID = iconThread
+    /// The thread with a finished terminal's output and a finished append (v10).
+    public static let liveTextRoomID = loadTestThread
     private static let notesLink = "https://link.apron.chat/#server=wss://home.example/ws&room=general&message=\(message(5))"
 
     private static let general = [
@@ -405,7 +407,15 @@ public enum PreviewFixtures {
                 ["room_id": .string(releaseThread), "log_id": .string(releaseThread), "parent_room_id": "general", "title": "Release",
                  "description": "Ship Friday, then freeze"],
             ]),
-            loadTestThread: history(loadTestThread, [line(-140, "bram", "Ramping to 500 connections at noon.")]),
+            // A v10 server's live text once it ended: a terminal's kept output, an append in the body.
+            loadTestThread: history(loadTestThread, [
+                line(-142, "bram", "Smoke run before the ramp:", embeds: [[
+                    "embed_id": "embed_t1", "kind": "terminal", "title": "make smoke",
+                    "output": "\u{1B}[1mrunning 4 checks\u{1B}[0m\r\nconnect   \u{1B}[32mok\u{1B}[0m  12 ms\r\nauth      \u{1B}[32mok\u{1B}[0m  31 ms\r\nhistory   \u{1B}[32mok\u{1B}[0m  48 ms\r\nfan-out   \u{1B}[33mslow\u{1B}[0m 412 ms\r\nprogress 100%\r\n",
+                ]]),
+                line(-141, "bram", "Plan for the ramp:\n\n1. 100 connections, hold five minutes.\n2. 500 at noon.\n3. Roll back if fan-out passes a second."),
+                line(-140, "bram", "Ramping to 500 connections at noon."),
+            ]),
             originThread: history(originThread, [line(-480, "ada", "Both boxes send the right Origin now.")]),
             docsThread: history(docsThread, [line(-1100, "eunji", "The sign-in section needs a QR screenshot.")]),
             passkeyThread: history(passkeyThread, [line(-5000, "sam", "AASA plan: one file per domain.")]),

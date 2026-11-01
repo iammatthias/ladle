@@ -71,7 +71,7 @@ final class LiveServerProofTests: XCTestCase {
     func testTheInviteDeviceTokenSignsInAsTheWebAccountAndPosts() async throws {
         let live = try Self.live()
         let session = try await signIn(live, origin: ServerRecord(url: live.url).origin)
-        XCTAssertEqual(session.server?.apron, 9)
+        XCTAssertTrue(ServerInfo.supportedVersions.contains(session.server?.apron ?? 0), "apron \(String(describing: session.server?.apron))")
         try await waitFor("the room list", timeout: .seconds(20)) { session.joinedRoomIDs.contains("general") }
 
         let posted = try await session.send(live.message, in: "general")

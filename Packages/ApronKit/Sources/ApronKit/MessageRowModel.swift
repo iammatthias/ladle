@@ -14,7 +14,8 @@ public struct MessageRowModel {
     public let blocks: [MessageBlock]
     public let cards: [PlaceCard]
     /// The embeds to draw with their index in the message, which names their media; a sender's
-    /// preview of a place a card shows is left out (`PlaceCard.previews`).
+    /// preview of a place a card shows is left out (`PlaceCard.previews`), and so is an `append`,
+    /// whose text Ladle shows once it is in the body.
     public let embeds: [(index: Int, embed: Embed)]
     /// The link to fetch a preview for (`unfurlURL`).
     public let unfurl: URL?
@@ -39,7 +40,7 @@ public struct MessageRowModel {
                                       you: session.you?.userID)
         cards = session.placeCards(in: message, sessions: sessions)
         embeds = message.embedList.enumerated()
-            .filter { [cards] in !PlaceCard.previews($0.element, in: cards, from: session.record.url) }
+            .filter { [cards] in !$0.element.isAppend && !PlaceCard.previews($0.element, in: cards, from: session.record.url) }
             .map { (index: $0.offset, embed: $0.element) }
         unfurl = message.unfurlURL
         unfurledEmbed = unfurl.flatMap { [embeds] url in embeds.first { $0.embed.kind == "link" && $0.embed.url == url }?.index }

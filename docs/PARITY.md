@@ -345,9 +345,11 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | `og` link card | bh | has | `Timeline/EmbedViews.swift` | |
 | `og.video` and `og.audio` play in the card (fork) | fork "Play og.video and og.audio in link preview cards" | has | `Timeline/EmbedViews.swift` | |
 | Fallback card with kind and url or text | bh | has | `Timeline/EmbedViews.swift` | |
-| Stream embed read live, Live badge | shazow/apron#26 | missing | `Kit/Embed.swift` | |
-| Finished stream `text` shown | bh | partial | `Timeline/EmbedViews.swift` | Shows as the fallback card's text. |
-| `embed:terminal` ANSI colors, carriage-return overwrite | shazow/apron#26, `ui/terminal.ts` | missing | | |
+| v9 stream embed read live, Live badge | shazow/apron#26 | missing | `Kit/Embed.swift` | v10 removes `stream` (`embed:append` and `embed:terminal` replace it); an older server's stream still shows as its card. |
+| Finished stream `text` shown (v9) | bh | partial | `Timeline/EmbedViews.swift` | Shows as the fallback card's text. |
+| Finished `terminal` output shown (v10, #162) | #162 | partial | `Kit/Embed.swift` (`output`, `terminalOutput`, `TerminalText`), `Timeline/EmbedViews.swift` (`EmbedCard`) | Its title and last 13 lines in the mono face, escapes dropped and a carriage return drawing over its line, so a v10 server's output is never an empty card. No ANSI colors yet; v10 is still being edited upstream. |
+| `append` live text (v10, #162) | #162 | partial | `Kit/MessageRowModel.swift` (`embeds` leaves out `append`) | No card for it: the opening text shows while it streams, and the finished snapshot's merged `body.text` once it ends. Not read live yet. |
+| Live `terminal` with ANSI colors, carriage-return overwrite | shazow/apron#26, #162, `ui/terminal-screen.ts` | missing | | Waits for v10 to settle upstream. |
 | `iframe` paused until Load live view, sandboxed | bh | missing | `Timeline/EmbedViews.swift` | Fallback card. Needs a sandboxed `WKWebView`. |
 | `html` embed sanitized and inserted | bh | missing | `Timeline/EmbedViews.swift` | Fallback card. |
 | Sender-built link previews (GitHub, YouTube, X, Bluesky, Wikipedia) sent as `link` embeds | #11, #122 | partial | `Kit/LinkPreviews.swift`, `Timeline/FetchedLinkCard.swift` | Ladle fetches previews for itself with LinkPresentation. Its outgoing messages carry no `og`, so others see no card. |

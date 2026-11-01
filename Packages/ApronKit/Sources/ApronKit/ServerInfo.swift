@@ -1,5 +1,9 @@
 /// The `server` frame (§3.1). Each one fully replaces the previous.
 public struct ServerInfo: Hashable, Sendable {
+    /// The protocol versions Ladle reads: v9, and v10's finished live text (a terminal's
+    /// `output`, an append merged into `body.text`) without the live reading.
+    public static let supportedVersions: ClosedRange<Int> = 9...10
+
     public var apron: Int
     /// Sign-in schemes in the server's preference order.
     public var auth: [String]

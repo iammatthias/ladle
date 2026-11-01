@@ -44,6 +44,7 @@ enum Screen: String, CaseIterable {
     case floatingDay = "floating-day", mentionPulse = "mention-pulse", welcome
     case connectPasskey = "connect-passkey", connectPasskeyCreate = "connect-passkey-create", connectPasskeyUnavailable = "connect-passkey-unavailable"
     case connectExternalCode = "connect-external-code", youSignIn = "you-signin", youAddEmail = "you-add-email", roomsHeld = "rooms-held", roomsNudge = "rooms-nudge"
+    case liveTextFinished = "live-text-finished"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -243,6 +244,8 @@ enum Renderer {
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: kept(home, PreviewFixtures.emojiRoomID, ComposerDraft(field: DraftField(text: "Lunch :pa")))) })
         case .commands:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: kept(home, PreviewFixtures.busyRoomID, ComposerDraft(field: DraftField(text: "/inv")))) })
+        case .liveTextFinished:
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.liveTextRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .linkCards:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.linkCardRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .roomMention:

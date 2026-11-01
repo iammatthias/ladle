@@ -53,7 +53,7 @@ final class ServerIntegrationTests: XCTestCase {
         let session = makeSession(server)
         session.start()
         try await waitFor("connected") { session.status == .signedOut }
-        XCTAssertEqual(session.server?.apron, 9)
+        XCTAssertTrue(ServerInfo.supportedVersions.contains(session.server?.apron ?? 0), "apron \(String(describing: session.server?.apron))")
         XCTAssertEqual(session.server.map { Set($0.auth) }, ["webauthn", "email", "token", "guest"])
 
         let outcome = try await session.signIn(.guest(name: "Ada"))
