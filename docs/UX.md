@@ -98,6 +98,7 @@ Ladle writes the `https` form when you copy or share a link (§A.4), using `Shar
 |---|---|---|
 | Selected server and room or thread, and the stack path | `@SceneStorage` | The same screen |
 | Scroll anchor (the `message_id` at the top edge) | `@SceneStorage` | Same position, or the New divider if new messages arrived |
+| Where a room opens | Each visit | At the New line, near the top, with what is new below it, as apron-web's `landAtDivider`: up to three older pages load to reach where you had read; further back, it opens at the latest with no line. A link to a message, or a scroll before it lands, keeps the timeline where that put it. The room is not marked read until it has opened. |
 | Collapsed server sections | `@AppStorage` | Same |
 | Draft text, mentions, reply target, and ready files per room and thread | `drafts.json` beside `servers.json`, written on change; the files in `Staged` in Application Support, excluded from backup | Same. A reply whose message is not loaded reads "Replying to a message". An open edit is not kept, as apron-web closes its editor when the pane changes; the draft waits beside it. A file still being fitted when the app ends is not kept. |
 | Rooms, users and each opened room's history within the Retention (Preferences > History) | `History/<server id>.jsonl` beside `servers.json`, in ARCHIVE.md's form; excluded from backup, file protection `completeUntilFirstUserAuthentication` | Shown at once, before the connection signs in; each room then catches up from its kept checkpoint (4.1) |

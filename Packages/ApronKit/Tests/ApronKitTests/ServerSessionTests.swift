@@ -686,6 +686,64 @@ final class ServerSessionTests: XCTestCase {
         try await open.value
     }
 
+    func testLandingPagesBackToWhereYouReadAndOpensAtTheNewLine() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        try await openGeneral(on: socket, floor: "90")
+        let land = Task { await session.landAtDivider("general", after: LogID("101")) }
+        let older = await frame(socket, 4)
+        XCTAssertEqual(older, #"{"id":"c5","method":"history","params":{"before":"103","limit":3,"room_id":"general"}}"#)
+        await socket.deliver(["id": "c5", "result": [
+            "messages": [message("101", "a"), message("102", "b"), message("103", "c")],
+            "first_log_id": "101", "last_log_id": "103", "more": true, "latest_log_id": "106", "history_log_id": "90",
+        ]])
+        let target = await land.value
+        XCTAssertEqual(target, LogID("102"), "the first message after where you read")
+        let sent = await socket.sentLog.count
+        XCTAssertEqual(sent, 5, "no page once the oldest loaded is where you read")
+        let loaded = await session.landAtDivider("general", after: LogID("104"))
+        XCTAssertEqual(loaded, LogID("105"), "already loaded: no request")
+        let nothingRead = await session.landAtDivider("general", after: nil)
+        XCTAssertNil(nothingRead, "nothing known read: the latest")
+        let sentAfter = await socket.sentLog.count
+        XCTAssertEqual(sentAfter, 5)
+    }
+
+    func testLandingStopsAfterThreePagesAndStaysAtTheLatest() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        try await openGeneral(on: socket, floor: "40")
+        let land = Task { await session.landAtDivider("general", after: LogID("50")) }
+        let pages = [(before: "103", ids: ["103"]), (before: "102", ids: ["102"]), (before: "101", ids: ["101"])]
+        for (index, page) in pages.enumerated() {
+            let sent = await frame(socket, 4 + index)
+            XCTAssertEqual(sent, #"{"id":"c\#(5 + index)","method":"history","params":{"before":"\#(page.before)","limit":3,"room_id":"general"}}"#)
+            await socket.deliver(["id": .string("c\(5 + index)"), "result": [
+                "messages": .array(page.ids.map { message($0, $0) }),
+                "first_log_id": .string(page.ids[0]), "last_log_id": .string(page.ids.last!), "more": true, "latest_log_id": "106", "history_log_id": "40",
+            ]])
+        }
+        let target = await land.value
+        XCTAssertNil(target, "the line is further back than three pages")
+        let sent = await socket.sentLog.count
+        XCTAssertEqual(sent, 7, "three pages, no fourth")
+        XCTAssertEqual(session.timeline("general").first?.messageID, LogID("101"))
+        XCTAssertTrue(session.canLoadOlder("general"), "older pages are still there to scroll to")
+    }
+
+    func testLandingPagesNothingOnceTheTimelineMoved() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        try await openGeneral(on: socket, floor: "90")
+        let target = await session.landAtDivider("general", after: LogID("101"), still: { false })
+        XCTAssertNil(target)
+        let sent = await socket.sentLog.count
+        XCTAssertEqual(sent, 4)
+    }
+
     func testRevealWaitsForTheOpeningPageThenPagesBackToTheMessage() async throws {
         session.start()
         let socket = await transport(0)

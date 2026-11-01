@@ -39,6 +39,10 @@ struct TimelineView: View {
     @State private var visit = Visit.opening
     @State private var visible = false
     @State private var jumpTarget: String?
+    /// The New line, scrolled to once when the visit opens at it.
+    @State private var landingTarget: String?
+    /// The reader dragged the timeline, which keeps it where they put it rather than landing.
+    @State private var scrolledByHand = false
     @State private var sentCount = 0
     @State private var viewing: MediaRequest?
     @State private var selecting: SelectableBody?
@@ -157,7 +161,10 @@ struct TimelineView: View {
                 let day = FloatingDay.day(of: items, visible: Set(ids))
                 if day != floatingDay { floatingDay = day }
             }
-            .onScrollPhaseChange { _, phase in scrolling = phase.isScrolling }
+            .onScrollPhaseChange { _, phase in
+                scrolling = phase.isScrolling
+                if phase == .interacting { scrolledByHand = true }
+            }
             .task(id: scrolling) {
                 if scrolling {
                     dayShown = true
@@ -173,6 +180,11 @@ struct TimelineView: View {
                 }
             }
             .animation(Motion.slow(reduceMotion), value: dayShown && !atBottom)
+            .onChange(of: landingTarget) {
+                guard let landingTarget else { return }
+                proxy.scrollTo(landingTarget, anchor: UnitPoint(x: 0.5, y: 0.06))
+                self.landingTarget = nil
+            }
             .onChange(of: jumpTarget) {
                 guard let jumpTarget else { return }
                 withAnimation(Motion.slide(reduceMotion)) { proxy.scrollTo(jumpTarget, anchor: .center) }
@@ -371,7 +383,7 @@ struct TimelineView: View {
                 problem = errorText(error)
                 return
             }
-            if visit == .opening { visit = .landed(after: session.readThrough(roomID)) }
+            if visit == .opening { await land() }
         }
         .onChange(of: place, initial: true) { _, link in
             guard let link, link.room == roomID else { return }
@@ -391,6 +403,31 @@ struct TimelineView: View {
             await show(link)
             if !Task.isCancelled { focus = nil }
         }
+    }
+
+    /// Opens the visit at its New line, as apron-web's `landAtDivider`: the session pages back to
+    /// where you had read, then the New line scrolls to the top, unless a link or a scroll moved
+    /// the timeline from its latest first. Reading starts once it has landed, so nothing is
+    /// marked read on the way.
+    private func land() async {
+        let after = session.readThrough(roomID)
+        let landing = Visit.landing(after: after)
+        visit = landing
+        scrolledByHand = false
+        let still = { visit == landing && focus == nil && !scrolledByHand }
+        let line = TimelineItem.unreadLine.id
+        if await session.landAtDivider(roomID, after: after, still: still) != nil, still() {
+            let deadline = ContinuousClock.now + ServerSession.dividerWait
+            while !items.contains(where: { $0.id == line }), ContinuousClock.now < deadline, still() {
+                try? await Task.sleep(for: .milliseconds(50))
+            }
+            // Twice, as the lazy rows above settle their heights and the bottom anchor follows them.
+            for _ in 0 ..< 2 where still() && items.contains(where: { $0.id == line }) {
+                landingTarget = line
+                try? await Task.sleep(for: .milliseconds(300))
+            }
+        }
+        if visit == landing { visit = .landed(after: after) }
     }
 
     /// A link's place in this room: the profile card for `user`, as apron-web's
@@ -831,14 +868,18 @@ struct TimelineView: View {
 
 
 /// One look at a room, as the web's `newDivider`: where you had read when it opened fixes the New
-/// line for the visit.
+/// line for the visit, which then opens at it (`land`).
 enum Visit: Equatable {
     case opening
+    /// Paging back to the New line and scrolling to it; nothing is read yet.
+    case landing(after: LogID?)
     case landed(after: LogID?)
 
     var after: LogID? {
-        if case .landed(let after) = self { return after }
-        return nil
+        switch self {
+        case .opening: nil
+        case .landing(let after), .landed(let after): after
+        }
     }
 
     var isLanded: Bool {
