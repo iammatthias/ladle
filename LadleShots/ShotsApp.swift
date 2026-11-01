@@ -114,6 +114,7 @@ enum Renderer {
             shots.append((screen, .light, false, Look.seeded(screen)))
         }
         shots.append((.timeline, .dark, true, nil))
+        shots.append((.liveTyping, .dark, true, nil))
         // The busy room in each premade theme but Apron, which every other shot is in, and in the
         // custom CSS of the custom Appearance shot.
         for look in PremadeTheme.all.dropFirst().map(Look.premade) + [Look.custom] {
