@@ -63,7 +63,8 @@ clone), which is only a worked example.
     (transport factory, sleep, jitter, request IDs, proposal `state`, page size).
     - Sign-in is `SignIn`: `.token`, `.signUp`, `.guest`, `.emailProposal`, `.emailCode`,
       `.externalProposal`, `.externalCode`, `.ownLink` (a link with this device's `state`) and
-      `.link` (a confirmed link, sent as `token`, saved as method `link`). Passkeys and
+      `.link` (a confirmed link, sent as `token`, saved as method `link`). Resuming the saved
+      token keeps the account's method and what was added, so a passkey account stays one. Passkeys and
       additions to an account are `ServerSession+SignInWays.swift` ("Identity and sign-in").
       `.signUp` is scheme `token` with a sign-up invite (`apron_join_`, Cloudflare's `/invite`)
       and the new account's `name`; its result carries the account's own `apron_invite_`

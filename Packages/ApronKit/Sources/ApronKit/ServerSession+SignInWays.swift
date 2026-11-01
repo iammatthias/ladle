@@ -31,8 +31,9 @@ extension ServerSession {
 
     /// A passkey account whose saved token the server refused, on a server that still takes
     /// passkeys: one tap signs back in (apron-web's "Sign in with your passkey to continue.").
+    /// Every sign-in clears `heldAccount`; `you` stays set through a refused resume.
     public var passkeyHold: Bool {
-        guard you == nil, let held = heldAccount, held.methods.contains("webauthn") else { return false }
+        guard let held = heldAccount, held.methods.contains("webauthn") else { return false }
         return offersPasskeys.signIn
     }
 

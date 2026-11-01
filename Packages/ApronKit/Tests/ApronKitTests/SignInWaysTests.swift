@@ -48,7 +48,7 @@ final class SignInWaysTests: XCTestCase {
                 Task { await transport.deliver(SignInWaysTests.greeting) }
                 return transport
             },
-            sleep: { _ in try await Task.sleep(for: .seconds(60)) },
+            sleep: { _ in try await Task.sleep(for: .milliseconds(10)) },
             jitter: { 1 },
             makeRequestID: { counter.withLock { $0 += 1; return "c\($0)" } },
             makeState: { "q8Rz" },
@@ -120,6 +120,28 @@ final class SignInWaysTests: XCTestCase {
         await eventually("held") { session.passkeyHold }
         XCTAssertEqual(session.signInNeeded, "Session expired")
         XCTAssertEqual(session.heldAccount?.userID, "ada")
+    }
+
+    func testATokenThatExpiresWhileSignedInHoldsAPasskeyAccountOnReconnect() async throws {
+        var saved = record
+        saved.account = ServerRecord.Account(userID: "ada", name: "Ada", scheme: "webauthn")
+        try tokens.setToken("st_1", for: saved.id)
+        session = makeSession(saved)
+        session.start()
+        let first = await transport(0)
+        _ = await frames(first, count: 2)
+        await first.deliver(["id": "c1", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await first.deliver(["id": "c2", "result": ["joined": []]])
+        await eventually("signed in") { session.status == .signedIn }
+        XCTAssertFalse(session.passkeyHold)
+
+        await first.close(code: 1000, reason: "")
+        let second = await transport(1)
+        XCTAssertEqual(session.record.account?.scheme, "webauthn", "resuming keeps how the account signed in")
+        _ = await frames(second, count: 2)
+        await second.deliver(["id": "c3", "error": ["code": -32001, "message": "Session expired"]])
+        await eventually("held after the resume is refused") { session.passkeyHold }
+        XCTAssertEqual(session.signInNeeded, "Session expired")
     }
 
     func testAnExternalSignInWithoutAReturnShowsThePageAndTakesItsCode() async throws {

@@ -459,7 +459,7 @@ public final class ServerSession {
 
     private func resume(with token: String, on connection: Connection) async {
         do {
-            try await authenticate(.token(token), on: connection)
+            try await authenticate(.token(token), on: connection, resuming: true)
         } catch let error as RPCError where error.code == RPCError.Code.denied || error.code == RPCError.Code.invalidParams {
             try? tokens.setToken(nil, for: record.id)
             resumable = false
@@ -474,7 +474,7 @@ public final class ServerSession {
     }
 
     @discardableResult
-    func authenticate(_ method: SignIn, on connection: Connection) async throws -> SignInOutcome {
+    func authenticate(_ method: SignIn, on connection: Connection, resuming: Bool = false) async throws -> SignInOutcome {
         // A sign-in starts without mutes: the server sends those in effect after its result
         // (§4.5), which may be applied before this function sees the result.
         if method.authenticates { resetMutes() }
@@ -517,8 +517,11 @@ public final class ServerSession {
             }
         }
         if let used = usedProposalState(method, state: state) { proposals.forget(used) }
-        try await adoptSignIn(identity, result: result, method: method.method, presented: method.presentedToken,
-                          registered: method.registers, rooms: rooms, on: connection)
+        // Resuming the saved token keeps how the account signed in and what was added since,
+        // as apron-web keeps `signedInWith` beside its token.
+        let kept = resuming ? record.account.flatMap { $0.userID == identity.userID ? $0 : nil } : nil
+        try await adoptSignIn(identity, result: result, method: kept?.scheme ?? method.method, presented: method.presentedToken,
+                          registered: method.registers, rooms: rooms, on: connection, added: kept?.added ?? [])
         return .signedIn(identity)
     }
 
