@@ -173,8 +173,6 @@ final class SignInLinksTests: XCTestCase {
         proposals.remember(own, now: now)
         let link = try XCTUnwrap(ApronLink(URL(string: "https://link.apron.chat/#server=wss://elsewhere.example/ws&token=Hk41&state=q8Rz")!))
         XCTAssertEqual(LinkRoute(link, records: [home], proposal: proposals.find(link.state, now: now)), .proposal(own, token: "Hk41"))
-        XCTAssertEqual(LinkUse(token: "Hk41", state: "q8Rz", server: home.url, proposals: proposals, now: now), .own(token: "Hk41", proposal: own))
-        XCTAssertEqual(LinkUse(token: "Hk41", state: "other", server: home.url, proposals: proposals, now: now), .ask(token: "Hk41", server: home.url))
         let foreign = try XCTUnwrap(ApronLink(URL(string: "https://link.apron.chat/#server=wss://home.example/ws&token=Hk41&state=zzz")!))
         XCTAssertEqual(LinkRoute(foreign, records: [home], proposal: nil), .signIn(home, TokenPayload(token: "Hk41", server: home.url)))
     }
@@ -197,6 +195,7 @@ final class SignInLinksTests: XCTestCase {
                        #"{"agent":"a","return_url":"https://home.example/","scheme":"external","state":"q8Rz"}"#)
         XCTAssertEqual(SignIn.link("Hk41").params(agent: "a", state: "x").serialized(), #"{"agent":"a","scheme":"token","token":"Hk41"}"#)
         XCTAssertEqual(SignIn.link("Hk41").method, "link")
+        XCTAssertEqual(SignIn.link("Hk41").presentedToken, "Hk41", "kept when the result carries no token (§3.2.1)")
         XCTAssertEqual(SignIn.ownLink("Hk41", scheme: .external).params(agent: "a", state: "x").serialized(),
                        #"{"agent":"a","scheme":"external","token":"Hk41"}"#)
     }

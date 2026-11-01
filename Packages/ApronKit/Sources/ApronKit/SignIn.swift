@@ -45,8 +45,10 @@ public enum SignIn: Hashable, Sendable {
     /// The token to resume with when the result carries none: a bearer token stays the one
     /// (§3.2.1).
     public var presentedToken: String? {
-        if case .token(let token) = self { return token }
-        return nil
+        switch self {
+        case .token(let token), .link(let token): token
+        default: nil
+        }
     }
 
     /// Whether the sign-in is an account's, past the welcome (apron-web's `dropWelcomes`): a

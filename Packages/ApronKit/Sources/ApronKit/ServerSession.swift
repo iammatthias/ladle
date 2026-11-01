@@ -539,7 +539,9 @@ public final class ServerSession {
         if let previous = you, previous.userID != identity.userID {
             if keepsState { followRename(from: previous.userID, to: identity.userID) } else { resetChatState() }
         }
-        arrivals.listed = false
+        // The listing behind this sign-in is the new baseline; a passkey added to the account
+        // sends none, and keeps the one it has.
+        if rooms != nil { arrivals.listed = false }
         readPositions = positions.positions(server: record.id, user: identity.userID)
         let bearer = result["token"]?.stringValue ?? presented
         try tokens.setToken(bearer, for: record.id)
@@ -576,7 +578,7 @@ public final class ServerSession {
         for index in outbox.indices where outbox[index].userID == old { outbox[index].userID = new }
         if let kept = users.user(new).flatMap(UserObject.init) { you = kept }
         if let account = record.account {
-            setAccount(ServerRecord.Account(userID: new, name: account.name, scheme: account.scheme))
+            setAccount(ServerRecord.Account(userID: new, name: account.name, scheme: account.scheme, added: account.added))
         }
     }
 
@@ -588,7 +590,8 @@ public final class ServerSession {
         you = identity
         chosenStatus = identity.json["status"]?.stringValue
         if let account = record.account {
-            setAccount(ServerRecord.Account(userID: identity.userID, name: identity.json["name"]?.stringValue, scheme: account.scheme))
+            setAccount(ServerRecord.Account(userID: identity.userID, name: identity.json["name"]?.stringValue, scheme: account.scheme,
+                                            added: account.added))
         }
     }
 

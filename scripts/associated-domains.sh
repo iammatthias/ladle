@@ -11,9 +11,11 @@ file=Config/Ladle.entitlements
 key=:com.apple.developer.associated-domains
 [[ -f Config/Domains.xcconfig ]] || exit 0
 domains=$(sed -n 's/^[[:space:]]*APRON_ASSOCIATED_DOMAINS[[:space:]]*=//p' Config/Domains.xcconfig | tail -1)
-present=$(/usr/libexec/PlistBuddy -c "Print $key" $file 2>/dev/null || true)
+present=("${(@f)$(/usr/libexec/PlistBuddy -c "Print $key" $file 2>/dev/null | sed 's/^[[:space:]]*//')}")
 for domain in ${=domains//,/ }; do
-  [[ $domain == [A-Za-z0-9*]*.* ]] || { echo "skipping $domain: not a domain" >&2; continue; }
-  [[ $present == *"webcredentials:$domain"* ]] && continue
+  # The app reads the same list, so a bad entry stops the build rather than reaching it.
+  [[ $domain == [A-Za-z0-9*]*.* ]] || { echo "APRON_ASSOCIATED_DOMAINS: $domain is not a domain" >&2; exit 1; }
+  (( ${present[(Ie)webcredentials:$domain]} )) && continue
   /usr/libexec/PlistBuddy -c "Add $key: string webcredentials:$domain" $file
+  present+=(webcredentials:$domain)
 done

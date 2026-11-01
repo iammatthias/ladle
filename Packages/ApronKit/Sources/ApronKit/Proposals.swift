@@ -108,24 +108,6 @@ public final class Proposals {
     }
 }
 
-/// What a sign-in link is for (§4.11.2), as apron-web's `linkUse`: a sign-in this device proposed,
-/// used at once on the server it went to; an addition this device proposed, for the account that
-/// proposed it; or any other link, used only once the user confirms.
-public enum LinkUse: Hashable, Sendable {
-    case own(token: String, proposal: Proposal)
-    case addition(token: String, proposal: Proposal)
-    case ask(token: String, server: URL)
-
-    @MainActor
-    public init(token: String, state: String?, server: URL, proposals: Proposals, now: Date) {
-        if let proposal = proposals.find(state, now: now) {
-            self = proposal.kind == .addition && proposal.account != nil ? .addition(token: token, proposal: proposal) : .own(token: token, proposal: proposal)
-        } else {
-            self = .ask(token: token, server: server)
-        }
-    }
-}
-
 /// The confirmation before a link of no proposal here is used, as apron-web's
 /// `signInLinkPrompt`: which server, what it replaces, and the warning that a link from someone
 /// else signs in to their account. A link doesn't say whether it signs in or adds a sign-in

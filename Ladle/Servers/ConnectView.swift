@@ -417,7 +417,7 @@ struct ConnectView: View {
                 guard let signIn = form.signIn(pendingEmail: session.pendingEmail, pendingPage: session.pendingPage, returnURL: returnURL) else { return }
                 // A pasted link with this device's own `state` continues that proposal (§4.11.2).
                 if case .token(let token) = signIn, let proposal = store.proposals.find(form.pastedLinkState, now: Date()),
-                   proposal.server == session.record.id {
+                   proposal.kind == .signIn, proposal.server == session.record.id {
                     try await session.signIn(link: token, proposal: proposal)
                     return finish(session)
                 }
@@ -446,10 +446,10 @@ struct ConnectView: View {
         do {
             switch try await ExternalSignIn.open(page, returns: returns, origin: session.record.origin, proposals: store.proposals,
                                                  session: webAuthenticationSession) {
-            case .link(let token, let proposal):
+            case .link(let token, let proposal) where proposal.kind == .signIn && proposal.server == session.record.id:
                 try await session.signIn(link: token, proposal: proposal)
                 finish(session)
-            case .foreignLink:
+            case .link, .foreignLink:
                 error = ExternalSignIn.foreignWords
             case .closed:
                 break

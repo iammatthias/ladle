@@ -929,7 +929,8 @@ Also email with a typed code (§4.11), passkeys and the server's own sign-in pag
     gitignored: xcodegen writes `applinks:link.apron.chat`, then `scripts/associated-domains.sh`
     (run by `build.sh` and `tools/testflight.sh` after `xcodegen generate`) adds
     `webcredentials:<domain>` for each entry. An empty list adds nothing, rather than a bare
-    `webcredentials:`. `ServerRecord.rpID` stays optional and unused.
+    `webcredentials:`, and an entry that is not a domain stops the build, since the app's
+    `LadlePasskeyDomains` would still list it. `ServerRecord.rpID` stays optional and unused.
   - A server whose domain is not among them (`server.apron.chat`, whose RP ID is `apron.chat`)
     can't use passkeys here: the Passkey method says so and offers the web client in Safari,
     where the user signs in and gets a token for this device (`/invite-device add`). The demo

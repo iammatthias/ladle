@@ -143,13 +143,23 @@ extension ServerSession {
     /// or one the user chose to add from the link dialog, sent with an addable scheme the server
     /// offers, since the link doesn't say which (§4.11.3).
     public func approveAddition(link token: String, proposal: Proposal?) async throws {
+        // A link that opened the app comes before its session has signed back in (apron-web's
+        // `sessionSettled`); an addition approves only on the account that proposed it (§4.11.3).
+        for _ in 0 ..< 200 where status != .signedIn {
+            if case .stopped = status { break }
+            try await Task.sleep(for: .milliseconds(50))
+        }
+        guard status == .signedIn, let you else { throw Failure.notSignedIn }
+        if let account = proposal?.account, you.userID != account {
+            throw PasskeyError.failed("This link adds a sign-in to another account than the one signed in here. Sign in to that account, then open it again.")
+        }
         let offered = ProposalScheme.allCases.filter { server?.auth.contains($0.rawValue) == true }
         guard let scheme = proposal?.scheme ?? offered.first else {
             throw PasskeyError.failed("This server does not sign in with email or an external page, so none can be added")
         }
         _ = try await request("auth", ["scheme": .string(scheme.rawValue), "token": .string(token)])
         if let proposal { proposals.forget(proposal.state) }
-        if pendingAddition?.state == proposal?.state { pendingAddition = nil }
+        if let proposal, pendingAddition?.state == proposal.state { pendingAddition = nil }
         noteAdded(proposal?.scheme.rawValue ?? (offered.count == 1 ? scheme.rawValue : "link"))
     }
 
