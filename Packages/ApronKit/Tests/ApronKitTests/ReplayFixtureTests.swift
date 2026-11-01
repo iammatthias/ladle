@@ -22,6 +22,7 @@ final class ReplayFixtureTests: XCTestCase {
     func test16TransientNotices() throws { try runFixture("16-transient-notices") }
     func test17Memberships() throws { try runFixture("17-memberships") }
     func test18UserIDForms() throws { try runFixture("18-user-id-forms") }
+    func test19LiveText() throws { try runFixture("19-live-text") }
 
     /// Every bundled file, so a fixture added upstream without a method above still runs, and the
     /// totals the report quotes are measured here.
@@ -31,9 +32,9 @@ final class ReplayFixtureTests: XCTestCase {
             totals.add(try run(fixtureAt: url))
         }
         print("replay fixtures: \(totals.files) files, \(totals.variants) variants, \(totals.runs) runs, \(totals.expectChecks) expect checks")
-        XCTAssertEqual(totals.files, 18)
-        XCTAssertEqual(totals.variants, 42)
-        XCTAssertEqual(totals.runs, 84)
+        XCTAssertEqual(totals.files, 19)
+        XCTAssertEqual(totals.variants, 44)
+        XCTAssertEqual(totals.runs, 88)
     }
 
     private struct Totals {

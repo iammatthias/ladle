@@ -58,7 +58,7 @@ final class JSONValueTests: XCTestCase {
 
     func testEveryBundledFixtureRoundTrips() throws {
         let urls = try fixtureURLs()
-        XCTAssertEqual(urls.count, 18)
+        XCTAssertEqual(urls.count, 19)
         for url in urls {
             let data = try Data(contentsOf: url)
             let value = try JSONValue(parsing: data)

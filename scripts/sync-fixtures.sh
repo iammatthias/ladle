@@ -6,8 +6,11 @@
 set -e
 setopt NULL_GLOB
 cd "$(dirname "$0")/.."
-SPEC=${APRON_SPEC:-$HOME/Developer/forks/apron-server-go/testdata/apron}
 PIN=$(awk '$1 == "apron" { print $2 }' scripts/SPEC)
+# The first clone that has the pin: APRON_SPEC, the server's spec checkout, then the bare reference clone.
+for SPEC in ${APRON_SPEC:-} $HOME/Developer/forks/apron-server-go/testdata/apron $HOME/.cache/apron-reference/shazow_apron.git; do
+  git -C "$SPEC" cat-file -e "$PIN^{commit}" 2>/dev/null && break
+done
 FIXTURES=tests/fixtures/wire/replay
 DST=Packages/ApronKit/Tests/ApronKitTests/Fixtures/wire/replay
 
