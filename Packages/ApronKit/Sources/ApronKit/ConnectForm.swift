@@ -1,16 +1,28 @@
 import Foundation
 
 /// The Connect sheet's form, as apron-web's ConnectScreen: a server's address, name and origin,
-/// how to sign in (a token, email or guest) and that method's fields. Opened for a saved server it
-/// signs in again and can change the name and origin. A scanned, pasted or tapped sign-in fills in
-/// the address and the token together; nothing connects until the user submits (link.apron.chat
-/// SPEC §6).
+/// how to sign in (a passkey, a token, email, the server's sign-in page or guest) and that
+/// method's fields. Opened for a saved server it signs in again and can change the name and
+/// origin. A scanned, pasted or tapped sign-in fills in the address and the token together;
+/// nothing connects until the user submits (link.apron.chat SPEC §6).
 public struct ConnectForm: Sendable {
     public enum Method: String, CaseIterable, Identifiable, Sendable {
-        case token = "Token", email = "Email", guest = "Guest"
+        case passkey = "Passkey", token = "Token", email = "Email", external = "External", guest = "Guest"
         public var id: String { rawValue }
-        public var scheme: String { rawValue.lowercased() }
+        public var scheme: String { self == .passkey ? "webauthn" : rawValue.lowercased() }
+
+        /// The method for an `auth` scheme, or for how an account signed in.
+        public init?(scheme: String) {
+            guard let method = Self.allCases.first(where: { $0.scheme == scheme }) else { return nil }
+            self = method
+        }
     }
+
+    /// On Passkey, where passkeys both sign in and create accounts: which one (apron-web's
+    /// `passkeyMode`, Sign In by default). Never guessed.
+    public var passkeyMode = PasskeyAction.login
+    /// The display name of an account a passkey creates.
+    public var displayName = ""
 
     /// The saved server being signed in to again; nil to add one.
     public let record: ServerRecord?
@@ -50,7 +62,7 @@ public struct ConnectForm: Sendable {
             address = record.url.absoluteString
             label = record.label
             origin = record.origin
-            if let scheme = record.account?.scheme, let saved = Method(rawValue: scheme.capitalized), saved != .guest || mayWrite {
+            if let scheme = record.account?.scheme, let saved = Method(scheme: scheme), saved != .guest || mayWrite {
                 method = saved
             }
         }
@@ -66,13 +78,33 @@ public struct ConnectForm: Sendable {
 
     public var url: URL? { Self.url(from: address) }
 
-    /// The methods `server` offers (`auth` and `signup`), once it has said; all three until then,
-    /// or when it names none of them.
+    /// What every server can be asked before it says what it offers.
+    static let basic: [Method] = [.token, .email, .guest]
+
+    /// The methods `server` offers, in its order (`auth`, then the rest of `signup`), once it has
+    /// said; token, email and guest until then, or when it names none Ladle knows.
     public static func methods(offered server: ServerInfo?) -> [Method] {
-        guard let server else { return Method.allCases }
-        let offered = Set(server.auth + (server.signup ?? []))
-        let known = Method.allCases.filter { offered.contains($0.scheme) }
-        return known.isEmpty ? Method.allCases : known
+        guard let server else { return basic }
+        var known: [Method] = []
+        for scheme in server.auth + (server.signup ?? []) {
+            if let method = Method(scheme: scheme), !known.contains(method) { known.append(method) }
+        }
+        return known.isEmpty ? basic : known
+    }
+
+    /// Whether the scheme only signs in, only creates accounts, or both, as apron-web's `schemeUse`.
+    public static func use(of method: Method, offered server: ServerInfo?) -> (signIn: Bool, signUp: Bool) {
+        guard let server else { return (true, true) }
+        return (server.auth.contains(method.scheme), (server.signup ?? server.auth).contains(method.scheme))
+    }
+
+    /// The passkey action that runs: the one chosen, unless the server lets passkeys do only the
+    /// other (apron-web's `passkeyMode`).
+    public func passkeyAction(offered server: ServerInfo?) -> PasskeyAction {
+        let use = Self.use(of: .passkey, offered: server)
+        if !use.signIn { return .register }
+        if !use.signUp { return .login }
+        return passkeyMode
     }
 
     /// Keeps the method among those offered, else takes the first.
@@ -85,22 +117,34 @@ public struct ConnectForm: Sendable {
     /// An `apron_join_` token: it creates an account, named as the user asks.
     public var isSignUpInvite: Bool { TokenPayload(parsing: token).map { SignIn.isSignUpInvite($0.token) } ?? false }
 
-    /// The submit button's word, with `pendingEmail` the address a code was sent to.
-    public func submitLabel(pendingEmail: String?) -> String {
+    /// The submit button's word, with `pendingEmail` the address a code was sent to and
+    /// `pendingPage` an external sign-in page that shows a code.
+    public func submitLabel(pendingEmail: String?, pendingPage: URL? = nil, offered server: ServerInfo? = nil) -> String {
         switch method {
         case .email where pendingEmail == nil: "Send Code"
         case .token where isSignUpInvite: "Create Account"
+        case .passkey: passkeyAction(offered: server) == .register ? "Create Account" : "Sign In"
+        case .external where pendingPage == nil: "Continue"
         default: record == nil ? "Connect" : "Sign In"
         }
     }
 
-    public func canSubmit(pendingEmail: String?) -> Bool {
+    public func canSubmit(pendingEmail: String?, pendingPage: URL? = nil) -> Bool {
         guard url != nil else { return false }
         switch method {
         case .token: return TokenPayload(parsing: token) != nil
         case .email: return pendingEmail == nil ? email.contains("@") : !code.isEmpty
-        case .guest: return true
+        case .external: return pendingPage == nil || !code.isEmpty
+        case .passkey, .guest: return true
         }
+    }
+
+    /// The `state` of a sign-in link pasted into the token or code field, which says whether it
+    /// answers this device's own proposal (§4.11.2).
+    public var pastedLinkState: String? {
+        let text = method == .token ? token : code
+        guard text.contains("token=") else { return nil }
+        return ApronLink(text.trimmingCharacters(in: .whitespacesAndNewlines))?.state
     }
 
     /// Pasted or typed text: a sign-in fills in, anything else lands in the token field as typed.
@@ -138,8 +182,16 @@ public struct ConnectForm: Sendable {
 
     /// The `auth` to send. With `pendingEmail`, the email method sends the code, or the link
     /// from the email when that was pasted.
-    public func signIn(pendingEmail: String?) -> SignIn? {
+    /// The external method proposes with `returnURL` (`SignInPage.returnURL`), then, where the
+    /// page shows a code (`pendingPage`), sends it. A passkey is a ceremony, not one `auth`: nil.
+    public func signIn(pendingEmail: String?, pendingPage: URL? = nil, returnURL: URL? = nil) -> SignIn? {
         switch method {
+        case .passkey:
+            return nil
+        case .external:
+            if pendingPage == nil { return .externalProposal(returnURL: returnURL) }
+            if let payload = TokenPayload(parsing: code), code.contains("token=") { return .token(payload.token) }
+            return .externalCode(code.trimmingCharacters(in: .whitespaces))
         case .token:
             guard let payload = TokenPayload(parsing: token) else { return nil }
             return SignIn.isSignUpInvite(payload.token) ? .signUp(invite: payload.token, name: accountName) : .token(payload.token)

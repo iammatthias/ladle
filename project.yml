@@ -54,7 +54,11 @@ targets:
               public.filename-extension: [jsonl]
               public.mime-type: [application/jsonl]
         LSSupportsOpeningDocumentsInPlace: false
+        # The webcredentials domains (passkeys), which the app cannot read from its entitlements.
+        LadlePasskeyDomains: $(APRON_ASSOCIATED_DOMAINS)
     # link.apron.chat lists this app ID in its association file once the app is in its registry.
+    # The file is generated: scripts/associated-domains.sh adds webcredentials:<domain> for each
+    # APRON_ASSOCIATED_DOMAINS entry in the gitignored Config/Domains.xcconfig.
     entitlements:
       path: Config/Ladle.entitlements
       properties:
@@ -84,6 +88,11 @@ targets:
       - path: LadleShots
     dependencies:
       - package: ApronKit
+    # The sign-in shots' server is one the renderer may ask passkeys for (PreviewFixtures.ownerURL).
+    info:
+      path: Config/LadleShots-Info.plist
+      properties:
+        LadlePasskeyDomains: owner.example
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.ladle.ios.shots

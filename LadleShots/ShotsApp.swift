@@ -42,6 +42,8 @@ enum Screen: String, CaseIterable {
     case commandFailed = "command-failed"
     case emojiStandard = "emoji-standard"
     case floatingDay = "floating-day", mentionPulse = "mention-pulse", welcome
+    case connectPasskey = "connect-passkey", connectPasskeyCreate = "connect-passkey-create", connectPasskeyUnavailable = "connect-passkey-unavailable"
+    case connectExternalCode = "connect-external-code", youSignIn = "you-signin", youAddEmail = "you-add-email", roomsHeld = "rooms-held", roomsNudge = "rooms-nudge"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -85,6 +87,7 @@ enum Renderer {
 
         let store = await PreviewFixtures.makeStore()
         guard let home = store.session(for: PreviewFixtures.homeID) else { exit(1) }
+        signIn = await PreviewFixtures.makeSignInStore()
 
         var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool, look: Look?)] = []
         for screen in Screen.allCases where screen != .limited && screen != .privateFull {
@@ -133,6 +136,9 @@ enum Renderer {
             UserDefaults.standard.set(shot.screen != .membersFolded, forKey: "memberOfflineOpen")
             if shot.screen == .limited { await seedWaits(home: home) }
             if shot.screen == .commandFailed { await seedCommandFailure(home: home) }
+            if shot.screen == .connectExternalCode, let fresh = signIn.session(for: PreviewFixtures.freshID), fresh.pendingPage == nil {
+                _ = try? await fresh.signIn(.externalProposal(returnURL: nil))
+            }
             if shot.screen == .privateFull, !home.atPrivateRoomLimit { _ = try? await home.startPrivateRoom(with: []) }
             show(AnyView(view(shot.screen, store: store, home: home, staged: staged)
                 .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
@@ -153,7 +159,34 @@ enum Renderer {
         exit(0)
     }
 
+    /// The sign-in shots' own world (`PreviewFixtures.makeSignInStore`).
+    static var signIn = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
+
     static func view(_ screen: Screen, store: SessionStore, home: ServerSession, staged: [StagedFile]) -> AnyView {
+        let owner = signIn.session(for: PreviewFixtures.ownerID)
+        let fresh = signIn.session(for: PreviewFixtures.freshID)
+        return switch screen {
+        case .connectPasskey, .connectPasskeyCreate:
+            AnyView(ConnectView(store: signIn, record: fresh?.record, startMethod: .passkey,
+                                startPasskeyMode: screen == .connectPasskeyCreate ? .register : .login))
+        case .connectPasskeyUnavailable:
+            AnyView(ConnectView(store: store, record: store.session(for: PreviewFixtures.demoID)?.record, startMethod: .passkey))
+        case .connectExternalCode:
+            AnyView(ConnectView(store: signIn, record: fresh?.record, startMethod: .external))
+        case .youSignIn:
+            AnyView(owner.map { YouView(session: $0) })
+        case .youAddEmail:
+            AnyView(owner.map { YouView(session: $0, adding: AddSignInRows.Adding(scheme: .email, email: "sam@example.com", codeSent: true)) })
+        case .roomsHeld:
+            AnyView(signIn.session(for: PreviewFixtures.heldID).map { held in NavigationStack { RoomListView(session: held, open: { _ in }) } })
+        case .roomsNudge:
+            AnyView(owner.map { owner in NavigationStack { RoomListView(session: owner, open: { _ in }) } })
+        default:
+            screens(screen, store: store, home: home, staged: staged)
+        }
+    }
+
+    static func screens(_ screen: Screen, store: SessionStore, home: ServerSession, staged: [StagedFile]) -> AnyView {
         switch screen {
         case .appearance:
             AnyView(NavigationStack { AppearanceView(editor: ThemeEditor(settings: store.appearance)) })
@@ -409,6 +442,9 @@ enum Renderer {
             // Eun-ji's mention of Sam as it arrives, its ring a third of the way out.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
                 .environment(\.shotPins, ShotPins(pulse: 0.35, scrollTo: "1793092500000")))
+        case .connectPasskey, .connectPasskeyCreate, .connectPasskeyUnavailable, .connectExternalCode, .youSignIn, .youAddEmail, .roomsHeld, .roomsNudge:
+            // Drawn by `view` from the sign-in store.
+            AnyView(EmptyView())
         case .welcome:
             // The demo's welcome before `auth`, in its first room, help.
             AnyView(NavigationStack {

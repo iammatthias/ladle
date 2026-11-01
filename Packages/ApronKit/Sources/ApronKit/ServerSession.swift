@@ -39,6 +39,10 @@ public final class ServerSession {
         case unsupported(capability: String)
         /// The result listed no `write_url` for an attachment (§4.8.3).
         case attachmentNotAccepted
+        /// An external proposal's `url` was not an `https` page, or `http` on a loopback host (§4.11.5).
+        case badSignInPage
+        /// No addition is open on this connection for a code to approve (§4.11.1).
+        case noAddition
     }
 
     /// The seams tests replace: the transport, the clock, and the random parts.
@@ -48,7 +52,7 @@ public final class ServerSession {
         /// A factor in [0.5, 1.5) applied to each backoff delay.
         public var jitter: @Sendable () -> Double
         public var makeRequestID: @Sendable () -> String
-        /// The unguessable `state` of an email proposal (§4.11.1).
+        /// The unguessable `state` of an email or external proposal (§4.11.1).
         public var makeState: @Sendable () -> String
         public var agent: String
         /// `limit` of a history page that pages backward.
@@ -72,6 +76,8 @@ public final class ServerSession {
         /// with its messages. A slow listing still installs when it comes. Real time, not
         /// `sleep`, which tests release one sleep at a time.
         public var threadsWait: Duration
+        /// The domains this build may ask passkeys for (`PasskeyDomains.app`).
+        public var passkeyDomains: PasskeyDomains
 
         public init(
             makeTransport: @escaping @Sendable (ServerRecord) -> any FrameTransport,
@@ -88,8 +94,10 @@ public final class ServerSession {
             readCursorInterval: Duration = .seconds(5),
             typing: TypingTimes = TypingTimes(),
             now: @escaping @Sendable () -> Date = { Date() },
-            threadsWait: Duration = .seconds(3)
+            threadsWait: Duration = .seconds(3),
+            passkeyDomains: PasskeyDomains = .app
         ) {
+            self.passkeyDomains = passkeyDomains
             self.makeTransport = makeTransport
             self.sleep = sleep
             self.jitter = jitter
@@ -248,15 +256,26 @@ public final class ServerSession {
     private let tokens: any TokenStore
     private let positions: any ReadPositionStore
     let environment: Environment
-    private var connection: Connection?
+    private(set) var connection: Connection?
     private var runTask: Task<Void, Never>?
+    /// The email and external proposals this device made, by `state`, shared by every session.
+    public let proposals: Proposals
+    /// The account whose saved token the server refused, until the next sign-in: a passkey
+    /// account then signs back in with a tap (`passkeyHold`), as apron-web holds the session.
+    public internal(set) var heldAccount: ServerRecord.Account?
+    /// An addition proposed on this connection (§4.11.1), which only it can approve with a code.
+    public internal(set) var pendingAddition: PendingAddition?
+    /// The page of an external proposal that shows a code, while the proposing connection lasts.
+    public internal(set) var pendingPage: URL?
+    @ObservationIgnored var pendingProposalState: String?
 
     public init(record: ServerRecord, tokens: any TokenStore, positions: any ReadPositionStore = InMemoryReadPositionStore(),
                 mediaSettings: MediaSettings = MediaSettings(), addedRooms: AddedRooms = AddedRooms(), keeping: HistoryKeeping? = nil,
-                environment: Environment = .live) {
+                proposals: Proposals = Proposals(), environment: Environment = .live) {
         self.record = record
         self.mediaSettings = mediaSettings
         self.addedRooms = addedRooms
+        self.proposals = proposals
         self.keeping = keeping
         self.tokens = tokens
         self.positions = positions
@@ -295,6 +314,7 @@ public final class ServerSession {
     public func signOut() async {
         try? tokens.setToken(nil, for: record.id)
         resumable = false
+        heldAccount = nil
         setAccount(nil)
         await stop()
         resetChatState()
@@ -340,6 +360,8 @@ public final class ServerSession {
             await connection.close()
             if self.connection === connection { self.connection = nil }
             pendingEmail = nil
+            pendingPage = nil
+            pendingAddition = nil
             clearTyping()
             for roomID in histories.keys { histories[roomID]?.isLive = false }
             if Task.isCancelled { return }
@@ -371,6 +393,7 @@ public final class ServerSession {
                 case .credentialsRevoked(let reason):
                     try? tokens.setToken(nil, for: record.id)
                     resumable = false
+                    if record.account != nil { heldAccount = record.account }
                     setAccount(nil)
                     forgetKept()
                     signInNeeded = reason
@@ -410,22 +433,25 @@ public final class ServerSession {
     @discardableResult
     public func signIn(_ method: SignIn) async throws -> SignInOutcome {
         let stopped = if case .stopped = status { true } else { false }
-        if status == .signedIn || stopped || connection == nil {
-            await stop()
-            resumesSavedToken = false
-            start()
-            let deadline = ContinuousClock.now + .seconds(20)
-            while status != .signedOut {
-                switch status {
-                case .stopped, .reconnecting: throw Failure.notConnected
-                default: break
-                }
-                guard ContinuousClock.now < deadline else { throw Failure.notConnected }
-                try await Task.sleep(for: .milliseconds(10))
-            }
-        }
+        if status == .signedIn || stopped || connection == nil { try await connectAfresh() }
         guard let connection else { throw Failure.notConnected }
         return try await authenticate(method, on: connection)
+    }
+
+    /// A new connection that presents no saved token, once its server frame is in.
+    func connectAfresh() async throws {
+        await stop()
+        resumesSavedToken = false
+        start()
+        let deadline = ContinuousClock.now + .seconds(20)
+        while status != .signedOut {
+            switch status {
+            case .stopped, .reconnecting: throw Failure.notConnected
+            default: break
+            }
+            guard ContinuousClock.now < deadline else { throw Failure.notConnected }
+            try await Task.sleep(for: .milliseconds(10))
+        }
     }
 
     /// False for the one connection a `signIn` opens, which must not resume the saved token.
@@ -437,6 +463,7 @@ public final class ServerSession {
         } catch let error as RPCError where error.code == RPCError.Code.denied || error.code == RPCError.Code.invalidParams {
             try? tokens.setToken(nil, for: record.id)
             resumable = false
+            if record.account != nil { heldAccount = record.account }
             setAccount(nil)
             forgetKept()
             signInNeeded = error.message
@@ -447,11 +474,18 @@ public final class ServerSession {
     }
 
     @discardableResult
-    private func authenticate(_ method: SignIn, on connection: Connection) async throws -> SignInOutcome {
+    func authenticate(_ method: SignIn, on connection: Connection) async throws -> SignInOutcome {
         // A sign-in starts without mutes: the server sends those in effect after its result
         // (§4.5), which may be applied before this function sees the result.
         if method.authenticates { resetMutes() }
-        let auth = try await connection.send("auth", params: method.params(agent: environment.agent, state: environment.makeState()))
+        let state = environment.makeState()
+        if let scheme = method.proposal {
+            // Remembered before it goes out: its link may come back before its result does.
+            proposals.remember(Proposal(scheme: scheme, kind: .signIn, server: record.id, state: state,
+                                        email: { if case .emailProposal(let address) = method { address } else { nil } }(),
+                                        expires: environment.now().addingTimeInterval(Proposals.lifetime)), now: environment.now())
+        }
+        let auth = try await connection.send("auth", params: method.params(agent: environment.agent, state: state))
         let rooms = method.authenticates ? try await connection.send("room_list", params: Self.roomListParams) : nil
         let before = status
         if method.authenticates { status = .signingIn }
@@ -460,38 +494,74 @@ public final class ServerSession {
             result = try await auth.value
         } catch {
             status = before
+            if method.proposal != nil { proposals.forget(state) }
             throw error
         }
         guard let identity = UserObject(result["you"]) else {
             status = before
-            guard case .emailProposal(let address) = method else { throw Failure.notSignedIn }
-            pendingEmail = address
-            return .codeSent(to: address)
+            switch method {
+            case .emailProposal(let address):
+                pendingEmail = address
+                pendingProposalState = state
+                return .codeSent(to: address)
+            case .externalProposal(let returnURL):
+                guard let page = result["url"]?.stringValue.flatMap(URL.init(string:)), SignInPage.accepts(page) else {
+                    proposals.forget(state)
+                    throw Failure.badSignInPage
+                }
+                pendingProposalState = state
+                if returnURL == nil { pendingPage = page }
+                return .page(page, returns: returnURL != nil)
+            default:
+                throw Failure.notSignedIn
+            }
         }
-        if let previous = you, previous.userID != identity.userID { resetChatState() }
+        if let used = usedProposalState(method, state: state) { proposals.forget(used) }
+        try await adoptSignIn(identity, result: result, method: method.method, presented: method.presentedToken,
+                          registered: method.registers, rooms: rooms, on: connection)
+        return .signedIn(identity)
+    }
+
+    /// The `state` of the proposal a code or link approved (§4.11.1: approval uses it up).
+    private func usedProposalState(_ method: SignIn, state: String) -> String? {
+        switch method {
+        case .emailCode, .externalCode: pendingProposalState
+        default: nil
+        }
+    }
+
+    /// Makes `identity` this connection's account after a sign-in: the token in `result` (else
+    /// the one presented) is saved, the account is recorded as signed in by `method`, and the
+    /// rooms listed behind the `auth` are applied. `keepsState` follows a guest becoming an
+    /// account under a new `user_id` as a rename, keeping its rooms.
+    func adoptSignIn(_ identity: UserObject, result: JSONValue, method: String, presented: String?, registered: Bool,
+                     rooms: Connection.Reply?, on connection: Connection, keepsState: Bool = false, added: [String] = []) async throws {
+        if let previous = you, previous.userID != identity.userID {
+            if keepsState { followRename(from: previous.userID, to: identity.userID) } else { resetChatState() }
+        }
         arrivals.listed = false
         readPositions = positions.positions(server: record.id, user: identity.userID)
-        var bearer = result["token"]?.stringValue
-        if bearer == nil, case .token(let presented) = method { bearer = presented }
+        let bearer = result["token"]?.stringValue ?? presented
         try tokens.setToken(bearer, for: record.id)
         resumable = bearer != nil
         you = identity
         chosenStatus = identity.json["status"]?.stringValue
         users.replace(with: identity)
         pendingEmail = nil
+        pendingPage = nil
+        pendingProposalState = nil
         signInNeeded = nil
-        setAccount(ServerRecord.Account(userID: identity.userID, name: identity.json["name"]?.stringValue, scheme: method.scheme))
+        heldAccount = nil
+        setAccount(ServerRecord.Account(userID: identity.userID, name: identity.json["name"]?.stringValue, scheme: method, added: added))
         status = .signedIn
         // A welcome speaks to whoever connected; an account signed in by a code, or given a token
         // of its own, is past it (apron-web's `dropWelcomes`).
-        let registered = if case .emailCode = method { true } else { result["token"]?.stringValue != nil }
-        if registered { notices.removeAll(where: \.welcome) }
+        if registered || result["token"]?.stringValue != nil { notices.removeAll(where: \.welcome) }
         // A connection starts attended (§4.5): an idle app says so at once.
         syncIdle()
         if let rooms, let listing = try? await rooms.value { applyRoomList(listing) }
         await catchUp(on: connection)
         Task { await drainOutbox() }
-        return .signedIn(identity)
     }
 
     private static let roomListParams: JSONValue = ["filter": "joined", "members": true]
@@ -525,6 +595,13 @@ public final class ServerSession {
     /// Whether `userID` is this account's, now or before it changed its `user_id`.
     public func isYou(_ userID: String) -> Bool {
         userID == you?.userID || formerUserIDs.contains(userID)
+    }
+
+    /// A way back in was added to the signed-in account (§4.10, §4.11.3).
+    func noteAdded(_ scheme: String) {
+        guard var account = record.account, !account.methods.contains(scheme) else { return }
+        account.added.append(scheme)
+        setAccount(account)
     }
 
     private func setAccount(_ account: ServerRecord.Account?) {

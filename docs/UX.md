@@ -260,10 +260,20 @@ The origin is hidden by default because the default (`https://<host>`) is right 
 **Purpose.** Sign in with what this server offers. Each server has one identity. Ranked tasks:
 
 1. Token, by paste or scan.
-2. Email code.
-3. Guest.
+2. Passkey, where this build may use them for the server.
+3. Email code.
+4. The server's own sign-in page (External).
+5. Guest.
 
-Passkeys and external sign-in come later (section 5.8).
+"Sign in with" lists the methods in the server's order (`auth`, then the rest of `signup`), as the web does: Passkey, Token, Email, External, Guest.
+
+**Passkey section** (`webauthn`, §4.10), as apron-web's. Where passkeys both sign in and create accounts, a segmented **Sign In** | **Create Account** asks which, Sign In first; never a guess. Sign In says "Your device lists the passkeys saved for this server: pick one to sign in to its account." (plus "New here? Create an account another way first." where passkeys only sign in), and **Sign In** opens the system passkey sheet, which also offers a passkey on another device by QR code. Create Account asks a **Display name** ("Creates an account and saves a new passkey for it on this device. Your display name names both.", or, connected as a guest, "Connected as a guest. Creating an account keeps this identity and saves a new passkey for it on this device."), joins as a guest first where the connection is signed out (the server makes a guest's registration the account), and **Create Account** opens the sheet. A dismissed sheet reads "Cancelled. No passkey for this server? Choose Create Account." where passkeys create accounts too. Before any sheet, the server must ask for its own domain (apron-web #183: "This server (evil.example) asked for a passkey for apron.chat, which is not its own."), the domain must be one of this build's associated domains, and the origin under Name and Origin must be `https://<domain>` ("Passkeys for chat.example sign in from https://chat.example, but this server is set to the origin …"). A server whose domain this build can't use, such as the demo, shows in place of the fields: "Ladle can’t use passkeys for server.apron.chat: only apps that domain lists can. Sign in with your passkey in a web browser, get a token for this device there (such as with /invite-device add), and paste it here.", with **Open server.apron.chat in Safari**; Sign In is off.
+
+**External section** (`external`, §4.11.5). "Signs in on the server’s own sign-in page (such as single sign-on), which then brings you back here." (or "Signs in to an account you have" / "Creates an account"). **Continue** proposes, then opens the page in the system's web sign-in sheet (`ASWebAuthenticationSession`). A page that comes back with this device's link signs in at once. A page that can't come back here (the origin's host is not an associated domain) shows a code: the sheet shows **Code** ("From the sign-in page"), "Sign in on the server's page, then enter the code it shows you. Keep this sheet open until you do.", and **Open the Sign-In Page** to open it again. A page that is not `https` (or `http` on a loopback host) never opens.
+
+**A sign-in link** (§4.11.2, link.apron.chat SPEC §2.1). One with the `state` of a proposal this device made (an email's link, an external page's return) continues that sign-in or addition on the server it was proposed to, with no question. Any other sign-in link for a saved server asks first, in a confirmation dialog with apron-web's words: "Sign in to chat.example with this link?", "You have a saved session here. Continuing signs you out of it." when one waits to resume, and the warning "Only continue if you just asked to sign in, on this device or another. A link someone sent you can sign you in to their account.", with **Sign In** and Cancel. Where an account is signed in there, it is "Use this link on chat.example?" with "If you asked to add this way of signing in to Ada, on this device or another, add it.", "If you asked to sign in with it, signing in signs you out of Ada and in to the account the link is for." and the warning, and **Add It** beside **Sign In** (destructive, since it replaces Ada). A refused link says "The link didn’t sign you in (…). If it was sent to add a way of signing in to an account, open it where you’re signed in to that account. Otherwise sign in again, or pick another server." A link for a server not yet saved fills the Connect sheet, whose "Token received" line carries the same warning.
+
+**Held for a passkey.** A passkey account whose saved token the server refuses is held, as apron-web holds it: the room list's banner reads "Sign in with your passkey to continue." with the server's reason, **Sign In with Passkey** (one tap, the system sheet) and **Other Ways** (this sheet, on Passkey).
 
 **Entry points.** The second step of Add Server, the **Sign In** row or menu item, the "Signed out" banner, and the composer's "Sign in to send". It is never presented by itself on appear. The current build does that (gap 2).
 
@@ -290,7 +300,7 @@ Each section has one action button at its bottom, within reach.
 - If the connection drops, `pendingEmail` clears and the code no longer works on a new connection (§4.11.2). Say "The connection dropped, so that code no longer works. Send a new code." Never just "Invalid code".
 - A `retry_after` on Send Code counts down on the button.
 
-**Guest section.** No name field: the server picks a guest's name (Cloudflare's demo names every guest `Guest <n>` and ignores a requested one), so the section only says so. You (3.11) says how the account signs in; the callout for a guest or token-only account to add a way back (§3.2.1's SHOULD) is not built.
+**Guest section.** No name field: the server picks a guest's name (Cloudflare's demo names every guest `Guest <n>` and ignores a requested one), so the section only says so. You (3.11) says how the account signs in, and nudges an account with no way back the server signs in with to add one (§3.2.1's SHOULD).
 
 **QR scanner.**
 
@@ -569,13 +579,17 @@ Its sections are apron-web's: members sorted online, idle, do not disturb, unkno
 | Bio (`ext:bio` or `ext`) | A multi-line field, "A few words about you, in plain text", with a count to 250 in the header that turns red over the limit | `me {ext: {bio}}`, cleaned as apron-web's `cleanBio`; `""` clears it. Sent before the name. |
 | Status (`status`, signed in) | A menu picker, **Show Me As**, each choice with its dot and hint: **Online** (Automatic) and **None** (Show no status) always, **Do not disturb** (Mutes notifications) and **Invisible** (Appear offline) only where `server.status` lists them (§4.5.1). The footer says what the current one means to others. | `me {status}`. |
 | Pause Notifications (`status`, signed in; in Preferences > Notifications, as apron-web #184, not here) | **Pause…**, a menu of For 1 hour ("until 15:30"), For 8 hours, Until tomorrow ("9:00", or Until this morning before 9:00) and Until I resume, as apron-web's `pauseChoices`. While paused, "Paused until 22:30 · no notifications on your devices." in the warning color, and **Resume**. The footer, when not paused: "Silence notifications on all your devices for a while. Only you see it." A refusal shows a callout, "Notifications weren’t paused" or "Notifications are still paused", with the server's words. | `status {mute}` without `room_id` (§4.5): seconds left, `true`, or `false` to resume. The line changes when the server's `status` says so, on every device, set here or elsewhere. |
-| Sign-in | How this account signs in, and **Sign Out** (3.12's confirmation). The footer reads "Signed in to Home as Ada." | |
+| Sign-in | How this account signs in, the ways to add one where the server signs in with them, and **Sign Out** (3.12's confirmation). The footer reads "Signed in to Home as Ada." | `auth` webauthn `register` on the signed-in connection; `auth` email or external without `token` (an addition), then with the code (§4.11.3) |
 
 What the server did with a save shows under the name: "Saved." for two seconds, "The server saved your name as “Ada L.”" when it kept another, or "The server declined this name (…). Your old one is still in use." in red. A bio the server refuses as `too_large` says "Your bio is too long for this server. Try a shorter one." and the name is not sent.
 
 When the server keeps another status than the one chosen, a callout under the picker says so: "This server doesn’t offer Do not disturb. Your status is None." for an optional one, which the picker then stops offering on this server, or "The server chose another status." A refusal, such as `retry_after`, reads "Your status didn’t change. The server declined Invisible (…)." and nothing changes (§4.5.3). VoiceOver announces the callout. Your chosen status comes only from `you` (§4.5.2); your own Invisible reads "Invisible · others see you as offline".
 
-Not built yet: Add Email and the other ways to add a sign-in (gap 28).
+**Ways back in**, as apron-web's Profile sign-in rows, for an account with a token to resume (not a guest). The line first: where none of the ways the account is known to have (how it signed in, then what was added on this device) is one the server signs in with, apron-web's nudge, "Only this device’s saved session gets you back into this account. Add a passkey or an email to sign in anywhere." (or "This server doesn’t sign in the way you joined." for an account made another way), and the profile bar says "Add a sign-in" in the accent color in place of the status; otherwise how it signs in. Then, each where the server signs in with it:
+
+- **Add Passkey** ("Confirm on your device…" while the sheet is up): the system sheet, the passkey labelled with your name. "Passkey saved. This server will ask your device next time." Where this build can't use the server's passkeys, the button is off and the unavailable line from 3.3 shows.
+- **Add Email**: an address field and **Send Code**, then a code field, "If the server can send to ada@example.com, a code is on its way.", and **Add**; **Cancel** at each step. "Added ada@example.com · sign in with it anywhere". A refused code reads apron-web's "That code was refused: it may be wrong or expired, or the address may belong to another account. Ask for a new code, or sign in with that address instead."
+- **Add External Sign-In**: the server's page in the web sign-in sheet; one that comes back with this addition's link adds it, else its code goes in a code field with **Open the Sign-In Page**.
 
 ### 3.12 Server pane
 
@@ -762,7 +776,8 @@ As built (`Kit/PaneLoading.swift`, `Timeline/PaneLoadingViews.swift`), as apron-
 - Ladle connects to a new server only after you tap Connect (§A.4).
 - The token field is a `SecureField`. The token never appears on screen after you enter it.
 
-[privacy] says "Avoid inventing custom authentication schemes." This conflicts with bearer-token paste. Ladle accepts the conflict because the protocol's reference scheme is `token` (§3.2), and passkeys are planned (5.8).
+[privacy] says "Avoid inventing custom authentication schemes." This conflicts with bearer-token paste. Ladle accepts the conflict because the protocol's reference scheme is `token` (§3.2); passkeys cover the servers whose domains a build is associated with (3.3).
+- The email and external proposals Ladle makes are kept by their `state` in `proposals.json` on the device for an hour, so a link that comes back is known for Ladle's own (3.3). They hold no token.
 
 ### 4.5 Haptics
 
@@ -817,7 +832,7 @@ Ladle overrides no standard shortcut ([keyboards]: "Respect standard keyboard sh
 | Sending attachments, `/avatar` uploads | `embed:upload` needs a photo picker, upload progress, and a cancel path. Receiving uploads is in v1. |
 | Inline `iframe` and `html` embeds | Rendering them safely needs a sandboxed `WKWebView` that matches the §4.8 iframe sandbox. A mistake there exposes the token. They render as fallback cards. |
 | Live stream reading | v1 shows the finished `text`. Reading the live `url` needs streaming HTTP and a reconnect rule. |
-| Passkeys and external sign-in | AGENTS.md records the open questions about Apple's documentation. Token, email, and guest cover v1. |
+| Passkeys on servers outside a build's associated domains | Apple lets an app use only the passkeys of the domains whose association file lists it (AGENTS.md). Those servers' web clients still can; 3.3 says so and opens one. |
 | Edit history (`prev_log_id`) | Rarely needed. "Edited" is enough. |
 | A browsable emoji picker | The system emoji keyboard covers any emoji (3.9). |
 | An app-wide settings screen | Nothing app-wide needs a setting. Appearance and text size follow the system ([settings]: "Respect people's systemwide settings"). |

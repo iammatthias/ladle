@@ -26,7 +26,7 @@ if [[ $ACTION == shots ]]; then
   # After a run that was killed or crashed (any worktree's: they share the bundle ID), AppKit
   # asks with a modal alert whether to reopen windows, and the renderer waits on it until the
   # timeout. Ignoring saved state skips the question.
-  TZ=UTC LADLE_SHOTS_DIR=$OUT timeout 300 \
+  TZ=UTC LADLE_SHOTS_DIR=$OUT timeout 600 \
     "${DERIVED_DATA:-build}/Build/Products/Debug-maccatalyst/LadleShots.app/Contents/MacOS/LadleShots" -ApplePersistenceIgnoreState YES 2>/dev/null
   ls "$OUT" | wc -l | xargs echo "files in $OUT:"
   exit
@@ -42,6 +42,7 @@ fi
 
 [[ -f Config/Domains.xcconfig ]] || cp Config/Domains.example.xcconfig Config/Domains.xcconfig
 xcodegen generate -q
+scripts/associated-domains.sh
 
 if [[ -z $DEST ]]; then
   if timeout 30 xcrun simctl list devices available 2>/dev/null | grep -q 'Ladle iPhone'; then

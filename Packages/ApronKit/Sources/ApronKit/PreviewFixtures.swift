@@ -52,7 +52,7 @@ public enum PreviewFixtures {
     }
 
     @MainActor
-    private static func until(_ condition: () -> Bool) async {
+    static func until(_ condition: () -> Bool) async {
         for _ in 0 ..< 500 where !condition() {
             try? await Task.sleep(for: .milliseconds(5))
         }

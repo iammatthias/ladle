@@ -25,9 +25,14 @@ struct YouView: View {
     @FocusState private var focused: Bool
     @Environment(\.dismiss) private var dismiss
 
-    init(session: ServerSession, standalone: Bool = true) {
+    /// An Add Email or Add External Sign-In form already under way; the design-review renderer
+    /// sets it, the app never does.
+    private let adding: AddSignInRows.Adding?
+
+    init(session: ServerSession, standalone: Bool = true, adding: AddSignInRows.Adding? = nil) {
         self.session = session
         self.standalone = standalone
+        self.adding = adding
         _form = State(initialValue: ProfileForm(you: session.you))
     }
 
@@ -200,6 +205,9 @@ struct YouView: View {
     private var signIn: some View {
         Section {
             Text(session.signInWords).apText(.ui).foregroundStyle(Palette.ink)
+            if registered {
+                AddSignInRows(session: session, adding: adding)
+            }
             if session.you != nil {
                 Button("Sign Out", role: .destructive) { signingOut = true }
             }
@@ -211,6 +219,10 @@ struct YouView: View {
             }
         }
     }
+
+    /// An account with a way back, not a guest: a passkey registered or an address added here
+    /// adds to it (§4.10, §4.11), as apron-web's `passkeySession`.
+    private var registered: Bool { session.you != nil && session.resumable && !session.isGuest }
 
     // MARK: Actions
 

@@ -1,6 +1,8 @@
-// Copy to Config/Domains.xcconfig (gitignored) and list the servers that may use native passkeys.
-// Each entry is a webcredentials associated domain; the server must publish
-// /.well-known/apple-app-site-association for app ID MP92RCAPRG.app.ladle.ios.
-// Leave empty to sign in through ASWebAuthenticationSession, email codes, or a pasted token.
-// Phase 2 reads this; phase 1 does not use it.
+// Copy to Config/Domains.xcconfig (gitignored) and list the servers that may use native passkeys,
+// separated by spaces, such as `chat.example.org other.example`. Each becomes a webcredentials
+// associated domain (scripts/associated-domains.sh) and an entry of the Info.plist key
+// LadlePasskeyDomains. The server must publish /.well-known/apple-app-site-association for app ID
+// MP92RCAPRG.app.ladle.ios under webcredentials (aprond: --apple.app-id), and accept the origin
+// https://<domain> for passkeys (aprond: --webauthn.origin).
+// Leave it empty to sign in with a token, email, the server's sign-in page, or as a guest.
 APRON_ASSOCIATED_DOMAINS =

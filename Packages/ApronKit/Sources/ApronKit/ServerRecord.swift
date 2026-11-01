@@ -21,14 +21,30 @@ public struct ServerRecord: Codable, Hashable, Identifiable, Sendable {
     public struct Account: Codable, Hashable, Sendable {
         public var userID: String
         public var name: String?
-        /// The `auth` scheme that signed this account in, such as `token` or `email`.
+        /// How this account signed in: an `auth` scheme, such as `token`, `email` or `webauthn`,
+        /// or `link` for a confirmed sign-in link, which doesn't say which.
         public var scheme: String
+        /// The ways back in added to the account on this device since (`webauthn`, `email`,
+        /// `external`), for the "add a sign-in" nudge (§3.2.1).
+        public var added: [String]
 
-        public init(userID: String, name: String? = nil, scheme: String) {
+        public init(userID: String, name: String? = nil, scheme: String, added: [String] = []) {
             self.userID = userID
             self.name = name
             self.scheme = scheme
+            self.added = added
         }
+
+        public init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            userID = try container.decode(String.self, forKey: .userID)
+            name = try container.decodeIfPresent(String.self, forKey: .name)
+            scheme = try container.decode(String.self, forKey: .scheme)
+            added = try container.decodeIfPresent([String].self, forKey: .added) ?? []
+        }
+
+        /// How it signed in, then what was added.
+        public var methods: [String] { [scheme] + added }
     }
 
     public init(id: UUID = UUID(), url: URL, label: String? = nil, origin: String? = nil, rpID: String? = nil, account: Account? = nil) {

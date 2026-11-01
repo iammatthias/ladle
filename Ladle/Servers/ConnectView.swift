@@ -1,9 +1,11 @@
 import ApronKit
+import AuthenticationServices
 import SwiftUI
 
 /// Adds a server and signs in to it in one sheet, as the web's ConnectScreen: the Apron
 /// project's demo server as one tap or any server's address with a pointer to hosting your own,
-/// "Sign in with" Token, Email or Guest, and the fields for that method. Opened for a
+/// "Sign in with" what the server offers (Passkey, Token, Email, External, Guest), and the
+/// fields for that method. Opened for a
 /// saved server, it signs in again and can change the name and origin. Adding a server, a
 /// scanned, pasted or tapped sign-in link fills in the address and the token together; nothing
 /// connects until you tap Connect (link.apron.chat SPEC §6).
@@ -13,9 +15,15 @@ struct ConnectView: View {
     var prefill: TokenPayload?
     /// Whether the camera can scan; the design-review renderer sets it, the app never does.
     var canScan = QRScanner.isAvailable
+    /// The method and passkey choice the sheet opens on; the design-review renderer sets them,
+    /// the app never does.
+    var startMethod: ConnectForm.Method?
+    var startPasskeyMode = PasskeyAction.login
     /// Called with the server's id once a sign-in succeeds, just before the sheet closes.
     var onSignedIn: (UUID) -> Void = { _ in }
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openURL) private var openURL
+    @Environment(\.webAuthenticationSession) private var webAuthenticationSession
     @State private var form = ConnectForm(record: nil, mayWrite: false, prefill: nil)
     @State private var scanning = false
     @State private var working = false
@@ -49,7 +57,9 @@ struct ConnectView: View {
                         .task(id: greeter.server?.emojiCatalogURL) { await greeter.loadEmojiCatalog(for: welcome) }
                     }
                     if let reason = existing?.signInNeeded {
-                        ActionBanner(symbol: "person.crop.circle.badge.exclamationmark", title: "Signed out", detail: reason, tone: Palette.warn) { EmptyView() }
+                        ActionBanner(symbol: existing?.passkeyHold == true ? "person.badge.key" : "person.crop.circle.badge.exclamationmark",
+                                     title: existing?.passkeyHold == true ? "Sign in with your passkey to continue." : "Signed out",
+                                     detail: reason, tone: Palette.warn) { EmptyView() }
                     }
                     if record == nil {
                         scanOrEnter
@@ -118,7 +128,9 @@ struct ConnectView: View {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
                     if working { ProgressView() } else {
-                        Button(form.submitLabel(pendingEmail: pendingEmail)) { submit() }.disabled(!form.canSubmit(pendingEmail: pendingEmail)).fontWeight(.semibold)
+                        Button(form.submitLabel(pendingEmail: pendingEmail, pendingPage: pendingPage, offered: greeter?.server)) { submit() }
+                            .disabled(!form.canSubmit(pendingEmail: pendingEmail, pendingPage: pendingPage) || (form.method == .passkey && !passkeysUsable))
+                            .fontWeight(.semibold)
                     }
                 }
             }
@@ -131,7 +143,12 @@ struct ConnectView: View {
                 }
             }
             .sensoryFeedback(.success, trigger: form.receivedToken) { _, new in new != nil }
-            .onAppear { form = ConnectForm(record: record, mayWrite: existing?.mayWrite == true, prefill: prefill) }
+            .onAppear {
+                form = ConnectForm(record: record, mayWrite: existing?.mayWrite == true, prefill: prefill)
+                if existing?.passkeyHold == true { form.method = .passkey }
+                if let startMethod { form.method = startMethod }
+                form.passkeyMode = startPasskeyMode
+            }
             .onChange(of: methods) { _, offered in form.offer(offered) }
         }
         .presentationBackground(Palette.chrome)
@@ -142,6 +159,10 @@ struct ConnectView: View {
     @ViewBuilder
     private var methodFields: some View {
         switch form.method {
+        case .passkey:
+            passkeyFields
+        case .external:
+            externalFields
         case .token:
             field("Token") {
                 SecureField("", text: $form.token, prompt: Text("From the server, or a sign-in link").foregroundStyle(Palette.inkMuted))
@@ -154,6 +175,7 @@ struct ConnectView: View {
                         .foregroundStyle(Palette.danger)
                 } else if record != nil, form.tokenReceived {
                     Label("Token received", systemImage: "checkmark.circle.fill").foregroundStyle(Palette.ok)
+                    Label(SignInLinkPrompt.warning, systemImage: "exclamationmark.triangle").foregroundStyle(Palette.warn)
                 }
                 if form.isSignUpInvite {
                     Text("This invitation creates an account. Choose the name others see, or leave it empty and the server picks one.")
@@ -205,13 +227,83 @@ struct ConnectView: View {
         }
     }
 
+    /// Passkey, as apron-web's: Sign In or Create Account where passkeys do both here (never
+    /// guessed), the display name a new account and its passkey take, and why a server whose
+    /// domain this build is not associated with can't use them here, with the web client to
+    /// sign in instead.
+    @ViewBuilder
+    private var passkeyFields: some View {
+        let use = ConnectForm.use(of: .passkey, offered: greeter?.server)
+        let action = form.passkeyAction(offered: greeter?.server)
+        if !passkeysUsable, let url = form.url {
+            Callout {
+                VStack(alignment: .leading, spacing: Tokens.Space.s2) {
+                    Text(PasskeyDomains.unavailableWords(for: url.host() ?? url.absoluteString)).apText(.ui)
+                    if let web = URL(string: form.origin.isEmpty ? ServerRecord.defaultOrigin(for: url) : form.origin), web.scheme == "https" {
+                        Button("Open \(web.host() ?? web.absoluteString) in Safari", systemImage: "safari") { openURL(web) }
+                            .buttonStyle(GhostButtonStyle(tone: Palette.accent))
+                    }
+                }
+            }
+        } else {
+            if use.signIn, use.signUp {
+                Picker("Passkey", selection: $form.passkeyMode) {
+                    Text("Sign In").tag(PasskeyAction.login)
+                    Text("Create Account").tag(PasskeyAction.register)
+                }
+                .pickerStyle(.segmented)
+                .frame(minHeight: Tokens.Size.touchTarget)
+            }
+            if action == .register {
+                field("Display name") {
+                    TextField("", text: $form.displayName, prompt: Text("How others see you").foregroundStyle(Palette.inkMuted))
+                        .apText(.field)
+                        .textContentType(.name)
+                } hint: {
+                    Text(greeter?.isGuest == true && greeter?.status == .signedIn
+                         ? "Connected as a guest. Creating an account keeps this identity and saves a new passkey for it on this device."
+                         : "Creates an account and saves a new passkey for it on this device. Your display name names both.")
+                }
+            } else {
+                Text("Your device lists the passkeys saved for this server: pick one to sign in to its account."
+                     + (use.signUp ? "" : " New here? Create an account another way first."))
+                    .apText(.sm).foregroundStyle(Palette.inkMuted)
+            }
+        }
+    }
+
+    /// External, as apron-web's: the server's own sign-in page (such as single sign-on), in a
+    /// browser sheet; a page that can't bring you back here shows a code to enter.
+    @ViewBuilder
+    private var externalFields: some View {
+        if let page = pendingPage {
+            field("Code") {
+                TextField("", text: $form.code, prompt: Text("From the sign-in page").foregroundStyle(Palette.inkMuted))
+                    .apText(.field, mono: true)
+                    .textContentType(.oneTimeCode)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+            } hint: {
+                Text("Sign in on the server's page, then enter the code it shows you. Keep this sheet open until you do.")
+                Button("Open the Sign-In Page", systemImage: "safari") { Task { await openPage(page, returns: false) } }
+                    .buttonStyle(GhostButtonStyle(tone: Palette.accent))
+            }
+        } else {
+            let use = ConnectForm.use(of: .external, offered: greeter?.server)
+            let does = use.signIn && !use.signUp ? "Signs in to an account you have" : use.signUp && !use.signIn ? "Creates an account" : "Signs in"
+            Text("\(does) on the server’s own sign-in page (such as single sign-on), which then brings you back here.")
+                .apText(.sm).foregroundStyle(Palette.inkMuted)
+        }
+    }
+
     /// The two ways to add a server: scan a sign-in QR code, which fills in the server and the
     /// token, or enter them in the fields below. Once a token is in, it says so instead.
     @ViewBuilder
     private var scanOrEnter: some View {
         if form.tokenReceived {
             ActionBanner(symbol: "checkmark", title: "Token received",
-                         detail: form.url.flatMap { $0.host() }.map { "For \($0). Check the server, then tap Connect." } ?? "Enter the server's address, then tap Connect.",
+                         detail: (form.url.flatMap { $0.host() }.map { "For \($0). Check the server, then tap Connect." } ?? "Enter the server's address, then tap Connect.")
+                            + " " + SignInLinkPrompt.warning,
                          tone: Palette.ok) {
                 if canScan {
                     Button("Scan Again") { scanning = true }.buttonStyle(GhostButtonStyle(tone: Palette.accent))
@@ -288,6 +380,15 @@ struct ConnectView: View {
     /// The address a code was sent to, while the sheet waits for it.
     private var pendingEmail: String? { (session ?? existing)?.pendingEmail }
 
+    /// An external sign-in page that shows a code, while the sheet waits for it.
+    private var pendingPage: URL? { (session ?? existing)?.pendingPage }
+
+    /// The session whose server frame the sheet shows.
+    private var greeter: ServerSession? { session ?? existing }
+
+    /// Whether this build can ask for a passkey for the address in the form.
+    private var passkeysUsable: Bool { form.url.map { PasskeyDomains.app.covers(server: $0) } ?? true }
+
     // MARK: Submit
 
     private func submit() {
@@ -306,15 +407,55 @@ struct ConnectView: View {
                 error = ConnectionState(session.status)?.title(session.record) ?? "Could not reach \(url.host() ?? "the server")."
                 return
             }
-            guard let signIn = form.signIn(pendingEmail: session.pendingEmail) else { return }
             do {
-                if case .signedIn = try await session.signIn(signIn) {
-                    onSignedIn(session.record.id)
-                    dismiss()
+                if form.method == .passkey {
+                    let action = form.passkeyAction(offered: session.server)
+                    try await session.usePasskey(action, name: action == .register ? form.displayName : nil, with: PlatformPasskeys())
+                    return finish(session)
                 }
+                let returnURL = SignInPage.returnURL(origin: session.record.origin, domains: .app)
+                guard let signIn = form.signIn(pendingEmail: session.pendingEmail, pendingPage: session.pendingPage, returnURL: returnURL) else { return }
+                // A pasted link with this device's own `state` continues that proposal (§4.11.2).
+                if case .token(let token) = signIn, let proposal = store.proposals.find(form.pastedLinkState, now: Date()),
+                   proposal.server == session.record.id {
+                    try await session.signIn(link: token, proposal: proposal)
+                    return finish(session)
+                }
+                switch try await session.signIn(signIn) {
+                case .signedIn: finish(session)
+                case .page(let page, let returns): await openPage(page, returns: returns)
+                case .codeSent: break
+                }
+            } catch PasskeyError.cancelled where form.passkeyAction(offered: session.server) == .login
+                && ConnectForm.use(of: .passkey, offered: session.server).signUp {
+                error = "Cancelled. No passkey for this server? Choose Create Account."
             } catch {
                 self.error = errorText(error)
             }
+        }
+    }
+
+    private func finish(_ session: ServerSession) {
+        onSignedIn(session.record.id)
+        dismiss()
+    }
+
+    /// Opens the server's sign-in page; a page that comes back with this device's link signs in.
+    private func openPage(_ page: URL, returns: Bool) async {
+        guard let session = greeter else { return }
+        do {
+            switch try await ExternalSignIn.open(page, returns: returns, origin: session.record.origin, proposals: store.proposals,
+                                                 session: webAuthenticationSession) {
+            case .link(let token, let proposal):
+                try await session.signIn(link: token, proposal: proposal)
+                finish(session)
+            case .foreignLink:
+                error = ExternalSignIn.foreignWords
+            case .closed:
+                break
+            }
+        } catch {
+            self.error = errorText(error)
         }
     }
 }

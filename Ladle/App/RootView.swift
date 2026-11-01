@@ -20,6 +20,10 @@ struct RootView: View {
     /// An export opened from Files or another app.
     @State private var readingExport: OpenedExport?
     @State private var restored = false
+    /// A sign-in link of no proposal here, waiting for the user to confirm it (§4.11.2).
+    @State private var askedLink: AskedLink?
+    /// What became of a sign-in link: added, or why it didn't work.
+    @State private var linkOutcome: String?
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
 
@@ -41,6 +45,10 @@ struct RootView: View {
             }
         }
         .sheet(item: $preferences) { PreferencesView(store: store, request: $0) }
+        .signInLinkDialog($askedLink, outcome: $linkOutcome, store: store)
+        .alert(linkOutcome ?? "", isPresented: Binding { linkOutcome != nil } set: { if !$0 { linkOutcome = nil } }) {
+            Button("OK", role: .cancel) {}
+        }
         .environment(\.openPreferences, OpenPreferencesAction { preferences = $0 })
         .environment(\.requestSignIn, SignInAction { connecting = ConnectRequest(record: $0) })
         .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
@@ -131,7 +139,7 @@ struct RootView: View {
     /// Opens a link (`LinkRoute`); a relative one here has no server that sent it
     /// (`resolvingLinks` resolves those in a server's own content), so it opens nothing.
     private func open(_ link: ApronLink) {
-        LinkRoute(link, records: store.records).map(go)
+        LinkRoute(link, records: store.records, proposal: store.proposals.find(link.state, now: Date())).map(go)
     }
 
     /// A tapped reminder's message, once its server has loaded: revealed and highlighted, as a link to it.
@@ -144,7 +152,25 @@ struct RootView: View {
 
     private func go(_ route: LinkRoute) {
         switch route {
-        case .signIn(let record, let prefill): connecting = ConnectRequest(record: record, prefill: prefill)
+        case .proposal(let proposal, let token):
+            // This device's own proposal: it continues the sign-in or addition it started (§4.11.2).
+            guard let session = store.session(for: proposal.server) else { return }
+            show(proposal.server, nil)
+            Task {
+                do {
+                    if proposal.kind == .addition {
+                        try await session.approveAddition(link: token, proposal: proposal)
+                        linkOutcome = "Added · sign in with it anywhere"
+                    } else {
+                        try await session.signIn(link: token, proposal: proposal)
+                    }
+                } catch {
+                    linkOutcome = proposal.kind == .addition ? additionErrorText(error, scheme: proposal.scheme.rawValue) : errorText(error)
+                }
+            }
+        case .signIn(let record, let prefill):
+            guard let session = store.session(for: record.id) else { return }
+            askedLink = AskedLink(session: session, token: prefill.token)
         case .place(let id, let link): show(id, link)
         case .addServer(let prefill, let place): connecting = ConnectRequest(prefill: prefill, place: place)
         }

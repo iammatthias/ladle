@@ -1,8 +1,9 @@
 import Foundation
 
-/// One `auth` request a user can make (§3.2, §4.11). Email sign-in is two requests on the same
-/// connection: a proposal, then approval with the code the server mailed, which works only on the
-/// connection that proposed (§4.11.2).
+/// One `auth` request a user can make (§3.2, §4.11). Email and external sign-in are two requests:
+/// a proposal, then approval with the code the server mailed or its page showed, which works only
+/// on the connection that proposed (§4.11.2), or with the token of the link that came back, which
+/// works on any connection not signed in. Passkeys are a ceremony of their own (`usePasskey`).
 public enum SignIn: Hashable, Sendable {
     /// A bearer token from another client, such as one `/invite-bot` issued (§3.2.1).
     case token(String)
@@ -12,19 +13,58 @@ public enum SignIn: Hashable, Sendable {
     case guest(name: String?)
     case emailProposal(address: String)
     case emailCode(String)
+    /// Proposes a sign-in on the server's page; with `returnURL` the page comes back with a link,
+    /// else it shows a code (§4.11.5).
+    case externalProposal(returnURL: URL?)
+    case externalCode(String)
+    /// The token of a link with the `state` of this device's own proposal (§4.11.2).
+    case ownLink(String, scheme: ProposalScheme)
+    /// The token of any other sign-in link, once the user confirmed it: presented as `token`
+    /// (link.apron.chat SPEC §2.1), and remembered as `link`, an email or external sign-in.
+    case link(String)
 
     public var scheme: String {
         switch self {
-        case .token, .signUp: "token"
+        case .token, .signUp, .link: "token"
         case .guest: "guest"
         case .emailProposal, .emailCode: "email"
+        case .externalProposal, .externalCode: "external"
+        case .ownLink(_, let scheme): scheme.rawValue
         }
     }
 
+    /// How the account signed in, as saved: `link` for a confirmed link, which doesn't say.
+    public var method: String {
+        if case .link = self { return "link" }
+        return scheme
+    }
+
     /// Whether a successful reply carries `you`. A proposal authenticates nothing (§4.11.1).
-    public var authenticates: Bool {
-        if case .emailProposal = self { return false }
-        return true
+    public var authenticates: Bool { proposal == nil }
+
+    /// The token to resume with when the result carries none: a bearer token stays the one
+    /// (§3.2.1).
+    public var presentedToken: String? {
+        if case .token(let token) = self { return token }
+        return nil
+    }
+
+    /// Whether the sign-in is an account's, past the welcome (apron-web's `dropWelcomes`): a
+    /// code or a link.
+    public var registers: Bool {
+        switch self {
+        case .emailCode, .externalCode, .ownLink, .link: true
+        default: false
+        }
+    }
+
+    /// A proposal's scheme: it carries a `state`, which is remembered.
+    public var proposal: ProposalScheme? {
+        switch self {
+        case .emailProposal: .email
+        case .externalProposal: .external
+        default: nil
+        }
     }
 
     /// The `auth` params. `state` goes only on a proposal (§4.11.1).
@@ -40,7 +80,11 @@ public enum SignIn: Hashable, Sendable {
         case .emailProposal(let address):
             params["email"] = .string(address)
             params["state"] = .string(state)
-        case .emailCode(let code): params["token"] = .string(code)
+        case .emailCode(let code), .externalCode(let code), .ownLink(let code, _), .link(let code):
+            params["token"] = .string(code)
+        case .externalProposal(let returnURL):
+            if let returnURL { params["return_url"] = .string(returnURL.absoluteString) }
+            params["state"] = .string(state)
         }
         return .object(params)
     }
@@ -55,6 +99,9 @@ public enum SignInOutcome: Hashable, Sendable {
     case signedIn(UserObject)
     /// The server mailed a code; approve it with `.emailCode` on the same connection.
     case codeSent(to: String)
+    /// The server's sign-in page to open (§4.11.5). With `returns` it comes back with a link;
+    /// else it shows a code for `.externalCode` on the same connection.
+    case page(URL, returns: Bool)
 }
 
 /// A token as a user pastes or scans it: the bare token, or a sign-in link (link.apron.chat SPEC

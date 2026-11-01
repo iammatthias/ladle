@@ -8,6 +8,8 @@ xcuserdata/
 
 # The owner's private server names (associated domains). Copy Domains.example.xcconfig.
 Config/Domains.xcconfig
+# Written by xcodegen, then given the domains above as webcredentials (scripts/associated-domains.sh).
+Config/Ladle.entitlements
 
 *.log
 .env

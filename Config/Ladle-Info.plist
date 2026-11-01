@@ -48,6 +48,8 @@
 	<false/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<false/>
+	<key>LadlePasskeyDomains</key>
+	<string>$(APRON_ASSOCIATED_DOMAINS)</string>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>

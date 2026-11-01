@@ -61,7 +61,10 @@ clone), which is only a worked example.
   - `ServerSession`: `@MainActor @Observable`, one per `ServerRecord`. Connection lifecycle,
     sign-in, the stores, and every chat operation. Its `Environment` is the test seam
     (transport factory, sleep, jitter, request IDs, proposal `state`, page size).
-    - Sign-in is `SignIn`: `.token`, `.signUp`, `.guest`, `.emailProposal`, `.emailCode`.
+    - Sign-in is `SignIn`: `.token`, `.signUp`, `.guest`, `.emailProposal`, `.emailCode`,
+      `.externalProposal`, `.externalCode`, `.ownLink` (a link with this device's `state`) and
+      `.link` (a confirmed link, sent as `token`, saved as method `link`). Passkeys and
+      additions to an account are `ServerSession+SignInWays.swift` ("Identity and sign-in").
       `.signUp` is scheme `token` with a sign-up invite (`apron_join_`, Cloudflare's `/invite`)
       and the new account's `name`; its result carries the account's own `apron_invite_`
       token, which is saved in place of the invite. A sign-in sends
@@ -648,6 +651,8 @@ clone), which is only a worked example.
   needs). A thread goes when its last member leaves. The binary defaults to the sibling
   `apron-server-rust/target/release/aprond`; `APROND` overrides it.
 - `Config/Domains.example.xcconfig`: template for the gitignored `Config/Domains.xcconfig`.
+  `Config/Ladle.entitlements` is generated (`scripts/associated-domains.sh`, "Identity and
+  sign-in").
 - `scripts/sync-fixtures.sh`: copies the protocol's replay fixtures at the `scripts/SPEC` commit
   into the package's test resources; `--check` fails on drift. To follow a newer spec, review
   its changes, move the pin, rerun the script.
@@ -749,6 +754,19 @@ because `drawHierarchy` does not see a sheet's window. It captures in process wi
 generated pictures, and fails the remote room's unreachable host; a video has no frame to draw, so its tile stays black), writes `contrast.json` (for each premade theme, WCAG ratios of the text tokens on their
 grounds), and quits. `TZ=UTC` keeps the times reproducible.
 
+The sign-in shots come from a store of their own (`PreviewFixtures.makeSignInStore`: one server,
+`owner.example`, that offers passkeys, email, its own page, tokens and guests; the renderer's
+`LadlePasskeyDomains` holds it): Connect on Passkey in Sign In and Create Account
+(`ladle-connect-passkey`, `-create`), on Passkey for the demo, which this build can't use
+(`ladle-connect-passkey-unavailable`), on External waiting for the page's code
+(`ladle-connect-external-code`), Profile's Sign-in with the nudge and Add Passkey, Add Email and
+Add External Sign-In (`ladle-you-signin`), Add Email waiting for its code (`ladle-you-add-email`),
+the room list held for a passkey (`ladle-rooms-held`) and with "Add a sign-in" in the profile bar
+(`ladle-rooms-nudge`). The renderer opens Connect and Profile there with `startMethod`,
+`startPasskeyMode` and `adding`, which the app never sets. The sign-in link dialog is a
+confirmation dialog, which `drawHierarchy` does not see either; its words are in
+`SignInLinksTests`.
+
 Limits of the Mac render, each checked on this machine:
 
 - Mac Catalyst ignores Dynamic Type: `UIFontMetrics` returns 17 pt for body at AX XXL. The
@@ -848,19 +866,48 @@ confirmed it on macOS: aprond admits an upgrade with no `Origin`, and refused
 `URLSessionWebSocketTask`'s upgrade with 403 when the record's origin was
 `https://evil.example` (`testTheServerSeesTheOriginHeader`). Not yet confirmed on a device.
 
-Fallbacks: email with a typed code (§4.11). Optional later paths, not implemented:
+Also email with a typed code (§4.11), passkeys and the server's own sign-in page:
 
-- An `ASWebAuthenticationSession` sheet for servers that host a sign-in page. Apple's
-  documentation for the class
+- External sign-in (§4.11.5) opens the server's page in `ASWebAuthenticationSession`, through
+  SwiftUI's `webAuthenticationSession` (`Servers/ExternalSignIn.swift`). The proposal's
+  `return_url` is the record's origin (`SignInPage.returnURL`), and only where that host is one of
+  the build's associated domains, since the session's `.https(host:path:)` callback requires "a
+  member of a domain associated with the app" (the symbol's documentation, iOS 17.4); it does not
+  say which service, and only `webcredentials` entries are added. link.apron.chat cannot be the
+  return: its association file lists another team's app under `applinks` only (fetched
+  2026-10-31). Elsewhere the proposal has no `return_url`, the page shows a code, the session
+  stays open (a callback scheme that never fires) until the user closes it, and the code goes in
+  the form on the proposing connection. A page `url` other than `https`, or `http` on a loopback
+  host, is refused before anything opens. Apple's documentation for the session
   (https://developer.apple.com/documentation/authenticationservices/aswebauthenticationsession)
-  says nothing about passkeys or WebAuthn, and "Supporting passkeys" does not mention the
-  session; the only web-view guidance there is for `WKWebView`, which needs the relying party as
-  an associated domain. Treat "passkeys work inside the session for any domain" as unverified in
-  Apple's docs; an Apple engineer's forum reply
-  (https://developer.apple.com/forums/thread/738229) says WebAuthn in `WKWebView` is first-party
-  only and points third-party sign-in at the session, which is suggestive, not documentation.
+  says nothing about passkeys or WebAuthn inside it; an Apple engineer's forum reply
+  (https://developer.apple.com/forums/thread/738229) points third-party sign-in at the session,
+  which is suggestive, not documentation. No reference server offers `external` (aprond answers
+  `unsupported`), so the flow is unit-tested against a scripted server only.
+- Proposals (`Proposals.swift`, as apron-web's `proposals.ts`): every email and external proposal,
+  sign-in or addition, is remembered by its `state` in `proposals.json` beside `servers.json`,
+  8 at most, for an hour, before it is sent. A sign-in link with that `state` continues it on the
+  proposal's server whatever `server` it names (`LinkRoute.proposal`); any other sign-in link for
+  a saved server opens `SignInLinkPrompt`'s dialog (`App/SignInLinkDialog.swift`: Sign In, and
+  Add It where an account is signed in there), and presents its token as `token`.
+- Additions (§4.11.1, §4.11.3, `ServerSession+SignInWays.swift`): Add Email and Add External
+  Sign-In propose on the signed-in connection, which alone takes the code; Add Passkey registers
+  on it. `ServerRecord.Account.added` keeps what was added on this device, and `wayBack` is
+  apron-web's nudge (§3.2.1's SHOULD): the profile bar's "Add a sign-in" and the Sign-in section's
+  line.
 - Native passkeys with `ASAuthorizationPlatformPublicKeyCredentialProvider` for the owner's own
-  domains. Constraints, from Apple's docs unless marked:
+  domains (`Passkeys.swift`, `ServerSession.usePasskey`, `Servers/PlatformPasskeys.swift`). Both
+  steps go on one connection; `register` on a signed-out connection joins as a guest first, since
+  aprond refuses it otherwise ("Sign in as a guest before adding a passkey") and makes a guest's
+  registration a new account under a new `user_id`. Before the system sheet opens:
+  apron-web's RP ID check (#183, `PasskeyChallenge`: the RP ID is `rp.id` when registering and
+  `rpId` when signing in, else the server's host; it must be the host or a domain the host is
+  under), then the build's associated domains (`PasskeyDomains`, from the Info.plist key
+  `LadlePasskeyDomains`, since entitlements can't be read at run time), then the record's origin
+  must be `https://<rpID>`: aprond binds the ceremony and its token to the connection's `Origin`
+  (`with_registration_origin(c.origin)`), and the platform signs `https://<rpID>`. A held session
+  (`heldAccount`, `passkeyHold`): a passkey account whose saved token the server refused signs
+  back in with one tap on the room list's banner. Constraints, from Apple's docs unless marked:
   - The app needs a `webcredentials:<domain>` associated domain, and the server must serve
     `https://<domain>/.well-known/apple-app-site-association` over https with a valid certificate
     and no redirects, listing `MP92RCAPRG.app.ladle.ios` under `webcredentials.apps`
@@ -877,8 +924,31 @@ Fallbacks: email with a typed code (§4.11). Optional later paths, not implement
   - `localhost` cannot be an associated domain. Not found stated in Apple's docs; it follows
     from the file having to be served over https from a fully qualified domain.
   - The domains are the owner's private server names, so they live in the gitignored
-    `Config/Domains.xcconfig` (`APRON_ASSOCIATED_DOMAINS`), with `Domains.example.xcconfig`
-    committed. `ServerRecord.rpID` stays optional.
+    `Config/Domains.xcconfig` (`APRON_ASSOCIATED_DOMAINS`, space- or comma-separated), with
+    `Domains.example.xcconfig` committed. `Config/Ladle.entitlements` is generated and
+    gitignored: xcodegen writes `applinks:link.apron.chat`, then `scripts/associated-domains.sh`
+    (run by `build.sh` and `tools/testflight.sh` after `xcodegen generate`) adds
+    `webcredentials:<domain>` for each entry. An empty list adds nothing, rather than a bare
+    `webcredentials:`. `ServerRecord.rpID` stays optional and unused.
+  - A server whose domain is not among them (`server.apron.chat`, whose RP ID is `apron.chat`)
+    can't use passkeys here: the Passkey method says so and offers the web client in Safari,
+    where the user signs in and gets a token for this device (`/invite-device add`). The demo
+    offers `webauthn` only to its web client's origin, and no `external` or `email` (its `server`
+    frame from origin `https://server.apron.chat` lists `token` and `guest`, fetched 2026-10-31).
+  - Verified here: the ceremony's server side and Ladle's WebAuthn JSON, against aprond
+    (`PasskeyIntegrationTests`, with `SoftwareAuthenticator`, a CryptoKit P-256 authenticator
+    that writes `none` attestation and `clientDataJSON` with origin `https://<rpID>`, as iOS
+    does): a guest creates an account, another connection signs in with the passkey and its
+    token resumes, a passkey is added to an email account and signs in to it, and a mismatched
+    origin is refused before any sheet. The owner's server serves the association file with
+    `webcredentials.apps` `["MP92RCAPRG.app.ladle.ios"]`, and its deploy passes
+    `--webauthn.rp-id` and `--webauthn.origin https://<host>` for its own host, which is what
+    the platform signs (checked 2026-10-31). `scripts/associated-domains.sh` writes the
+    entitlements and the Info.plist key expands.
+  - Needs a device: that the sheet appears and the platform's `clientDataJSON` origin is
+    `https://<rpID>` (the forum reply above); that the association is picked up from the
+    owner's server (Apple's CDN caches the file); `ASWebAuthenticationSession`'s `.https`
+    callback with a `webcredentials` domain; and the cross-device (QR) passkey path.
 - Native push needs a §4.9.2 `relay` with APNs, which is out of scope for v1.
 
 ## Parity with apron-web

@@ -20,6 +20,7 @@ auth=(-allowProvisioningUpdates -authenticationKeyPath $key -authenticationKeyID
 
 [[ -f Config/Domains.xcconfig ]] || cp Config/Domains.example.xcconfig Config/Domains.xcconfig
 xcodegen generate -q
+scripts/associated-domains.sh
 xcodebuild archive -project Ladle.xcodeproj -scheme Ladle -configuration Release \
   -destination 'generic/platform=iOS' -archivePath $out/Ladle.xcarchive \
   -derivedDataPath build/testflight-dd \

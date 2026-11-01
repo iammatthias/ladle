@@ -55,6 +55,12 @@ public actor PreviewServer: FrameTransport {
         guard let id = request["id"] else { return }
         let params = request["params"]
         switch request["method"]?.stringValue {
+        case "auth" where params?["token"]?.stringValue == Self.expiredToken:
+            deliver(["id": id, "error": ["code": -32001, "message": "Your session expired. Sign in again."]])
+        case "auth" where params?["token"] == nil && params?["scheme"]?.stringValue == "external":
+            deliver(["id": id, "result": ["url": .string(Self.signInPage)]])
+        case "auth" where params?["token"] == nil && params?["scheme"]?.stringValue == "email":
+            deliver(["id": id, "result": [:]])
         case "auth":
             var result: [String: JSONValue] = ["you": script.you]
             if let token = script.token { result["token"] = .string(token) }
@@ -105,6 +111,11 @@ public actor PreviewServer: FrameTransport {
             deliver(["id": id, "result": [:]])
         }
     }
+
+    /// A saved token the server refuses, for a session held for its passkey.
+    public static let expiredToken = "expired"
+    /// The external sign-in page every proposal gets (§4.11.5).
+    public static let signInPage = "https://owner.example/sso?p=Qm7x"
 
     /// A reaction the server refuses as over its posting limit (45 s, `ext:limits` `write`), so a
     /// preview can show sending paused. Any new upload is refused for two hours (`upload`).

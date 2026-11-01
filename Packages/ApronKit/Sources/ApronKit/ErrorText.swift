@@ -17,6 +17,12 @@ public func errorText(_ error: any Error) -> String {
         return "This server does not support \(capability)."
     case ServerSession.Failure.attachmentNotAccepted:
         return "The server didn't accept the file."
+    case ServerSession.Failure.badSignInPage:
+        return "The server's sign-in page isn't a secure web address, so Ladle won't open it."
+    case ServerSession.Failure.noAddition:
+        return "The request for this code is no longer open. Start again."
+    case let error as PasskeyError:
+        return error.message
     default:
         return error.localizedDescription
     }

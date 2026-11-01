@@ -356,6 +356,16 @@ struct RoomListView: View {
             })
         }
         switch session.status {
+        case .signedOut where session.passkeyHold, .stopped(.signedOut) where session.passkeyHold:
+            // apron-web's held session: the account signs back in with one tap.
+            return AnyView(ActionBanner(symbol: "person.badge.key", title: "Sign in with your passkey to continue.",
+                                        detail: session.signInNeeded) {
+                Button("Sign In with Passkey") {
+                    perform { try await session.usePasskey(.login, with: PlatformPasskeys()) }
+                }
+                .buttonStyle(PrimaryButtonStyle())
+                Button("Other Ways", action: onSignIn).buttonStyle(GhostButtonStyle(tone: Palette.accent))
+            })
         case .signedOut where session.server != nil, .stopped(.signedOut) where session.server != nil:
             return AnyView(ActionBanner(symbol: "person.crop.circle.badge.exclamationmark", title: "Sign in to \(session.serverName)",
                                         detail: session.signInNeeded) {
@@ -392,6 +402,8 @@ struct RoomListView: View {
                             Label(paused, systemImage: "bell.slash")
                                 .labelStyle(TightLabel())
                                 .apText(.sm).foregroundStyle(Palette.warn).lineLimit(1)
+                        } else if let note = session.profileNote {
+                            Text(note).apText(.sm, .medium).foregroundStyle(Palette.accent).lineLimit(1)
                         } else if let line {
                             Text(line).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
                         }
@@ -419,10 +431,16 @@ struct RoomListView: View {
             .buttonStyle(.plain)
             .background(Palette.chrome)
             .overlay(alignment: .top) { Rectangle().fill(Palette.line).frame(height: 1) }
-            .accessibilityLabel((session.pausedLine.map { "Notifications \($0.lowercased()). " } ?? "")
-                + "Your profile on \(session.serverName): \(name)" + ((away ?? Presence.words(session.chosenStatus, yours: true)).map { ", \($0)" } ?? ""))
+            .accessibilityLabel(profileLabel(name: name, away: away))
             .accessibilityHint("Opens your profile and status")
         }
+    }
+
+    private func profileLabel(name: String, away: String?) -> String {
+        let paused = session.pausedLine.map { "Notifications \($0.lowercased()). " } ?? ""
+        let status = (away ?? Presence.words(session.chosenStatus, yours: true)).map { ", \($0)" } ?? ""
+        let note = session.profileNote.map { ". \($0)" } ?? ""
+        return paused + "Your profile on \(session.serverName): \(name)" + status + note
     }
 
     private func perform(_ operation: @escaping () async throws -> Void) {

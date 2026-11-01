@@ -177,15 +177,23 @@ extension ServerSession {
         you.map { pausedLine ?? ownPresenceWords ?? Presence.words(chosenStatus, yours: true) ?? "@\($0.userID)" }
     }
 
-    /// How this account signs in here, for the You sheet.
+    /// How this account signs in here, for the You sheet: first the nudge to add a way back in
+    /// where it has none the server signs in with (apron-web's ProfileBar hint).
     public var signInWords: String {
+        if let wayBack { return WayBack.hint(wayBack, signedInWithToken: record.account?.scheme == "token") }
         switch record.account?.scheme {
-        case "guest": "You’re a guest here. Sign in to keep your name and rooms."
-        case "email": "You sign in to this account with a code sent to your email."
-        case "webauthn": "You sign in to this account with a passkey."
-        default: "This device signs in with a token, the only way back into this account here."
+        case "guest": return "You’re a guest here. Sign in to keep your name and rooms."
+        case "email": return "You sign in to this account with a code sent to your email."
+        case "webauthn": return "You sign in to this account with a passkey."
+        case "external": return "You sign in to this account on the server’s sign-in page."
+        case "link": return "You signed in with a link, from an email or the server’s sign-in page."
+        default: return "This device signs in with a token, the only way back into this account here."
         }
     }
+
+    /// The profile bar's line under your name while the nudge stands, in place of your status
+    /// (apron-web's `note`, "add a sign-in", capitalized as its ProfileBar shows it).
+    public var profileNote: String? { wayBack == nil ? nil : "Add a sign-in" }
 
     /// Whether you can choose a status (§4.5): capability `status`, signed in.
     public var maySetStatus: Bool { server?.has("status") == true && status == .signedIn && you != nil }
