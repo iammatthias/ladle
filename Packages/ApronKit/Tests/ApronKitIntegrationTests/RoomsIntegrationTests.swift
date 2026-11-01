@@ -65,7 +65,8 @@ final class RoomsIntegrationTests: XCTestCase {
         let message = try XCTUnwrap(ada.store.message(messageID))
 
         let title = ThreadStart.title(message.body), description = try XCTUnwrap(ThreadStart.description(message.body))
-        XCTAssertEqual([title, description], ["Deploy *tonight*", "> Deploy \\*tonight\\*\n> after the freeze"])
+        // Sent as markdown, as the composer sends it, so the quote keeps its emphasis.
+        XCTAssertEqual([title, description], ["Deploy *tonight*", "> Deploy *tonight*\n> after the freeze"])
         let started = try await ada.startThread(from: message, title: title, description: description)
         let thread = try XCTUnwrap(started)
         try await waitFor("thread record") { ada.store.room(thread) != nil }
