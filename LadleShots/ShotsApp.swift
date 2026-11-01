@@ -37,11 +37,24 @@ enum Screen: String, CaseIterable {
     case addMembers = "add-members", membersPrivate = "members-private"
     case signInQRNotice = "signin-qr-notice", signInQRWarning = "signin-qr-warning", signInQRCode = "signin-qr-code"
     case membersFolded = "members-folded", membersTruncated = "members-truncated", profileCardTruncated = "profile-card-truncated"
+    case reconnectPill = "reconnect-pill", checkingPill = "checking-pill", catchingUpLine = "catching-up-line", olderPill = "older-pill"
+    case roomsReconnecting = "rooms-reconnecting", ipadCatchingUp = "ipad-catching-up"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
 
-    var isPad: Bool { self == .ipad || self == .ipadTyping }
+    var isPad: Bool { self == .ipad || self == .ipadTyping || self == .ipadCatchingUp }
+
+    /// What the reconnect shots hold the timeline at.
+    var heldLoading: PaneLoading.Shown? {
+        switch self {
+        case .reconnectPill: PaneLoading.Shown(pill: "Reconnecting…")
+        case .checkingPill: PaneLoading.Shown(pill: "Checking for new messages…")
+        case .catchingUpLine, .ipadCatchingUp: PaneLoading.Shown(catchingUpLine: true)
+        case .olderPill: PaneLoading.Shown(older: "Loading earlier messages…")
+        default: nil
+        }
+    }
 }
 
 @MainActor
@@ -385,6 +398,18 @@ enum Renderer {
             // The same, wider: the line with the dots above the composer.
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.typingRoomID), place: .constant(nil), connecting: .constant(nil)))
+        case .reconnectPill, .checkingPill, .catchingUpLine, .olderPill:
+            // The busy room through a reconnect's way back, as `PaneLoading` would show it.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
+                .environment(\.heldPaneLoading, screen.heldLoading))
+        case .ipadCatchingUp:
+            AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
+                                roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil))
+                .environment(\.heldPaneLoading, screen.heldLoading))
+        case .roomsReconnecting:
+            // Your own dot as the dashed ring while the connection comes back.
+            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) }
+                .environment(\.heldAwayWords, "Reconnecting…"))
         }
     }
 

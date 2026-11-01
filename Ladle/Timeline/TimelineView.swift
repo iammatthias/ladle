@@ -48,6 +48,9 @@ struct TimelineView: View {
     /// The thread Start Thread made, opened once its form has gone.
     @State private var startedThread: String?
     @State private var reminding: MessageReminders
+    /// The pill, the catching-up line and the older pill, on the session's clock.
+    @State private var loadingWatch: PaneLoadingWatch?
+    @Environment(\.heldPaneLoading) private var heldLoading
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openRoom) private var openRoom
@@ -93,7 +96,7 @@ struct TimelineView: View {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if let intro = session.privateIntro(roomID) { PrivateIntroCard(session: session, intro: intro) }
                     if session.canLoadOlder(roomID) {
-                        ProgressView()
+                        Color.clear
                             .frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget)
                             .task(id: session.histories[roomID]?.olderBefore) {
                                 do { try await session.loadOlder(roomID) } catch { problem = errorText(error) }
@@ -136,15 +139,24 @@ struct TimelineView: View {
                 self.jumpTarget = nil
             }
             .overlay(alignment: .bottom) {
-                if !atBottom, session.unreadCount(in: roomID) > 0 {
-                    JumpBar(count: session.unreadCount(in: roomID), mentions: session.mentionCount(in: roomID)) {
-                        withAnimation(Motion.slide(reduceMotion)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                VStack(spacing: Tokens.Space.s2) {
+                    if let pill = loading.pill, !session.timeline(roomID).isEmpty {
+                        LoadingPill(label: pill, rising: true)
                     }
-                    .padding(.bottom, Tokens.Space.s2)
-                    .transition(.opacity)
+                    if !atBottom, session.unreadCount(in: roomID) > 0 {
+                        JumpBar(count: session.unreadCount(in: roomID), mentions: session.mentionCount(in: roomID)) {
+                            withAnimation(Motion.slide(reduceMotion)) { proxy.scrollTo("bottom", anchor: .bottom) }
+                        }
+                        .transition(.opacity)
+                    }
                 }
+                .padding(.bottom, Tokens.Space.s2)
+            }
+            .overlay(alignment: .top) {
+                if let older = loading.older { LoadingPill(label: older, rising: false).padding(.top, Tokens.Space.s2) }
             }
             .safeAreaInset(edge: .top, spacing: 0) { banner }
+            .overlay(alignment: .top) { if loading.catchingUpLine { CatchingUpLine() } }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 VStack(spacing: 0) {
                     // Wider, it is a line above the composer, as the web's TypingIndicator.
@@ -297,6 +309,11 @@ struct TimelineView: View {
             guard mark.reading, let through = mark.through else { return }
             Task { await session.markRead(roomID, through: through) }
         }
+        .task(id: roomID) {
+            let watch = PaneLoadingWatch(session: session, roomID: roomID)
+            loadingWatch = watch
+            await watch.run()
+        }
         .task(id: session.status) {
             guard session.status == .signedIn else { return }
             do { try await session.open(roomID) } catch {
@@ -424,10 +441,13 @@ struct TimelineView: View {
         }
     }
 
-    /// Connection state (UX spec 4.1) and the last failure, under the navigation bar.
+    private var loading: PaneLoading.Shown { heldLoading ?? loadingWatch?.shown ?? PaneLoading.Shown() }
+
+    /// Connection state (UX spec 4.1) and the last failure, under the navigation bar. A short
+    /// drop's way back shows as the floating pill instead (`PaneLoading`).
     @ViewBuilder
     private var banner: some View {
-        let state = ConnectionState(session.status)
+        let state = session.reconnectingQuietly ? nil : ConnectionState(session.status)
         VStack(spacing: Tokens.Space.s2) {
             // The header's subtitle, as the web's RoomHeader, as a line under the bar so the centered
             // title never moves: on a phone who is typing, in denim; a thread's replies; or a room's

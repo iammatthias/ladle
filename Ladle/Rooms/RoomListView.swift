@@ -36,6 +36,7 @@ struct RoomListView: View {
     /// The room whose other threads all show, past the first three, after "N more…".
     @State private var allOthersFor: String?
     @Environment(\.fixedNow) private var fixedNow
+    @Environment(\.heldAwayWords) private var heldAwayWords
     @State private var problem: String?
     @State private var leaving: String?
     /// The room a swipe asked to mute, whose choices a dialog lists.
@@ -361,7 +362,8 @@ struct RoomListView: View {
                 Button("Sign In", action: onSignIn).buttonStyle(PrimaryButtonStyle())
             })
         default:
-            guard let state = ConnectionState(session.status) else { return nil }
+            // A short drop's way back says so only in your own dot, as on the web.
+            guard !session.reconnectingQuietly, let state = ConnectionState(session.status) else { return nil }
             if state.isProblem {
                 return AnyView(ActionBanner(symbol: state.symbol, title: state.title(session.record), detail: state.detail) {
                     if state.canRetry { Button("Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
@@ -378,10 +380,12 @@ struct RoomListView: View {
     private var profileBar: some View {
         if let you = session.you {
             let name = session.displayName(for: you)
-            let line = session.profileLine
+            let line = heldAwayWords ?? session.profileLine
+            let away = heldAwayWords ?? session.ownPresenceWords
+            let presence = heldAwayWords != nil ? .unknown : session.ownPresence
             Button { openPreferences(.profile, server: session.record.id) } label: {
                 HStack(spacing: Tokens.Space.s2) {
-                    Avatar(name: name, userID: you.userID, presence: session.presence(of: you.userID), image: session.avatarURL(of: you.userID))
+                    Avatar(name: name, userID: you.userID, presence: presence, image: session.avatarURL(of: you.userID))
                     VStack(alignment: .leading, spacing: 0) {
                         Text(name).apText(.ui, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
                         if let paused = session.pausedLine {
@@ -416,7 +420,7 @@ struct RoomListView: View {
             .background(Palette.chrome)
             .overlay(alignment: .top) { Rectangle().fill(Palette.line).frame(height: 1) }
             .accessibilityLabel((session.pausedLine.map { "Notifications \($0.lowercased()). " } ?? "")
-                + "Your profile on \(session.serverName): \(name)" + (Presence.words(session.chosenStatus, yours: true).map { ", \($0)" } ?? ""))
+                + "Your profile on \(session.serverName): \(name)" + ((away ?? Presence.words(session.chosenStatus, yours: true)).map { ", \($0)" } ?? ""))
             .accessibilityHint("Opens your profile and status")
         }
     }

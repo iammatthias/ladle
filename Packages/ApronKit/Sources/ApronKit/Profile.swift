@@ -171,9 +171,10 @@ extension ServerSession {
     public var keepsBio: Bool { server?.has("ext:bio") == true || server?.has("ext") == true }
 
     /// The line under your name in the profile bar, as apron-web's: "Paused until 14:30" while
-    /// your notifications are paused, else your status in words, else your `@user_id`.
+    /// your notifications are paused, else your status in words (the connection's while your dot
+    /// is the dashed ring), else your `@user_id`.
     public var profileLine: String? {
-        you.map { pausedLine ?? Presence.words(chosenStatus, yours: true) ?? "@\($0.userID)" }
+        you.map { pausedLine ?? ownPresenceWords ?? Presence.words(chosenStatus, yours: true) ?? "@\($0.userID)" }
     }
 
     /// How this account signs in here, for the You sheet.
