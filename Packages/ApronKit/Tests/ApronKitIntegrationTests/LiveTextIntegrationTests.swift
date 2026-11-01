@@ -151,6 +151,65 @@ final class LiveTextIntegrationTests: XCTestCase {
         XCTAssertNil(ada.appendedText(of: ada.store.message(message!.messageID)!))
     }
 
+    /// `/live` against aprond: the composer's changes stream as edits a reader shows as they come,
+    /// and Send saves the draft, mentions included, without the embed, which ends the text.
+    func testSlashLiveStreamsTheComposerAndSendSavesItWithoutTheEmbed() async throws {
+        let server = try await Aprond.start()
+        servers.append(server)
+        let ada = try await account(server, "ada@example.com")
+        let bob = try await account(server, "bob@example.com")
+        XCTAssertTrue(ada.canTypeLive)
+        try await ada.open("general")
+        try await bob.open("general")
+        let bobID = try XCTUnwrap(bob.you?.userID)
+        let bobName = bob.displayName(for: try XCTUnwrap(bob.you))
+        let drafts = Drafts(), key = DraftKey(server: ada.record.id, roomID: "general")
+        let live = LiveDraft(forget: { drafts[key] = ComposerDraft() }, restore: { drafts.restore(ComposerDraft(field: $0), at: key) })
+        try await ada.submit(ComposerDraft(field: DraftField(text: "/live")), in: "general", live: live)
+        XCTAssertEqual(ada.liveMessage?.roomID, "general")
+        var message: MessageSnapshot?
+        try await waitFor("bob sees the live message start", timeout: .seconds(10)) {
+            message = bob.timeline("general").last { $0.embedList.first?.kind == "append" && $0.embedList.first?.url != nil }
+            return message != nil
+        }
+        let reading = try XCTUnwrap(bob.appendedText(of: message!))
+        follow(reading, in: bob)
+        for typed in ["Roll", "Rolling bakc", "Rolling bak", "Rolling ba", "Rolling back the", "Rolling back now", "Rolling back now, @\(bobName)"] {
+            ada.typedLive(DraftField(text: typed, mentions: typed.contains("@") ? [bobID: bobName] : [:]), in: "general")
+            try await Task.sleep(for: .milliseconds(30))
+        }
+        try await waitFor("the edits, as typed", timeout: .seconds(10)) { reading.text == "Rolling back now, @\(bobName)" }
+        XCTAssertTrue(MessageRowModel(message!, in: bob).isWriting)
+        let final = "Rolling back now, @\(bobName). Done in five."
+        try await ada.submit(ComposerDraft(field: DraftField(text: final, mentions: [bobID: bobName])), in: "general", live: live)
+        XCTAssertNil(ada.liveMessage)
+        try await waitFor("the saved message, without the embed", timeout: .seconds(10)) {
+            bob.store.message(message!.messageID)?.embedList.isEmpty == true
+        }
+        let saved = try XCTUnwrap(bob.store.message(message!.messageID))
+        XCTAssertEqual(saved.plainText, final)
+        XCTAssertEqual(saved.mentionIDs, [bobID])
+        XCTAssertNil(bob.appendedText(of: saved))
+    }
+
+    /// Send on a live message with nothing typed takes it back.
+    func testSlashLiveSentEmptyDeletesTheMessage() async throws {
+        let server = try await Aprond.start()
+        servers.append(server)
+        let ada = try await account(server, "ada@example.com")
+        try await ada.open("general")
+        let live = LiveDraft(forget: {}, restore: { _ in })
+        try await ada.submit(ComposerDraft(field: DraftField(text: "/live")), in: "general", live: live)
+        var message: MessageSnapshot?
+        try await waitFor("the live message", timeout: .seconds(10)) {
+            message = ada.timeline("general").last { $0.embedList.first?.kind == "append" && $0.embedList.first?.url != nil }
+            return message != nil
+        }
+        try await ada.submit(ComposerDraft(), in: "general", live: live)
+        try await waitFor("deleted", timeout: .seconds(10)) { ada.timeline("general").allSatisfy { $0.messageID != message!.messageID } }
+        XCTAssertEqual(ada.store.message(message!.messageID)?.isTombstone, true)
+    }
+
     func testAnEndedTextsURLIsRefusedForGood() async throws {
         let server = try await Aprond.start()
         servers.append(server)
@@ -208,54 +267,25 @@ final class LiveTextIntegrationTests: XCTestCase {
     }
 }
 
-/// A streaming `PUT` to a write URL (§4.8.3), its body written a piece at a time, as `curl -T -`
-/// sends a pipe.
-private final class StreamingPut: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    private let output: OutputStream
-    private let input: InputStream
-    private var task: URLSessionUploadTask!
-    private var session: URLSession!
-    private let done = AsyncStream<Int>.makeStream()
+/// A streaming `PUT` to a write URL (§4.8.3) through the app's own writer (`LiveTextWriter`), its
+/// body written a piece at a time, as `curl -T -` sends a pipe.
+@MainActor
+private final class StreamingPut {
+    private let body: AsyncStream<Data>.Continuation
+    private let task: Task<LiveTextWriteResponse, any Error>
 
     init(_ url: URL) {
-        var input: InputStream?
-        var output: OutputStream?
-        Stream.getBoundStreams(withBufferSize: 4096, inputStream: &input, outputStream: &output)
-        self.input = input!
-        self.output = output!
-        super.init()
-        self.output.open()
-        session = URLSession(configuration: .ephemeral, delegate: self, delegateQueue: nil)
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("text/plain; charset=utf-8", forHTTPHeaderField: "Content-Type")
-        task = session.uploadTask(withStreamedRequest: request)
-        task.resume()
+        let (stream, body) = AsyncStream.makeStream(of: Data.self)
+        self.body = body
+        task = Task { try await LiveTextWriter.live(url, stream) }
     }
 
     func send(_ text: String) {
-        let bytes = Array(text.utf8)
-        var written = 0
-        while written < bytes.count {
-            let count = bytes[written...].withUnsafeBufferPointer { output.write($0.baseAddress!, maxLength: $0.count) }
-            if count <= 0 { Thread.sleep(forTimeInterval: 0.01); continue }
-            written += count
-        }
+        body.yield(Data(text.utf8))
     }
 
     func finish() async -> Int {
-        output.close()
-        for await status in done.stream { return status }
-        return 0
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, needNewBodyStream completionHandler: @escaping @Sendable (InputStream?) -> Void) {
-        completionHandler(input)
-    }
-
-    func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: (any Error)?) {
-        done.continuation.yield((task.response as? HTTPURLResponse)?.statusCode ?? -1)
-        done.continuation.finish()
-        session.finishTasksAndInvalidate()
+        body.finish()
+        return (try? await task.value.status) ?? -1
     }
 }

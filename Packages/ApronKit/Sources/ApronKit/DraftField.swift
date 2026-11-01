@@ -218,20 +218,35 @@ extension ServerSession {
     /// a command (`ComposerAction`, the draft's files going with the server's own `command`) or a
     /// message queued in the outbox with the files and the previews of its links still on the
     /// draft (`DraftLinkPreviews`); for an edit, its save, which sends no files.
-    /// Returns the room to show after a command, such as the one `/join` named. A failed command
-    /// throws `CommandFailure`, holding `draft` to give back.
+    /// `/live` starts typing live (`startLiveTyping`, its draft kept by `live`), and Send on the
+    /// live draft finishes it (`sendLive`).
+    /// Returns the room to show after a command, such as the one `/join` named. A failed command,
+    /// or `/live` with files staged, throws `CommandFailure`, holding `draft` to give back.
     @discardableResult
-    public func submit(_ draft: ComposerDraft, in roomID: String) async throws -> String? {
+    public func submit(_ draft: ComposerDraft, in roomID: String, live: LiveDraft? = nil) async throws -> String? {
         let field = draft.field
         let text = field.sentText
-        let holders = Dictionary(mentionableRoles(in: roomID).map { ($0.role, $0.members) }, uniquingKeysWith: { first, _ in first })
-        let mentions = field.sentMentions(holders: holders)
+        let mentions = field.sentMentions(holders: roleHolders(in: roomID))
         if let target = field.edit {
             try await edit(target, text: text, mentions: mentions)
             return nil
         }
+        if liveMessage?.roomID == roomID {
+            sendLive(field, in: roomID)
+            return nil
+        }
         let attachments = draft.files.compactMap(\.attachment)
         let action = action(for: field, withFiles: !attachments.isEmpty)
+        if action == .live, let live {
+            // `/live` starts with an empty composer: files staged first would wait unseen.
+            guard draft.files.isEmpty else {
+                let reason = "Send or remove the attached files before typing live."
+                postNotice(reason, in: roomID)
+                throw CommandFailure(reason: reason, draft: draft)
+            }
+            startLiveTyping(in: roomID, replyTo: field.replyTo, draft: live)
+            return nil
+        }
         guard action.isCommand else {
             let links = linkPreviews.embeds(in: text, dismissed: draft.dismissedPreviews)
             post(text, in: roomID, replyTo: field.replyTo, mentions: mentions, links: links, attachments: attachments)

@@ -4,7 +4,9 @@ import Foundation
 /// `command`, text that starts with one `/` is a command: `/nick`, `/join`, `/leave`, `/topic`,
 /// `/kick` and `/invite` are the requests they spell (all but the first need capability
 /// `rooms`), and anything else goes to the server as a `command`. `//` posts a message starting
-/// with `/`. Without capability `command`, every text is a message.
+/// with `/`. Without capability `command`, every text is a message. `/live` alone, with
+/// capability `embed:append`, is Ladle's own, with or without `command`: the composer types its
+/// next message live.
 public enum ComposerAction: Hashable, Sendable {
     case message(String)
     case command(String)
@@ -20,13 +22,16 @@ public enum ComposerAction: Hashable, Sendable {
     case kick(String)
     /// `room_join` with the `user_id` of the user to add (§4.2.2).
     case invite(String)
+    /// `/live`: the composer types its next message live, as an `append` embed (§4.8.5).
+    case live
 
     /// `members`: adding and removing others is worth trying; once the server answered it
     /// `unsupported`, `/kick` and `/invite` go to the server as commands. `mentions` are the
     /// draft's picked mentions the text still shows, by `user_id`, each with the word written
     /// after its `@`: one written as the argument names that user exactly, where the text alone
     /// would not (a name has spaces, and an id in text ends with a letter, a digit or `_`).
-    public init(_ text: String, command: Bool, rooms: Bool, members: Bool = true, mentions: [String: String] = [:]) {
+    public init(_ text: String, command: Bool, rooms: Bool, members: Bool = true, mentions: [String: String] = [:], append: Bool = false) {
+        if append, text.wholeMatch(of: Self.liveCommand) != nil { self = .live; return }
         guard command else { self = .message(text); return }
         if text.hasPrefix("//") { self = .message(String(text.dropFirst())); return }
         guard text.hasPrefix("/"), let match = text.trimmingSuffix().wholeMatch(of: Self.shape) else { self = .message(text); return }
@@ -49,6 +54,8 @@ public enum ComposerAction: Hashable, Sendable {
 
     /// `/name`, then the argument after whitespace, if any (apron-web's `^\/(\S+)(?:\s+([\s\S]*))?$`).
     nonisolated(unsafe) private static let shape = /\/(\S+)(?:\s+([\s\S]*))?/
+    /// apron-web's `^\/live\s*$`, ignoring case.
+    nonisolated(unsafe) private static let liveCommand = /\/live\s*/.ignoresCase()
     /// A lone user argument, `@user_id` or the bare id, as Appendix A.3 ends an id in text
     /// (apron-web's `USER_ARGUMENT`).
     nonisolated(unsafe) private static let userArgument = /@?([A-Za-z0-9_](?:[A-Za-z0-9_.+@:-]*[A-Za-z0-9_])?)[.+@:-]*/
@@ -60,8 +67,10 @@ public enum ComposerAction: Hashable, Sendable {
 
     /// Whether the server runs it: a `command` request, or one of the requests a command spells.
     public var isCommand: Bool {
-        if case .message = self { return false }
-        return true
+        switch self {
+        case .message, .live: false
+        default: true
+        }
     }
 }
 
@@ -85,7 +94,7 @@ extension ServerSession {
         let text = field.sentText
         let shown = field.mentions.filter { text.contains("@" + $0.value) }
         let action = ComposerAction(text, command: server?.has("command") == true, rooms: !withFiles && server?.has("rooms") == true,
-                                    members: !memberChangesUnsupported, mentions: shown)
+                                    members: !memberChangesUnsupported, mentions: shown, append: canTypeLive)
         if withFiles, action.isCommand { return .command(text) }
         return action
     }
@@ -98,7 +107,7 @@ extension ServerSession {
         let attachments = draft.files.compactMap(\.attachment)
         do {
             switch action {
-            case .message:
+            case .message, .live:
                 return nil
             case .command(let text):
                 try await send(text, in: roomID, replyTo: draft.field.replyTo, mentions: mentions, attachments: attachments)
@@ -123,7 +132,7 @@ extension ServerSession {
             }
         } catch {
             let reason = errorText(error)
-            notices.append(Notice(roomID: roomID, from: UserObject(["user_id": "~private"])!, body: ["text": .string(reason), "format": "plain"]))
+            postNotice(reason, in: roomID)
             throw CommandFailure(reason: reason, draft: draft)
         }
         return nil

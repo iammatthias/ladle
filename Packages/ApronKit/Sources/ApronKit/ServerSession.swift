@@ -82,6 +82,8 @@ public final class ServerSession {
         public var passkeyDomains: PasskeyDomains
         /// The streaming `GET` of live text (v10 §4.8.5).
         public var readLiveText: LiveTextRead
+        /// The streaming `PUT` of live text the composer types (`/live`, §4.8.5).
+        public var writeLiveText: LiveTextWrite
 
         public init(
             makeTransport: @escaping @Sendable (ServerRecord) -> any FrameTransport,
@@ -101,9 +103,11 @@ public final class ServerSession {
             now: @escaping @Sendable () -> Date = { Date() },
             threadsWait: Duration = .seconds(3),
             passkeyDomains: PasskeyDomains = .app,
-            readLiveText: @escaping LiveTextRead = LiveTextFetch.live
+            readLiveText: @escaping LiveTextRead = LiveTextFetch.live,
+            writeLiveText: @escaping LiveTextWrite = LiveTextWriter.live
         ) {
             self.readLiveText = readLiveText
+            self.writeLiveText = writeLiveText
             self.passkeyDomains = passkeyDomains
             self.makeTransport = makeTransport
             self.sleep = sleep
@@ -153,6 +157,8 @@ public final class ServerSession {
     public private(set) var joinedRoomIDs: Set<String> = []
     /// Transient notices (§3.5.3), newest last. Never installed as snapshots.
     public internal(set) var notices: [Notice] = []
+    /// The message the composer is typing live (`/live`), until it is finished.
+    public internal(set) var liveMessage: LiveMessage?
     public private(set) var histories: [String: RoomHistory] = [:]
     /// Each room's first page while it loads, so a second `open` waits for it.
     @ObservationIgnored private var openings: [String: Task<Void, Error>] = [:]
@@ -327,6 +333,7 @@ public final class ServerSession {
     }
 
     public func stop() async {
+        closeLiveTyping()
         runTask?.cancel()
         runTask = nil
         await connection?.close()
@@ -802,8 +809,10 @@ public final class ServerSession {
     // MARK: History
 
     /// Marks a room as on screen or not, so a catch-up after a reconnect pages it first.
+    /// Leaving a room finishes the message typed live there, as Send would.
     public func show(_ roomID: String, _ shown: Bool) {
         if shown { onScreen.insert(roomID) } else { onScreen.remove(roomID) }
+        if !shown, liveMessage?.roomID == roomID { finishLiveTyping() }
     }
 
     /// Loads the newest page of a room once (§4.3.5 step 3, without a checkpoint). A call while

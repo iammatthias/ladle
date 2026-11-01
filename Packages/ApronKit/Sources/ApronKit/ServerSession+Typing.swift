@@ -43,7 +43,8 @@ extension ServerSession {
     /// sign-in, or from someone who may not write.
     public func composerChanged(in roomID: String) {
         onInput?()
-        guard status == .signedIn, server?.has("activity") == true, mayWrite else { return }
+        // A live message shows itself as it is typed: no typing indicator besides.
+        guard status == .signedIn, server?.has("activity") == true, mayWrite, liveMessage?.roomID != roomID else { return }
         let times = environment.typing
         let now = ContinuousClock.now
         if typingSentAt[roomID].map({ now - $0 >= times.refresh }) ?? true {
