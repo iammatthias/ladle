@@ -392,7 +392,7 @@ final class ServerSessionTests: XCTestCase {
 
         let posting = Task { try await session.send("hello", in: "general") }
         let post = await frame(first, 2)
-        XCTAssertEqual(post, #"{"id":"c3","method":"message","params":{"body":{"format":"plain","text":"hello"},"room_id":"general"}}"#)
+        XCTAssertEqual(post, #"{"id":"c3","method":"message","params":{"body":{"format":"markdown","text":"hello"},"room_id":"general"}}"#)
         await first.dropFromServer()
         do {
             _ = try await posting.value
@@ -1129,7 +1129,7 @@ final class ServerSessionTests: XCTestCase {
             index += 1
         }
 
-        try await expect(#"{"id":"c3","method":"message","params":{"body":{"format":"plain","text":"hi"},"reply_to":{"message_id":"200"},"room_id":"general"}}"#,
+        try await expect(#"{"id":"c3","method":"message","params":{"body":{"format":"markdown","text":"hi"},"reply_to":{"message_id":"200"},"room_id":"general"}}"#,
                          reply: ["message_id": "201"]) { try await self.session.send("hi", in: "general", replyTo: LogID("200")) }
         try await expect(#"{"id":"c4","method":"message","params":{"body":{"format":"markdown","mentions":["bob"],"text":"hello"},"message_id":"200","reply_to":{"message_id":"150"},"room_id":"general"}}"#) {
             try await self.session.edit(original, text: "hello", mentions: ["bob"])
@@ -1269,19 +1269,19 @@ final class ServerSessionTests: XCTestCase {
         try await signInAsGuest(on: socket)
         let mention = Task { try await session.send("hi @Bob", in: "general", mentions: ["bob"]) }
         let sent1 = await frame(socket, 2)
-        XCTAssertEqual(sent1, #"{"id":"c3","method":"message","params":{"body":{"format":"plain","mentions":["bob"],"text":"hi @Bob"},"room_id":"general"}}"#)
+        XCTAssertEqual(sent1, #"{"id":"c3","method":"message","params":{"body":{"format":"markdown","mentions":["bob"],"text":"hi @Bob"},"room_id":"general"}}"#)
         await socket.deliver(["id": "c3", "result": ["message_id": "300"]])
         let posted = try await mention.value
         XCTAssertEqual(posted, LogID("300"))
         let command = Task { try await session.send("/help", in: "general") }
         let sent2 = await frame(socket, 3)
-        XCTAssertEqual(sent2, #"{"id":"c4","method":"command","params":{"body":{"format":"plain","text":"/help"},"room_id":"general"}}"#)
+        XCTAssertEqual(sent2, #"{"id":"c4","method":"command","params":{"body":{"format":"markdown","text":"/help"},"room_id":"general"}}"#)
         await socket.deliver(["id": "c4", "result": [:]])
         let ran = try await command.value
         XCTAssertNil(ran)
         let slash = Task { try await session.send("//shrug", in: "general") }
         let sent3 = await frame(socket, 4)
-        XCTAssertEqual(sent3, #"{"id":"c5","method":"message","params":{"body":{"format":"plain","text":"/shrug"},"room_id":"general"}}"#)
+        XCTAssertEqual(sent3, #"{"id":"c5","method":"message","params":{"body":{"format":"markdown","text":"/shrug"},"room_id":"general"}}"#)
         await socket.deliver(["id": "c5", "result": ["message_id": "301"]])
         _ = try await slash.value
     }
@@ -1310,7 +1310,7 @@ final class ServerSessionTests: XCTestCase {
         await session.loadCommands(in: "general")
         let typed = Task { try await session.send("/help", in: "general") }
         let sentByHand = await frame(socket, 3)
-        XCTAssertEqual(sentByHand, #"{"id":"c4","method":"command","params":{"body":{"format":"plain","text":"/help"},"room_id":"general"}}"#)
+        XCTAssertEqual(sentByHand, #"{"id":"c4","method":"command","params":{"body":{"format":"markdown","text":"/help"},"room_id":"general"}}"#)
         await socket.deliver(privateNotice(CommandHelpTests.guest))
         await socket.deliver(["id": "c4", "result": [:]])
         _ = try await typed.value
@@ -1357,7 +1357,7 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.outbox.map(\.text), ["queued"])
         XCTAssertEqual(session.outbox.first?.state, .sending)
 
-        let resent = #"{"id":"q-c3","method":"message","params":{"body":{"format":"plain","text":"queued"},"room_id":"general"}}"#
+        let resent = #"{"id":"q-c3","method":"message","params":{"body":{"format":"markdown","text":"queued"},"room_id":"general"}}"#
         clock.release()
         let second = await transport(1)
         _ = await frames(second, count: 2)
@@ -1452,7 +1452,7 @@ final class ServerSessionTests: XCTestCase {
         await socket.deliver(["id": "q-c3", "error": ["code": -32002, "message": "Daily upload limit reached",
                                                       "data": ["retry_after": 40_000, "ext": ["limits": "upload"]]]])
         let next = await frame(socket, 3)
-        XCTAssertEqual(next, #"{"id":"q-c4","method":"message","params":{"body":{"format":"plain","text":"anyway"},"room_id":"general"}}"#)
+        XCTAssertEqual(next, #"{"id":"q-c4","method":"message","params":{"body":{"format":"markdown","text":"anyway"},"room_id":"general"}}"#)
         XCTAssertEqual(session.outbox.first?.state, .failed("Daily upload limit reached"))
         XCTAssertEqual(clock.recorded, [])
     }
@@ -1468,7 +1468,7 @@ final class ServerSessionTests: XCTestCase {
         await eventually("waiting") { clock.recorded == [.seconds(3)] }
         clock.release()
         let resent = await frame(socket, 3)
-        XCTAssertEqual(resent, #"{"id":"q-c3","method":"message","params":{"body":{"format":"plain","text":"hello"},"room_id":"general"}}"#)
+        XCTAssertEqual(resent, #"{"id":"q-c3","method":"message","params":{"body":{"format":"markdown","text":"hello"},"room_id":"general"}}"#)
     }
 
     func testOperationsNeedASignedInConnection() async throws {
@@ -1600,7 +1600,7 @@ extension ServerSessionTests {
         _ = try await posting.value
         try await Task.sleep(for: .milliseconds(300))
         let all = await socket.sentLog
-        XCTAssertEqual(Array(all[2...]), [Self.typing15, #"{"id":"c3","method":"message","params":{"body":{"format":"plain","text":"hi"},"room_id":"general"}}"#])
+        XCTAssertEqual(Array(all[2...]), [Self.typing15, #"{"id":"c3","method":"message","params":{"body":{"format":"markdown","text":"hi"},"room_id":"general"}}"#])
     }
 
     func testWithoutTheActivityCapabilityTypingSendsNothing() async throws {

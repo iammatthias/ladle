@@ -145,7 +145,7 @@ final class ComposerCommandsTests: XCTestCase {
         let kick = submit("/kick @bob")
         await expectSent(2, #"{"id":"c3","method":"room_leave","params":{"room_id":"general","user_id":"bob"}}"#)
         await socket.deliver(["id": "c3", "error": ["code": -32601, "message": "unsupported"]])
-        await expectSent(3, #"{"id":"c4","method":"command","params":{"body":{"format":"plain","text":"/kick @bob"},"room_id":"general"}}"#)
+        await expectSent(3, #"{"id":"c4","method":"command","params":{"body":{"format":"markdown","text":"/kick @bob"},"room_id":"general"}}"#)
         await socket.deliver(["id": "c4", "result": [:]])
         _ = try await kick.value
         XCTAssertEqual(session.action(for: DraftField(text: "/kick @bob"), withFiles: false), .command("/kick @bob"), "and the next one goes there first")
@@ -167,7 +167,7 @@ final class ComposerCommandsTests: XCTestCase {
                                                     body: ["text": "Only moderators can change the topic", "format": "plain"]))
 
         let help = submit("/frobnicate")
-        await expectSent(3, #"{"id":"c4","method":"command","params":{"body":{"format":"plain","text":"/frobnicate"},"room_id":"general"}}"#)
+        await expectSent(3, #"{"id":"c4","method":"command","params":{"body":{"format":"markdown","text":"/frobnicate"},"room_id":"general"}}"#)
         await socket.deliver(["id": "c4", "error": ["code": -32602, "message": "Unknown command: /frobnicate"]])
         do {
             _ = try await help.value
@@ -189,9 +189,9 @@ final class ComposerCommandsTests: XCTestCase {
     func testWithoutCapabilityCommandASlashIsPostedAsWritten() async throws {
         try await signIn(capabilities: ["history", "rooms"])
         _ = try await submit("/nick Ada L").value
-        await expectSent(2, #"{"id":"q-c3","method":"message","params":{"body":{"format":"plain","text":"/nick Ada L"},"room_id":"general"}}"#)
+        await expectSent(2, #"{"id":"q-c3","method":"message","params":{"body":{"format":"markdown","text":"/nick Ada L"},"room_id":"general"}}"#)
         await socket.deliver(["id": "q-c3", "result": ["message_id": "200"]])
         _ = try await submit("//x").value
-        await expectSent(3, #"{"id":"q-c4","method":"message","params":{"body":{"format":"plain","text":"//x"},"room_id":"general"}}"#)
+        await expectSent(3, #"{"id":"q-c4","method":"message","params":{"body":{"format":"markdown","text":"//x"},"room_id":"general"}}"#)
     }
 }

@@ -484,7 +484,7 @@ final class UploadSessionTests: XCTestCase {
     func testAttachmentsGoAsUploadEmbedsAndAreWrittenToTheirURLsInOrder() async throws {
         session.post("Before the fix:", in: "general", attachments: [attachment("before.jpg"), attachment("notes.pdf", "application/pdf")])
         let frame = await sent(2)
-        XCTAssertEqual(frame, #"{"id":"q-c3","method":"message","params":{"body":{"embeds":[{"kind":"upload","title":"before.jpg"},{"kind":"upload","title":"notes.pdf"}],"format":"plain","text":"Before the fix:"},"room_id":"general"}}"#)
+        XCTAssertEqual(frame, #"{"id":"q-c3","method":"message","params":{"body":{"embeds":[{"kind":"upload","title":"before.jpg"},{"kind":"upload","title":"notes.pdf"}],"format":"markdown","text":"Before the fix:"},"room_id":"general"}}"#)
         await socket.deliver(["id": "q-c3", "result": ["message_id": "500", "embeds": [
             ["embed_id": "e1", "kind": "upload", "write_url": "https://chat.example/write/t1"],
             ["embed_id": "e2", "kind": "upload", "write_url": "https://chat.example/write/t2"],
@@ -515,7 +515,7 @@ final class UploadSessionTests: XCTestCase {
 
         session.retry(item.id)
         let again = await sent(3)
-        XCTAssertEqual(again, #"{"id":"q-c4","method":"message","params":{"body":{"embeds":[{"kind":"upload","title":"big.mov"}],"format":"plain","text":""},"room_id":"general"}}"#)
+        XCTAssertEqual(again, #"{"id":"q-c4","method":"message","params":{"body":{"embeds":[{"kind":"upload","title":"big.mov"}],"format":"markdown","text":""},"room_id":"general"}}"#)
     }
 
     func testAResultWithoutWriteURLsLeavesTheAttachmentNotSent() async throws {

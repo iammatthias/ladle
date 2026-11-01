@@ -850,7 +850,7 @@ public final class ServerSession {
             try await join(roomID)
         }
         if !draft.isCommand { sentMessage(in: roomID) }
-        var body: [String: JSONValue] = ["text": .string(draft.text), "format": "plain"]
+        var body: [String: JSONValue] = ["text": .string(draft.text), "format": "markdown"]
         if !mentions.isEmpty { body["mentions"] = .array(mentions.map(JSONValue.string)) }
         if !attachments.isEmpty { body["embeds"] = .array(attachments.map(Self.uploadEmbed)) }
         var params: [String: JSONValue] = ["room_id": .string(roomID), "body": .object(body)]

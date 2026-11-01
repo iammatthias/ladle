@@ -195,6 +195,8 @@ clone), which is only a worked example.
     (ImageIO, so `swift test` covers it) and `MediaCompression` in the app the sound and video
     ones (AVFoundation). `prepareAvatar` crops the middle square at 512 px within the `avatar`
     category.
+  - `send` posts a message or command as `format: "markdown"`, as apron-web's composer does, so what a
+    user types renders the same in every client; the hidden `/help` stays `plain`.
   - `send` and `post` take attachments as `upload` embeds; `ServerSession+Uploads` writes each
     to the `write_url` the result lists, in request order, through `Environment.writeEmbed`
     (`EmbedWriter.live`, a URLSession `PUT`), and keeps `uploadProgress` by `embed_id`. A
