@@ -31,6 +31,11 @@ struct TimelineView: View {
     @State private var dismissedWaits: Set<Date> = []
     @State private var showingMembers = false
     @State private var searchingHistory = false
+    /// The room's threads, on iPhone, and what picking in it asked for once it has gone.
+    @State private var browsingThreads = false
+    @State private var afterThreads: (() -> Void)?
+    /// New Thread from the threads sheet.
+    @State private var namingThread = false
     /// Select mode: the messages picked, and a move under way.
     @State private var picking: MessageSelection?
     @State private var movingSelection = false
@@ -279,6 +284,27 @@ struct TimelineView: View {
         .toolbarBackgroundVisibility(session.isPrivate(roomID) ? .visible : .automatic, for: .navigationBar)
         .sheet(isPresented: $searchingHistory) {
             SearchView(session: session, initial: ServerSession.searchStart(in: roomID))
+        }
+        .sheet(isPresented: $browsingThreads, onDismiss: {
+            afterThreads?()
+            afterThreads = nil
+        }) {
+            ThreadsSheet(session: session, roomID: roomID,
+                         open: { thread in afterThreads = { openRoom(thread) } },
+                         newThread: { afterThreads = { namingThread = true } })
+        }
+        .sheet(isPresented: $namingThread, onDismiss: {
+            if let startedThread { openRoom(startedThread) }
+            startedThread = nil
+        }) {
+            let parent = session.topLevelRoom(of: roomID)
+            RoomFormSheet(kind: .thread, mode: .create, subtitle: "In \(session.title(of: parent))", isPrivate: session.isPrivate(parent),
+                          title: "", description: "") { title, description in
+                guard let thread = try await session.createRoom(title: title, description: description, parentRoomID: parent) else { return }
+                startedThread = thread
+                // A thread of a private room is private too: the room's other members are added, so they see it.
+                Task { if let note = await session.includeMembers(of: parent, in: thread) { problem = note } }
+            }
         }
         .sheet(item: $selecting) { selected in
             SelectTextSheet(text: selected.text) { selecting = nil }
@@ -538,6 +564,10 @@ struct TimelineView: View {
             if session.status == .signedIn, session.server?.has("rooms") == true || session.mayMute {
                 Menu("Room", systemImage: "ellipsis") {
                     let noun = session.store.room(roomID)?.parentRoomID == nil ? "Room" : "Thread"
+                    // On iPhone the rooms list, and the threads under the room, are out of sight in a room.
+                    if sizeClass == .compact, session.offersThreads(in: roomID) {
+                        Button("Threads", systemImage: "bubble.left.and.text.bubble.right") { browsingThreads = true }
+                    }
                     if let link = session.link(to: roomID) {
                         Button("Copy Link to \(noun)", systemImage: "link") { copyLink(link) }
                     }

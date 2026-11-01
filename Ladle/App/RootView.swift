@@ -205,6 +205,9 @@ struct PhoneLayout: View {
     @Binding var roomID: String?
     @Binding var place: ApronLink?
     @Binding var connecting: ConnectRequest?
+    /// The room or thread last opened on each server: the rooms list's open room once you go
+    /// Back, so its threads show under it as in the iPad sidebar.
+    @State private var opened: [UUID: String] = [:]
 
     enum Route: Hashable {
         case server(UUID)
@@ -218,9 +221,9 @@ struct PhoneLayout: View {
                     switch route {
                     case .server(let id):
                         if let session = store.session(for: id) {
-                            RoomListView(session: session, open: { path.append(.room(id, $0)) },
+                            RoomListView(session: session, selected: opened[id], open: { path.append(.room(id, $0)) },
                                          onSignIn: { connecting = ConnectRequest(record: session.record) },
-                                         onConnect: { connecting = ConnectRequest() })
+                                         onConnect: { connecting = ConnectRequest() }, pickingOpenRoomFolds: false)
                                 .resolvingLinks(from: session)
                                 .onAppear { serverID = id.uuidString; roomID = nil }
                         }
@@ -229,7 +232,11 @@ struct PhoneLayout: View {
                             TimelineView(session: session, roomID: room, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: store.drafts, place: $place)
                                 .resolvingLinks(from: session)
                                 .environment(\.openRoom, OpenRoomAction { path.append(.room(id, $0)) })
-                                .onAppear { serverID = id.uuidString; roomID = room }
+                                .onAppear {
+                                    serverID = id.uuidString
+                                    roomID = room
+                                    opened[id] = room
+                                }
                         }
                     }
                 }

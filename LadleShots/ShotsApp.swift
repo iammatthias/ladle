@@ -19,7 +19,7 @@ struct ShotsApp: App {
 
 enum Screen: String, CaseIterable {
     case firstRun = "first-run", servers, connect, connectScanned = "connect-scanned", rooms, timeline, mention, members, reaction, attachments, media, links, viewer, ipad
-    case roomsReturned = "rooms-returned"
+    case roomsFresh = "rooms-fresh", threadsSheet = "threads-sheet", threadsSheetThread = "threads-sheet-thread"
     case textLimit = "text-limit", guestComposer = "guest-composer"
     case emoji, emojiPicker = "emoji-picker", emojiShortcode = "emoji-shortcode", commands
     case linkCards = "link-cards", composerLinkPreviews = "composer-link-previews", sentLinkPreview = "sent-link-preview", roomMention = "room-mention", selectText = "select-text"
@@ -51,7 +51,7 @@ enum Screen: String, CaseIterable {
     // Last of the phone shots: Browse Rooms lists the garden and the book club into home's store,
     // which the `#` list would then offer.
     case roomsOrdered = "rooms-ordered", roomsFolded = "rooms-folded", roomsThreadsFolded = "rooms-threads-folded", roomsReorder = "rooms-reorder"
-    case browseRooms = "browse-rooms", roomPeek = "room-peek"
+    case browseRooms = "browse-rooms", roomPeek = "room-peek", roomsReading = "rooms-reading"
 
     /// The rooms list in an order of the user's own, rather than as first listed.
     var isReordered: Bool { self == .roomsOrdered || self == .roomsReorder }
@@ -150,14 +150,15 @@ enum Renderer {
             await seedPause(shot.screen.isPaused, home: home)
             seedSites(shot.screen.hasSiteLists, in: store)
             UserDefaults.standard.set(shot.screen == .roomsInactive, forKey: "inactiveThreadsOpen")
-            UserDefaults.standard.set(shot.screen == .roomsFolded, forKey: "roomsSectionFolded")
-            UserDefaults.standard.set(shot.screen == .roomsFolded, forKey: "privateSectionFolded")
+            UserDefaults.standard.set(shot.screen == .roomsFolded || shot.screen == .roomsReading, forKey: "roomsSectionFolded")
+            UserDefaults.standard.set(shot.screen == .roomsFolded || shot.screen == .roomsReading, forKey: "privateSectionFolded")
             seedOrder(shot.screen.isReordered, in: store, home: home, firstListed: firstListed)
             home.foldThreads("general", shot.screen == .roomsThreadsFolded)
             UserDefaults.standard.set(true, forKey: "memberOnlineOpen")
             UserDefaults.standard.set(shot.screen != .membersFolded, forKey: "memberOfflineOpen")
             if shot.screen == .limited { await seedWaits(home: home) }
             if shot.screen == .commandFailed { await seedCommandFailure(home: home) }
+            if shot.screen == .roomsReading { _ = try? await home.listUnjoinedRooms() }
             if shot.screen == .connectExternalCode, let fresh = signIn.session(for: PreviewFixtures.freshID), fresh.pendingPage == nil {
                 _ = try? await fresh.signIn(.externalProposal(returnURL: nil))
             }
@@ -232,10 +233,14 @@ enum Renderer {
             AnyView(ConnectView(store: store, prefill: TokenPayload(token: "inv_Qm7x", server: URL(string: "wss://chat.example/ws")),
                                 canScan: true))
         case .rooms:
-            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
-        case .roomsReturned:
-            // The phone's own stack, without a selection set: #general opened, then Back.
             AnyView(PhoneShot(store: store, server: home.record.id, returningFrom: PreviewFixtures.busyRoomID))
+        case .roomsFresh:
+            // Before any room is opened: under each room only its joined threads with news.
+            AnyView(PhoneShot(store: store, server: home.record.id))
+        case .threadsSheet, .threadsSheetThread:
+            // The room header's Threads: #general's, from the room and from Release 0.2.
+            AnyView(ThreadsSheet(session: home, roomID: screen == .threadsSheet ? PreviewFixtures.busyRoomID : PreviewFixtures.releaseThreadID,
+                                 open: { _ in }, newThread: {}))
         case .timeline:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .mention:
@@ -370,8 +375,8 @@ enum Renderer {
                                               description: home.roomDescription(PreviewFixtures.emojiRoomID) ?? "")
             })
         case .roomsInactive:
-            // Inactive unfolded, with the untitled thread there open.
-            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.untitledThreadID, open: { _ in }) })
+            // Inactive unfolded, back from the untitled thread there.
+            AnyView(PhoneShot(store: store, server: home.record.id, returningFrom: PreviewFixtures.untitledThreadID))
         case .startThread:
             // Start Thread on Bram's checklist message: its first line as the title, its text quoted.
             AnyView(Group {
@@ -405,8 +410,8 @@ enum Renderer {
                 }
             })
         case .roomsPrivate:
-            // The conversation with Ada open: the Private section, each room with its faces.
-            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.directRoomID, open: { _ in }) })
+            // Back from the conversation with Ada: the Private section, each room with its faces.
+            AnyView(PhoneShot(store: store, server: home.record.id, returningFrom: PreviewFixtures.directRoomID))
         case .directMessage:
             // The conversation with Ada from its start: her face and line in the header, the intro card.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.directRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
@@ -451,7 +456,7 @@ enum Renderer {
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.mutedRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .paused:
             // The profile bar while paused, over the muted room and its thread's bells.
-            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
+            AnyView(PhoneShot(store: store, server: home.record.id, returningFrom: PreviewFixtures.busyRoomID))
         case .notificationsPaused:
             AnyView(PreferencesView(store: store, request: PreferencesRequest(section: .notifications, server: PreviewFixtures.homeID)))
         case .preferences:
@@ -536,13 +541,13 @@ enum Renderer {
                 .environment(\.heldPaneLoading, screen.heldLoading))
         case .roomsOrdered:
             // Moved by hand: random and kitchen to the top, the conversation with Ada last of Private.
-            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
+            AnyView(PhoneShot(store: store, server: home.record.id, returningFrom: PreviewFixtures.busyRoomID))
         case .roomsFolded:
             // Rooms and Private folded to their rooms with news, each with its …, markdown open.
-            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.markdownRoomID, open: { _ in }) })
+            AnyView(PhoneShot(store: store, server: home.record.id, returningFrom: PreviewFixtures.markdownRoomID))
         case .roomsThreadsFolded:
-            // #general picked again while open: its threads folded to the one with news, and its ….
-            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
+            // #general folded from its menu: its threads folded to the one with news, and its ….
+            AnyView(PhoneShot(store: store, server: home.record.id, returningFrom: PreviewFixtures.busyRoomID))
         case .roomsReorder:
             AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }, startsReordering: true) })
         case .browseRooms:
@@ -550,9 +555,12 @@ enum Renderer {
         case .roomPeek:
             // The garden, open from Browse Rooms to read before joining, with Join in its header.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.gardenRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
+        case .roomsReading:
+            // Back from the garden, read before joining: open under Other Rooms, Rooms and Private folded so it shows.
+            AnyView(PhoneShot(store: store, server: home.record.id, returningFrom: PreviewFixtures.gardenRoomID))
         case .roomsReconnecting:
             // Your own dot as the dashed ring while the connection comes back.
-            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) }
+            AnyView(PhoneShot(store: store, server: home.record.id, returningFrom: PreviewFixtures.busyRoomID)
                 .environment(\.heldAwayWords, "Reconnecting…"))
         }
     }

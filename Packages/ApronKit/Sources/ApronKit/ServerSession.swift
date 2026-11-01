@@ -1398,6 +1398,18 @@ public final class ServerSession {
     /// The rooms list's Private: the joined top-level private rooms (§4.2.4), with their threads.
     public var privateRoomTree: [RoomNode] { roomTree.filter { isPrivateRoom($0.roomID) } }
 
+    /// The room you are reading before joining, as the open room the rooms list shows under
+    /// Other Rooms, as apron-web marks it open there (#192): `open` or the room of the thread
+    /// `open` names, with its threads. Nil once joined, for a private room, or a thread whose
+    /// room you have joined.
+    public func readingNode(open: String?) -> RoomNode? {
+        guard let record = open.flatMap(store.room) else { return nil }
+        let room = record.parentRoomID.flatMap(store.room) ?? record
+        guard room.parentRoomID == nil, !joinedRoomIDs.contains(room.roomID), !joinedRoomIDs.contains(record.roomID),
+              room.isPrivate != true else { return nil }
+        return tree(of: [room]).first
+    }
+
     private func tree(of topLevel: [RoomRecord]) -> [RoomNode] {
         let known = store.roomIDs.compactMap { store.room($0) }
         let byTitle = topLevel.map(\.roomID).sorted { codePointLess(title(of: $0), title(of: $1)) }

@@ -112,6 +112,15 @@ final class ThreadsTests: XCTestCase {
         XCTAssertEqual(home.threadList(of: general, open: "random").joined.map(home.title(of:)), ["Release 0.2"], "only the thread with news")
         XCTAssertEqual(home.threadList(of: general, open: nil).others, [])
 
+        XCTAssertEqual(home.threadNode(of: PreviewFixtures.releaseThreadID)?.roomID, "general", "a thread's sheet lists its room's threads")
+        XCTAssertEqual(home.threadNode(of: "general")?.threadIDs.count, 11, "seven joined, four others")
+        XCTAssertEqual(["general", "random", PreviewFixtures.releaseThreadID].map(home.offersThreads(in:)), [true, true, true],
+                       "random has no threads but you can start one")
+        XCTAssertNil(home.threadNode(of: "nowhere"))
+        let demo = try XCTUnwrap(store.session(for: PreviewFixtures.demoID))
+        XCTAssertEqual([demo.mayStartThread(in: "lobby"), demo.offersThreads(in: "lobby")], [false, false],
+                       "a read-only guest in a room without threads gets no Threads sheet")
+
         XCTAssertTrue(home.isUntitled(PreviewFixtures.untitledThreadID))
         XCTAssertFalse(home.isUntitled("general"))
         XCTAssertEqual(home.title(of: "nowhere"), "nowhere", "a room without a record is its room_id")

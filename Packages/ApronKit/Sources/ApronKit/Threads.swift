@@ -243,6 +243,25 @@ extension ServerSession {
                           othersFolded: othersFolded, allOthers: allOthers, now: now, inactiveFolded: inactiveFolded, openedQuiet: openedQuiet)
     }
 
+    /// The rooms list's node for a room or thread on screen: its room's, whose threads the phone's
+    /// Threads sheet lists, or the room being read before joining (`readingNode(open:)`).
+    public func threadNode(of roomID: String) -> RoomNode? {
+        let top = topLevelRoom(of: roomID)
+        return roomTree.first { $0.roomID == top } ?? readingNode(open: roomID)
+    }
+
+    /// Whether New Thread is offered in a room or beside one of its threads: signed in, with
+    /// `rooms`, the room joined, and allowed to write.
+    public func mayStartThread(in roomID: String) -> Bool {
+        status == .signedIn && server?.has("rooms") == true && mayWrite && joinedRoomIDs.contains(topLevelRoom(of: roomID))
+    }
+
+    /// Whether a room on screen offers its Threads sheet: it has threads, or one could be started.
+    public func offersThreads(in roomID: String) -> Bool {
+        guard let node = threadNode(of: roomID) else { return false }
+        return !node.threadIDs.isEmpty || mayStartThread(in: roomID)
+    }
+
     /// Whether a room is a thread without a title, which shows as "Untitled".
     public func isUntitled(_ roomID: String) -> Bool {
         guard let room = store.room(roomID), room.parentRoomID != nil else { return false }

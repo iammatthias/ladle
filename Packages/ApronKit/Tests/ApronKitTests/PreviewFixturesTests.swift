@@ -172,5 +172,10 @@ final class PreviewFixturesTests: XCTestCase {
                        ["The tomatoes made it through the frost.", "Who has the rota this week?", "Me. Watering Tuesday and Friday."])
         XCTAssertFalse(home.joinedRoomIDs.contains(PreviewFixtures.gardenRoomID))
         XCTAssertFalse(home.roomTree.contains { $0.roomID == PreviewFixtures.gardenRoomID }, "read, not listed with your rooms")
+        XCTAssertEqual(home.readingNode(open: PreviewFixtures.gardenRoomID), RoomNode(roomID: PreviewFixtures.gardenRoomID, threadIDs: []),
+                       "but shown open under Other Rooms while it is the one read")
+        XCTAssertEqual(home.threadNode(of: PreviewFixtures.gardenRoomID)?.roomID, PreviewFixtures.gardenRoomID)
+        XCTAssertEqual([home.readingNode(open: "general"), home.readingNode(open: PreviewFixtures.releaseThreadID), home.readingNode(open: nil)],
+                       [nil, nil, nil], "a joined room, a thread of one, or nothing open")
     }
 }

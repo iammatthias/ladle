@@ -17,6 +17,9 @@ struct RoomListView: View {
     var onConnect: () -> Void = {}
     /// The iPad sidebar, whose navigation bar is hidden: the server's head leads the list.
     var showsServerHead = false
+    /// Picking the open room again folds its threads (#145), where the room shows beside the
+    /// list. On iPhone the open room is the one last opened, and picking it opens it again.
+    var pickingOpenRoomFolds = true
     /// What Search Rooms starts with: the renderer's typed words, which it cannot type.
     var startingSearch = ""
     /// The renderer's reorder mode, which it cannot tap into.
@@ -131,6 +134,14 @@ struct RoomListView: View {
                                 .touchTarget()
                         }
                     }
+                }
+            }
+            // The room read before joining, open, as the web's Other Rooms marks it (#192).
+            if !isReordering, let reading = session.readingNode(open: selected) {
+                Section {
+                    rooms([reading], folded: false)
+                } header: {
+                    SectionHead(title: "Other Rooms").textCase(nil)
                 }
             }
             }
@@ -331,15 +342,16 @@ struct RoomListView: View {
         let isSelected = roomID == selected
         // The open room folded to its threads with news: a … that shows them all, as the web's FoldPill.
         let foldedOpen = !isThread && !isReordering && selected.map(session.topLevelRoom(of:)) == roomID && session.threadsFolded(roomID)
+        let picksFold = pickingOpenRoomFolds && isSelected && !isThread && !isReordering
         return Button {
             // Picking the open room again folds its threads, and once more unfolds them (#145).
-            if isSelected, !isThread, !isReordering { session.foldThreads(roomID, !session.threadsFolded(roomID)) } else { open(roomID) }
+            if picksFold { session.foldThreads(roomID, !session.threadsFolded(roomID)) } else { open(roomID) }
         } label: {
             RoomRow(session: session, roomID: roomID, isThread: isThread, isSelected: isSelected, now: fixedNow ?? .now,
                     trailingSpace: foldedOpen ? Tokens.Size.touchTarget : 0)
         }
         .buttonStyle(.plain)
-        .accessibilityHint(isSelected && !isThread ? (session.threadsFolded(roomID) ? "Shows all its threads" : "Folds its threads to those with news") : "")
+        .accessibilityHint(picksFold ? (session.threadsFolded(roomID) ? "Shows all its threads" : "Folds its threads to those with news") : "")
         .overlay(alignment: .trailing) {
             if foldedOpen {
                 FoldPill(label: "Show all threads in \(session.title(of: roomID))") { session.foldThreads(roomID, false) }
@@ -352,7 +364,7 @@ struct RoomListView: View {
             if session.unreadCount(in: roomID) > 0, session.status == .signedIn {
                 Button("Mark as Read", systemImage: "checkmark.message") { Task { await session.markAllRead(roomID) } }.tint(Palette.denim)
             }
-            if isThread, !session.joinedRoomIDs.contains(roomID), session.server?.has("rooms") == true, session.mayWrite {
+            if !session.joinedRoomIDs.contains(roomID), session.server?.has("rooms") == true, session.mayWrite {
                 Button("Join", systemImage: "plus.circle") { perform { try await session.join(roomID) } }.tint(Palette.denim)
             }
         }
@@ -382,6 +394,12 @@ struct RoomListView: View {
             .disabled(session.status != .signedIn || session.readMark(of: roomID) == nil)
         if !isThread {
             Button("Reorder Rooms", systemImage: "arrow.up.arrow.down") { withAnimation { reordering = .active } }
+            if selected.map(session.topLevelRoom(of:)) == roomID, !session.threadIDs(in: roomID).isEmpty {
+                let folded = session.threadsFolded(roomID)
+                Button(folded ? "Show All Threads" : "Fold Threads", systemImage: folded ? "list.bullet.indent" : "arrow.up.and.line.horizontal.and.arrow.down") {
+                    withAnimation { session.foldThreads(roomID, !folded) }
+                }
+            }
         }
         if let link = session.link(to: roomID) {
             Button("Copy Link", systemImage: "link") { UIPasteboard.general.url = link }
