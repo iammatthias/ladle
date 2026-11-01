@@ -146,4 +146,18 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.notices.filter { $0.roomID == "ops" }.compactMap { $0.body?["text"]?.stringValue }.last,
                        "Only an admin, the room's creator, or a bot's owner, can remove someone else")
     }
+
+    func testBrowseRoomsListsTheGardenAndBookClubWithCountsAndTheGardenReadsBeforeJoining() async throws {
+        let store = await PreviewFixtures.makeStore()
+        let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
+        let listed = try await home.listUnjoinedRooms()
+        XCTAssertEqual(listed, [PreviewFixtures.gardenRoomID, "books"])
+        XCTAssertEqual(listed.map { home.memberTotal($0) }, [3, 12])
+        XCTAssertEqual(listed.map { home.roomDescription($0) }, ["Seeds, soil and the allotment rota", "This month: *The Dispossessed*"])
+        try await home.open(PreviewFixtures.gardenRoomID)
+        XCTAssertEqual(home.timeline(PreviewFixtures.gardenRoomID).map(\.plainText),
+                       ["The tomatoes made it through the frost.", "Who has the rota this week?", "Me. Watering Tuesday and Friday."])
+        XCTAssertFalse(home.joinedRoomIDs.contains(PreviewFixtures.gardenRoomID))
+        XCTAssertFalse(home.roomTree.contains { $0.roomID == PreviewFixtures.gardenRoomID }, "read, not listed with your rooms")
+    }
 }

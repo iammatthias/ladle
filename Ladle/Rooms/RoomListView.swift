@@ -19,7 +19,16 @@ struct RoomListView: View {
     var showsServerHead = false
     /// What Search Rooms starts with: the renderer's typed words, which it cannot type.
     var startingSearch = ""
+    /// The renderer's reorder mode, which it cannot tap into.
+    var startsReordering = false
     @State private var browsing = false
+    /// Reorder Rooms: the rooms alone, with their handles, as the web folds every room's threads
+    /// away while one is carried.
+    @State private var reordering: EditMode = .inactive
+    /// Rooms and Private fold to their rooms with news, open from the start and kept as left on
+    /// this device, as the web's `apron.sidebarFolds`.
+    @AppStorage("roomsSectionFolded") private var roomsFolded = false
+    @AppStorage("privateSectionFolded") private var privateFolded = false
     @State private var naming: NewRoom?
     /// New Room's Private.
     @State private var namingPrivate = false
@@ -84,15 +93,13 @@ struct RoomListView: View {
                 roomsFound
             } else {
             Section {
-                ForEach(session.publicRoomTree) { node in
-                    roomRow(node.roomID, isThread: false)
-                    threads(of: node)
-                }
+                rooms(session.publicRoomTree, folded: roomsFolded)
             } header: {
-                HStack {
-                    SectionHead(title: "Rooms")
-                    Spacer()
-                    if session.status == .signedIn, session.server?.has("rooms") == true {
+                SectionFoldHead(title: "Rooms", folded: $roomsFolded, canFold: !isReordering) {
+                    if isReordering {
+                        Button("Done") { withAnimation { reordering = .inactive } }
+                            .apText(.ui, .semibold).foregroundStyle(Palette.accent).touchTarget()
+                    } else if session.status == .signedIn, session.server?.has("rooms") == true {
                         Menu {
                             if session.mayCreateRooms {
                                 Button("New Room", systemImage: "plus") {
@@ -101,38 +108,35 @@ struct RoomListView: View {
                                 }
                             }
                             Button("Browse Rooms", systemImage: "magnifyingglass") { browsing = true }
+                            Button("Reorder Rooms", systemImage: "arrow.up.arrow.down") { withAnimation { reordering = .active } }
                         } label: {
                             Image(systemName: "plus").foregroundStyle(Palette.inkMuted).touchTarget()
                         }
                         .accessibilityLabel("Add a room")
                     }
                 }
-                .textCase(nil)
             }
             // Shown with private rooms in it, or empty, for its +, where you could start one.
             if !session.privateRoomTree.isEmpty || session.mayStartPrivate {
                 Section {
-                    ForEach(session.privateRoomTree) { node in
-                        roomRow(node.roomID, isThread: false)
-                        threads(of: node)
-                    }
+                    rooms(session.privateRoomTree, folded: privateFolded)
                 } header: {
-                    HStack {
-                        SectionHead(title: "Private")
-                        Spacer()
-                        if session.mayStartPrivate {
+                    SectionFoldHead(title: "Private", folded: $privateFolded, canFold: !isReordering) {
+                        if session.mayStartPrivate, !isReordering {
                             Button("New Private Conversation", systemImage: "plus") { startingPrivate = true }
                                 .labelStyle(.iconOnly)
                                 .foregroundStyle(Palette.inkMuted)
                                 .touchTarget()
                         }
                     }
-                    .textCase(nil)
                 }
             }
             }
         }
         .listStyle(.plain)
+        .environment(\.editMode, $reordering)
+        .onAppear { if startsReordering { reordering = .active } }
+        .background { moveKeys }
         // Where iOS puts it: at the bottom on iPhone, in reach (UX.md 1.2).
         .searchable(text: $roomQuery, prompt: "Search Rooms")
         .sheet(item: $searchingHistory) { SearchView(session: session, initial: $0.query) }
@@ -161,7 +165,7 @@ struct RoomListView: View {
                 .accessibilityLabel("\(session.serverName), server details")
             }
         }
-        .sheet(isPresented: $browsing) { BrowseRoomsView(session: session) }
+        .sheet(isPresented: $browsing) { BrowseRoomsView(session: session, open: open) }
         .sheet(item: $naming) { new in
             RoomFormSheet(kind: new.parent == nil ? .room : .thread, mode: .create,
                           subtitle: new.parent.map { "In \(session.title(of: $0))" }, isPrivate: new.parent.map(session.isPrivate) ?? false,
@@ -252,13 +256,51 @@ struct RoomListView: View {
 
     // MARK: Rows
 
+    private var isReordering: Bool { reordering.isEditing }
+
+    /// A section's rooms in the order kept on this device; folded, those with news and the one
+    /// open. While reordering, every room, without its threads, each with its handle.
+    @ViewBuilder
+    private func rooms(_ nodes: [RoomNode], folded: Bool) -> some View {
+        if isReordering {
+            ForEach(nodes) { node in roomRow(node.roomID, isThread: false) }
+                .onMove { session.moveRooms(nodes.map(\.roomID), fromOffsets: $0, toOffset: $1) }
+        } else {
+            ForEach(session.shownRooms(nodes, folded: folded, open: selected)) { node in
+                roomRow(node.roomID, isThread: false)
+                threads(of: node)
+            }
+        }
+    }
+
+    /// Option+↑ and Option+↓ move the open room (or the one holding the open thread) past the
+    /// next room its section shows, as the web's Alt+↑/↓ on a room.
+    private var moveKeys: some View {
+        ZStack {
+            Button("Move Room Up") { moveOpenRoom(by: -1) }.keyboardShortcut(.upArrow, modifiers: .option)
+            Button("Move Room Down") { moveOpenRoom(by: 1) }.keyboardShortcut(.downArrow, modifiers: .option)
+        }
+        .opacity(0)
+        .accessibilityHidden(true)
+    }
+
+    private func moveOpenRoom(by step: Int) {
+        guard let selected else { return }
+        let roomID = session.topLevelRoom(of: selected)
+        let isPrivate = session.isPrivateRoom(roomID)
+        let shown = session.shownRooms(isPrivate ? session.privateRoomTree : session.publicRoomTree,
+                                       folded: isPrivate ? privateFolded : roomsFolded, open: selected)
+        withAnimation { _ = session.moveRoom(roomID, by: step, among: shown.map(\.roomID)) }
+    }
+
     /// A room's threads as the web's ThreadList: under the open room, its joined threads and
     /// Other Threads; under another, only its joined threads with news.
     @ViewBuilder
     private func threads(of node: RoomNode) -> some View {
         let list = session.threadList(of: node, open: selected, othersFolded: !othersOpen, allOthers: allOthersFor == node.roomID,
                                       now: fixedNow ?? .now, inactiveFolded: !inactiveOpen,
-                                      openedQuiet: opened.flatMap { $0.id == selected ? $0.quiet : nil })
+                                      openedQuiet: opened.flatMap { $0.id == selected ? $0.quiet : nil },
+                                      threadsFolded: session.threadsFolded(node.roomID))
         ForEach(list.joined, id: \.self) { roomRow($0, isThread: true) }
         if list.inactiveCount > 0 {
             FoldHeading(label: "Inactive", count: list.inactiveCount, open: $inactiveOpen)
@@ -285,10 +327,22 @@ struct RoomListView: View {
 
     private func roomRow(_ roomID: String, isThread: Bool) -> some View {
         let isSelected = roomID == selected
-        return Button { open(roomID) } label: {
-            RoomRow(session: session, roomID: roomID, isThread: isThread, isSelected: isSelected, now: fixedNow ?? .now)
+        // The open room folded to its threads with news: a … that shows them all, as the web's FoldPill.
+        let foldedOpen = !isThread && !isReordering && selected.map(session.topLevelRoom(of:)) == roomID && session.threadsFolded(roomID)
+        return Button {
+            // Picking the open room again folds its threads, and once more unfolds them (#145).
+            if isSelected, !isThread, !isReordering { session.foldThreads(roomID, !session.threadsFolded(roomID)) } else { open(roomID) }
+        } label: {
+            RoomRow(session: session, roomID: roomID, isThread: isThread, isSelected: isSelected, now: fixedNow ?? .now,
+                    trailingSpace: foldedOpen ? Tokens.Size.touchTarget : 0)
         }
         .buttonStyle(.plain)
+        .accessibilityHint(isSelected && !isThread ? (session.threadsFolded(roomID) ? "Shows all its threads" : "Folds its threads to those with news") : "")
+        .overlay(alignment: .trailing) {
+            if foldedOpen {
+                FoldPill(label: "Show all threads in \(session.title(of: roomID))") { session.foldThreads(roomID, false) }
+            }
+        }
         .listRowInsets(EdgeInsets(top: 1, leading: Tokens.Space.s2, bottom: 1, trailing: Tokens.Space.s2))
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
@@ -324,6 +378,9 @@ struct RoomListView: View {
     private func roomActions(_ roomID: String, isThread: Bool) -> some View {
         Button("Mark as Read", systemImage: "checkmark.message") { Task { await session.markAllRead(roomID) } }
             .disabled(session.status != .signedIn || session.readMark(of: roomID) == nil)
+        if !isThread {
+            Button("Reorder Rooms", systemImage: "arrow.up.arrow.down") { withAnimation { reordering = .active } }
+        }
         if let link = session.link(to: roomID) {
             Button("Copy Link", systemImage: "link") { UIPasteboard.general.url = link }
         }
@@ -458,6 +515,8 @@ struct RoomRow: View {
     let isSelected: Bool
     /// What a thread you have not joined counts its last activity from.
     var now = Date()
+    /// Room at the row's end for the open room's "…", drawn over it.
+    var trailingSpace: CGFloat = 0
 
     /// Where a thread's text starts, right of the guide line.
     static let threadInset = Tokens.Space.s3 + Tokens.Space.s4 + Tokens.Space.s2
@@ -514,7 +573,7 @@ struct RoomRow: View {
             }
         }
         .padding(.vertical, isThread ? Tokens.Space.s1_5 : Tokens.Space.s2)
-        .padding(.trailing, Tokens.Space.s3)
+        .padding(.trailing, Tokens.Space.s3 + trailingSpace)
         .padding(.leading, isThread ? Self.threadInset : Tokens.Space.s3)
         .frame(minHeight: Tokens.Size.touchTarget)
         .background(isSelected ? Palette.selected : .clear, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
@@ -592,15 +651,67 @@ struct FoldHeading: View {
     }
 }
 
+/// The web's FoldPill: the … of a list folded to what has news, which says it is cut short and
+/// shows it all.
+struct FoldPill: View {
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "ellipsis")
+                .imageScale(.small)
+                .foregroundStyle(Palette.inkMuted)
+                .padding(.horizontal, Tokens.Space.s2)
+                .padding(.vertical, Tokens.Space.s1)
+                .background(Palette.raised, in: Capsule())
+                .touchTarget()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+}
+
+/// The web's SidebarSection head: its title folds the section to its rooms with news, and the
+/// FoldPill after it shows them all again; `trailing` is its +.
+struct SectionFoldHead<Trailing: View>: View {
+    let title: String
+    @Binding var folded: Bool
+    var canFold = true
+    @ViewBuilder var trailing: () -> Trailing
+
+    var body: some View {
+        HStack(spacing: Tokens.Space.s1) {
+            Button { withAnimation { folded.toggle() } } label: {
+                SectionHead(title: title).frame(minHeight: Tokens.Size.touchTarget).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!canFold)
+            .accessibilityValue(folded ? "Folded to rooms with news" : "Shown")
+            .accessibilityHint(folded ? "Shows every room" : "Folds to rooms with news")
+            if folded, canFold {
+                FoldPill(label: "Show all \(title)") { withAnimation { folded = false } }
+            }
+            Spacer()
+            trailing()
+        }
+        .textCase(nil)
+    }
+}
+
 extension EnvironmentValues {
     /// The time the rooms list counts "4d" and Inactive from; the renderer pins it, so its shots
     /// read the same every run. The app never sets it.
     @Entry var fixedNow: Date?
 }
 
-/// The visible rooms the user has not joined, from `room_list`.
-private struct BrowseRoomsView: View {
+/// The visible rooms the user has not joined, from `room_list`, as the web's Other Rooms: each
+/// with its description and member count. A tap opens it to read before joining, and Join
+/// joins it from here.
+struct BrowseRoomsView: View {
     let session: ServerSession
+    /// Opens a room, read without joining until Join.
+    let open: (String) -> Void
     @Environment(\.dismiss) private var dismiss
     @State private var roomIDs: [String]?
     @State private var error: String?
@@ -610,19 +721,25 @@ private struct BrowseRoomsView: View {
             List {
                 if let error { Text(error).apText(.ui).foregroundStyle(Palette.danger) }
                 ForEach(roomIDs ?? [], id: \.self) { roomID in
-                    HStack {
-                        Text(session.title(of: roomID)).apText(.body).foregroundStyle(Palette.ink)
-                        if session.isPrivate(roomID) { Lock() }
-                        Spacer()
+                    HStack(spacing: Tokens.Space.s2) {
+                        Button {
+                            dismiss()
+                            open(roomID)
+                        } label: {
+                            listing(roomID)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Opens it to read before joining")
                         if session.joinedRoomIDs.contains(roomID) {
                             Label("Joined", systemImage: "checkmark").apText(.sm).foregroundStyle(Palette.inkMuted)
-                        } else {
+                        } else if session.mayWrite {
                             Button("Join") {
                                 Task {
                                     do { try await session.join(roomID) } catch { self.error = errorText(error) }
                                 }
                             }
                             .buttonStyle(PrimaryButtonStyle())
+                            .accessibilityLabel("Join \(session.title(of: roomID))")
                         }
                     }
                     .listRowBackground(Palette.chrome)
@@ -648,6 +765,28 @@ private struct BrowseRoomsView: View {
                 }
             }
         }
+    }
+}
+
+extension BrowseRoomsView {
+    /// A listing's title, description and "3 members", as the web's Other Rooms row.
+    private func listing(_ roomID: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(spacing: Tokens.Space.s1) {
+                Text(session.title(of: roomID)).apText(.body, .medium).foregroundStyle(Palette.ink).lineLimit(1)
+                if session.isPrivate(roomID) { Lock() }
+            }
+            if let description = session.roomDescription(roomID) {
+                EmojiText(text: descriptionText(description, session.emojiCatalog), catalog: session.emojiCatalog, role: .sm)
+                    .apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(2)
+            }
+            if let members = session.memberTotal(roomID), members > 0 {
+                Text(members == 1 ? "1 member" : "\(members) members").apText(.sm).monospacedDigit().foregroundStyle(Palette.inkMuted)
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget, alignment: .leading)
+        .padding(.vertical, Tokens.Space.s1)
+        .contentShape(Rectangle())
     }
 }
 

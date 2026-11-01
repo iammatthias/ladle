@@ -483,6 +483,10 @@ struct TimelineView: View {
         }
     }
 
+    private var mayJoin: Bool {
+        session.status == .signedIn && session.server?.has("rooms") == true && session.mayWrite && !session.joinedRoomIDs.contains(roomID)
+    }
+
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .principal) {
@@ -496,6 +500,15 @@ struct TimelineView: View {
             .accessibilityAddTraits(.isHeader)
         }
         ToolbarItemGroup(placement: .primaryAction) {
+            // Read without joining: Join stays a button, since it is what such a pane is for (the web's RoomHeader).
+            if mayJoin {
+                let noun = session.store.room(roomID)?.parentRoomID == nil ? "room" : "thread"
+                Button("Join") { perform { try await session.join(roomID) } }
+                    .buttonStyle(.borderedProminent)
+                    .tint(Palette.accent)
+                    .accessibilityLabel("Join \(noun)")
+                    .accessibilityHint(noun == "room" ? "Gets its messages live, and lists it with your rooms" : "Gets its replies live, and lists it under the room")
+            }
             // Muted: a bell-off left of the ⋯ menu says so and unmutes, as the web's RoomHeader.
             if session.mayMute, let mute = session.mute(of: roomID) {
                 Button {
@@ -525,12 +538,8 @@ struct TimelineView: View {
                     if session.mayEdit(roomID) {
                         Button("Edit \(noun)", systemImage: "pencil") { editingRoom = true }
                     }
-                    if session.server?.has("rooms") == true {
-                        if session.joinedRoomIDs.contains(roomID) {
-                            Button("Leave Room", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leaving = true }
-                        } else {
-                            Button("Join Room", systemImage: "plus.circle") { perform { try await session.join(roomID) } }
-                        }
+                    if session.server?.has("rooms") == true, session.joinedRoomIDs.contains(roomID) {
+                        Button("Leave Room", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leaving = true }
                     }
                 }
             }

@@ -199,6 +199,8 @@ public final class ServerSession {
     public let mediaSettings: MediaSettings
     /// The private rooms whose "You were added" banner shows, shared with every other server's session.
     public let addedRooms: AddedRooms
+    /// The rooms list's order and folded threads, shared with every other server's session.
+    public let roomArrangement: RoomArrangement
     /// Rooms that arrive joined without this device asking (`noteArrivals`).
     @ObservationIgnored var arrivals = ArrivalWatch()
     /// Rooms someone else added you to while this session watched (`ArrivalWatch`), as apron-web's
@@ -273,12 +275,14 @@ public final class ServerSession {
     @ObservationIgnored var pendingProposalState: String?
 
     public init(record: ServerRecord, tokens: any TokenStore, positions: any ReadPositionStore = InMemoryReadPositionStore(),
-                mediaSettings: MediaSettings = MediaSettings(), addedRooms: AddedRooms = AddedRooms(), keeping: HistoryKeeping? = nil,
+                mediaSettings: MediaSettings = MediaSettings(), addedRooms: AddedRooms = AddedRooms(),
+                roomArrangement: RoomArrangement = RoomArrangement(), keeping: HistoryKeeping? = nil,
                 proposals: Proposals = Proposals(), environment: Environment = .live) {
         self.record = record
         self.mediaSettings = mediaSettings
         self.addedRooms = addedRooms
         self.proposals = proposals
+        self.roomArrangement = roomArrangement
         self.keeping = keeping
         self.tokens = tokens
         self.positions = positions
@@ -581,6 +585,7 @@ public final class ServerSession {
         users.rename(from: old, to: new)
         formerUserIDs.insert(old)
         positions.rename(server: record.id, from: old, to: new)
+        roomArrangement.rename(server: record.id, from: old, to: new)
         for index in outbox.indices where outbox[index].userID == old { outbox[index].userID = new }
         if let kept = users.user(new).flatMap(UserObject.init) { you = kept }
         if let account = record.account {
@@ -671,6 +676,7 @@ public final class ServerSession {
                 if let roomID = room["room_id"]?.stringValue { joinedRoomIDs.remove(roomID) }
             }
             mergeUsers(params?["users"])
+            placeNewRooms()
         case "user":
             if let current = UserObject(params?["you"]) {
                 if let you, current.userID != you.userID { followRename(from: you.userID, to: current.userID) }
@@ -728,6 +734,7 @@ public final class ServerSession {
         mergeUsers(result["users"])
         arrivals.listed = true
         noteArrivals()
+        placeNewRooms()
     }
 
     private func mergeUsers(_ value: JSONValue?) {
@@ -915,6 +922,7 @@ public final class ServerSession {
             caughtUp[roomID] = room.sync.caughtUpAt
         }
         readPositions = positions.positions(server: record.id, user: restore.you.userID)
+        placeNewRooms()
         return true
     }
 
@@ -1193,10 +1201,11 @@ public final class ServerSession {
         return roomID
     }
 
-    /// The visible rooms this user has not joined (§4.2.1), installed as records.
+    /// The visible rooms this user has not joined (§4.2.1), installed as records, with their
+    /// members, as apron-web lists them: Browse Rooms counts them (`memberTotal`).
     public func listUnjoinedRooms() async throws -> [String] {
         try require("rooms")
-        let result = try await request("room_list", ["filter": "not_joined"])
+        let result = try await request("room_list", ["filter": "not_joined", "members": true])
         install(Records(roomListResult: result))
         return (result["not_joined"]?.arrayValue ?? []).compactMap { $0["room_id"]?.stringValue }
     }
@@ -1328,7 +1337,8 @@ public final class ServerSession {
         return TextDirection.withoutOverrides(store.room(roomID)?.title?.stringValue.flatMap { $0.isEmpty ? nil : $0 } ?? roomID)
     }
 
-    /// The joined rooms by title, each with the threads known under it, most recently active
+    /// The joined rooms in the order kept on this device (`RoomOrder`; those not placed yet by
+    /// title, after the rest), each with the threads known under it, most recently active
     /// first (`ThreadList.byActivity`). A joined thread whose parent the user has not joined
     /// stands on its own. `threadList(of:open:)` picks which of them the list shows.
     public var roomTree: [RoomNode] {
@@ -1347,11 +1357,12 @@ public final class ServerSession {
 
     private func tree(of topLevel: [RoomRecord]) -> [RoomNode] {
         let known = store.roomIDs.compactMap { store.room($0) }
-        return topLevel.sorted { codePointLess(title(of: $0.roomID), title(of: $1.roomID)) }.map { room in
-            let threads = known.filter { $0.parentRoomID == room.roomID }
+        let byTitle = topLevel.map(\.roomID).sorted { codePointLess(title(of: $0), title(of: $1)) }
+        return RoomOrder.inOrder(byTitle, arrangementKey.map(roomArrangement.order) ?? []).map { roomID in
+            let threads = known.filter { $0.parentRoomID == roomID }
                 .map { ThreadList.Entry(id: $0.roomID, joined: false, activity: activity(of: $0.roomID), hasNews: false) }
                 .sorted(by: ThreadList.byActivity)
-            return RoomNode(roomID: room.roomID, threadIDs: threads.map(\.id))
+            return RoomNode(roomID: roomID, threadIDs: threads.map(\.id))
         }
     }
 }

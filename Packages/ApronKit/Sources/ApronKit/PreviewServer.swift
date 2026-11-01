@@ -27,6 +27,8 @@ public actor PreviewServer: FrameTransport {
         public var statuses: [JSONValue] = []
         /// `room_list {parent_room_id, filter: not_joined}` results' `not_joined`, by parent.
         public var unjoinedThreads: [String: JSONValue] = [:]
+        /// `room_list {filter: not_joined}` results' `not_joined`: Browse Rooms.
+        public var unjoinedRooms: [JSONValue] = []
         /// A `~private` notice without `room_id` sent right after the greeting, before `auth`,
         /// as a server's welcome is (Appendix B.1).
         public var welcome: JSONValue?
@@ -68,6 +70,8 @@ public actor PreviewServer: FrameTransport {
             for status in script.statuses { deliver(["method": "status", "params": status]) }
         case "room_list" where params?["parent_room_id"] != nil:
             deliver(["id": id, "result": ["not_joined": script.unjoinedThreads[params?["parent_room_id"]?.stringValue ?? ""] ?? []]])
+        case "room_list" where params?["filter"]?.stringValue == "not_joined":
+            deliver(["id": id, "result": ["not_joined": .array(script.unjoinedRooms)]])
         case "room_list":
             deliver(["id": id, "result": script.roomList])
             for (roomID, read) in script.readCursors.sorted(by: { codePointLess($0.key, $1.key) }) {

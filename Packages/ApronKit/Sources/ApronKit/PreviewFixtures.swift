@@ -43,7 +43,7 @@ public enum PreviewFixtures {
                 _ = try? await session.signIn(.guest(name: nil))
             }
             await until { session.status == .signedIn && session.readCursors.count == script.readCursors.count }
-            for roomID in script.histories.keys.sorted(by: codePointLess) {
+            for roomID in script.histories.keys.sorted(by: codePointLess) where session.joinedRoomIDs.contains(roomID) {
                 try? await session.open(roomID)
             }
             await session.loadEmojiCatalog()
@@ -324,6 +324,14 @@ public enum PreviewFixtures {
         room(generalThread(-1_600_000), "Icons v1", parent: "general", members: ["eunji"], latest: -1_590_000),
     ]
 
+    /// Rooms Sam has not joined, for Browse Rooms: the garden, read before joining, and the book
+    /// club, whose listing names only its most active member of 12.
+    public static let gardenRoomID = "garden"
+    private static let unjoinedRooms: [JSONValue] = [
+        room(gardenRoomID, "garden", members: ["ada", "bram", "chiara"], description: "Seeds, soil and the allotment rota", latest: -41),
+        room("books", "book-club", members: ["eunji"], description: "This month: *The Dispossessed*", latest: -700, memberCount: 12),
+    ]
+
     /// When the rooms list's shots are taken, so "4d" and Inactive read the same every run:
     /// 2026-10-27 10:00 UTC, an hour after the first message.
     public static let now = Date(timeIntervalSince1970: Double(start) / 1000 + 3600)
@@ -456,6 +464,11 @@ public enum PreviewFixtures {
                 line(-54, "chiara", "And it whistles.", embeds: [upload(4, "kettle.m4a", og: ["audio": media(4, "audio/mp4")])]),
                 line(-53, "sam", "Mine is still uploading", embeds: [["embed_id": "embed_5", "kind": "upload", "title": "my-pot.jpg"]]),
             ]),
+            gardenRoomID: history(gardenRoomID, [
+                line(-44, "chiara", "The tomatoes made it through the frost."),
+                line(-43, "bram", "Who has the rota this week?"),
+                line(-41, "ada", "Me. Watering Tuesday and Friday."),
+            ]),
             "kitchen": history("kitchen", [
                 line(-130, "ada", "Shipped the new glaze :apron: :partyparrot:",
                      reactions: [":partyparrot:": ["sam", "bram"], ":apron:": ["sam"], ":retired:": ["bram"], "👍": ["eunji"]]),
@@ -512,7 +525,8 @@ public enum PreviewFixtures {
             ["room_id": .string(typingRoomID), "from": people["bram"]!, "typing": 3600],
         ],
         statuses: [["room_id": .string(mutedRoomID), "mute": true]],
-        unjoinedThreads: ["general": .array(otherThreads)]
+        unjoinedThreads: ["general": .array(otherThreads)],
+        unjoinedRooms: unjoinedRooms
     )
 
     /// The conversation with Ada: private, untitled, so named for her, its history from its start.

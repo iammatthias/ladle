@@ -231,14 +231,15 @@ extension ServerSession {
     }
 
     /// One room's threads as the rooms list shows them, with `openRoomID` the room or thread open.
+    /// `threadsFolded` shows the open room's as another's: joined ones with news, and the open one.
     public func threadList(of node: RoomNode, open openRoomID: String?, othersFolded: Bool = false, allOthers: Bool = false,
-                           now: Date = Date(), inactiveFolded: Bool = true, openedQuiet: Bool? = nil) -> ThreadList {
+                           now: Date = Date(), inactiveFolded: Bool = true, openedQuiet: Bool? = nil, threadsFolded: Bool = false) -> ThreadList {
         let openRoom = openRoomID.map { store.room($0)?.parentRoomID ?? $0 }
         let entries = node.threadIDs.map { id in
             ThreadList.Entry(id: id, joined: joinedRoomIDs.contains(id), activity: activity(of: id),
                              hasNews: unreadCount(in: id) > 0 || mentionCount(in: id) > 0)
         }
-        return ThreadList(entries, isOpenRoom: openRoom == node.roomID, openThread: openRoomID == openRoom ? nil : openRoomID,
+        return ThreadList(entries, isOpenRoom: openRoom == node.roomID && !threadsFolded, openThread: openRoomID == openRoom ? nil : openRoomID,
                           othersFolded: othersFolded, allOthers: allOthers, now: now, inactiveFolded: inactiveFolded, openedQuiet: openedQuiet)
     }
 

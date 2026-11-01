@@ -45,6 +45,13 @@ enum Screen: String, CaseIterable {
     case connectPasskey = "connect-passkey", connectPasskeyCreate = "connect-passkey-create", connectPasskeyUnavailable = "connect-passkey-unavailable"
     case connectExternalCode = "connect-external-code", youSignIn = "you-signin", youAddEmail = "you-add-email", roomsHeld = "rooms-held", roomsNudge = "rooms-nudge"
     case liveTextFinished = "live-text-finished"
+    // Last of the phone shots: Browse Rooms lists the garden and the book club into home's store,
+    // which the `#` list would then offer.
+    case roomsOrdered = "rooms-ordered", roomsFolded = "rooms-folded", roomsThreadsFolded = "rooms-threads-folded", roomsReorder = "rooms-reorder"
+    case browseRooms = "browse-rooms", roomPeek = "room-peek"
+
+    /// The rooms list in an order of the user's own, rather than as first listed.
+    var isReordered: Bool { self == .roomsOrdered || self == .roomsReorder }
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -89,6 +96,7 @@ enum Renderer {
         let store = await PreviewFixtures.makeStore()
         guard let home = store.session(for: PreviewFixtures.homeID) else { exit(1) }
         signIn = await PreviewFixtures.makeSignInStore()
+        let firstListed = home.roomTree.map(\.roomID)
 
         var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool, look: Look?)] = []
         for screen in Screen.allCases where screen != .limited && screen != .privateFull {
@@ -133,6 +141,10 @@ enum Renderer {
             await seedReminder(shot.screen == .reminder, in: store, home: home)
             await seedPause(shot.screen.isPaused, home: home)
             UserDefaults.standard.set(shot.screen == .roomsInactive, forKey: "inactiveThreadsOpen")
+            UserDefaults.standard.set(shot.screen == .roomsFolded, forKey: "roomsSectionFolded")
+            UserDefaults.standard.set(shot.screen == .roomsFolded, forKey: "privateSectionFolded")
+            seedOrder(shot.screen.isReordered, in: store, home: home, firstListed: firstListed)
+            home.foldThreads("general", shot.screen == .roomsThreadsFolded)
             UserDefaults.standard.set(true, forKey: "memberOnlineOpen")
             UserDefaults.standard.set(shot.screen != .membersFolded, forKey: "memberOfflineOpen")
             if shot.screen == .limited { await seedWaits(home: home) }
@@ -468,11 +480,43 @@ enum Renderer {
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil))
                 .environment(\.heldPaneLoading, screen.heldLoading))
+        case .roomsOrdered:
+            // Moved by hand: random and kitchen to the top, the conversation with Ada last of Private.
+            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
+        case .roomsFolded:
+            // Rooms and Private folded to their rooms with news, each with its …, markdown open.
+            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.markdownRoomID, open: { _ in }) })
+        case .roomsThreadsFolded:
+            // #general picked again while open: its threads folded to the one with news, and its ….
+            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
+        case .roomsReorder:
+            AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }, startsReordering: true) })
+        case .browseRooms:
+            AnyView(BrowseRoomsView(session: home, open: { _ in }))
+        case .roomPeek:
+            // The garden, open from Browse Rooms to read before joining, with Join in its header.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.gardenRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .roomsReconnecting:
             // Your own dot as the dashed ring while the connection comes back.
             AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) }
                 .environment(\.heldAwayWords, "Reconnecting…"))
         }
+    }
+
+    /// The order the rooms list shots after the reordered ones read again.
+    static func seedOrder(_ reordered: Bool, in store: SessionStore, home: ServerSession, firstListed: [String]) {
+        guard let you = home.you?.userID else { return }
+        let key = ArrangementKey(server: home.record.id, account: you)
+        var order = firstListed
+        if reordered {
+            for roomID in ["kitchen", "random"] {
+                order.removeAll { $0 == roomID }
+                order.insert(roomID, at: 0)
+            }
+            order.removeAll { $0 == PreviewFixtures.directRoomID }
+            order.append(PreviewFixtures.directRoomID)
+        }
+        store.roomArrangement.setOrder(order, key)
     }
 
     /// Home exported with its private rooms, as read back; without `media`, as if it named none.

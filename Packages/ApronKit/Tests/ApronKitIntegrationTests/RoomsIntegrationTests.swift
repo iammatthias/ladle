@@ -156,4 +156,29 @@ final class RoomsIntegrationTests: XCTestCase {
             if case .message(let message, _) = item { message.plainText } else { nil }
         }, ["hello"])
     }
+
+    /// Browse Rooms: a public room you are not in lists with its description and member count,
+    /// opens to read its history before you join, and Join makes it yours.
+    func testARoomNotJoinedListsItsCountAndDescriptionAndReadsBeforeJoining() async throws {
+        let server = try await started()
+        let admin = try await admin(server)
+        let created = try await admin.createRoom(title: "Kitchen", description: "What's *cooking*")
+        let roomID = try XCTUnwrap(created)
+        try await admin.open(roomID)
+        _ = try await admin.send("Soup's on", in: roomID)
+
+        let bob = try await connected(server)
+        try await bob.signIn(.guest(name: nil))
+        let listed = try await bob.listUnjoinedRooms()
+        XCTAssertTrue(listed.contains(roomID))
+        XCTAssertEqual(bob.roomDescription(roomID), "What's *cooking*")
+        XCTAssertEqual(bob.memberTotal(roomID), 1)
+
+        try await bob.open(roomID)
+        try await waitFor("history read") { bob.timeline(roomID).map(\.plainText) == ["Soup's on"] }
+        XCTAssertFalse(bob.joinedRoomIDs.contains(roomID), "reading is not joining")
+
+        try await bob.join(roomID)
+        try await waitFor("joined") { bob.joinedRoomIDs.contains(roomID) }
+    }
 }
