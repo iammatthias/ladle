@@ -265,7 +265,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Delete with confirm | bh | has | `Timeline/TimelineView.swift` | |
 | Move to thread or back to room | #54 | has | `Kit/MessageMenu.swift` (`moveDestinations`) | One message at a time. |
 | Second tap puts the toolbar away | #118 | N/A-iOS | | The context menu dismisses natively. |
-| `x` on a message selects it | bh | missing | | iPad hardware keyboard. Select mode exists; the timeline has no keyboard focus on a message for `x` to act on. |
+| `x` on a message selects it | bh | has | `Kit/KeyboardCommands.swift` (`pressX`), `Timeline/TimelineView.swift` (`row`) | iPad hardware keyboard: a message takes the keyboard's focus (Tab, not a tap), and `x` starts select mode with it or picks and unpicks it, Space and Return too in select mode. Not yet pressed on a device. |
 
 ## 13. Select mode, move, and copy
 
@@ -477,9 +477,9 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Escape closes pickers, dialogs, the editor | bh | has | `Timeline/ComposerView.swift` (`.cancelAction`, `onKeyPress`), `Kit/SuggestionCursor.swift` | A list put away stays away until the text changes. |
 | ↑ ↓ Tab Enter in mention, room, emoji, command lists | bh | has | `Kit/SuggestionCursor.swift`, `Timeline/ComposerView.swift` (`onKeyPress`, `suggestionRow`) | The highlighted row on the hover ground, wrapping; the pointer highlights a row; a Tab key on it in regular width. The keys are not yet tried on a device: Catalyst renders, but nothing here can press keys in the iOS field. |
 | Ctrl or ⌘F opens Search local history | #137 | has | `Timeline/TimelineView.swift` | ⌘F in a room. |
-| `x` selects a message | bh | missing | | Select mode exists; the timeline has no keyboard focus on a message yet (section 12). |
+| `x` selects a message | bh | has | `Kit/KeyboardCommands.swift` (`pressX`), `Timeline/TimelineView.swift` | As section 7's row; Space and Return pick in select mode, as the web's check box. Not yet pressed on a device. |
 | Alt+↑ and Alt+↓ move a room | #151 | missing | | Depends on room order. |
-| ← → in the image viewer | #53 | partial | `Media/MediaViewer.swift` | Swipe pages. No arrow keys. |
+| ← → in the image viewer | #53 | has | `Kit/KeyboardCommands.swift` (`step`), `Media/MediaViewer.swift` | Swipe pages, and ← → on a hardware keyboard, stopping at either end as the web's `step`. Not yet pressed on a device. |
 | Arrow keys resize the side panels | #59 | N/A-iOS | | No resizable columns. |
 | Context menu key on a chip or member | bh | N/A-iOS | | Secondary click opens the same menu on iPad. |
 
@@ -562,4 +562,4 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 33. ~~**Presence details.**~~ Done (`Kit/Timeline.swift` `memberSections`, `Timeline/MemberList.swift`): the unknown status's dashed placeholder, the full status sort order, Online and Offline folding and remembered, one list without presence, `member_count` in the count, the note, the profile card and Message. "No members listed." for an empty listing came with it.
 34. ~~**Composer details.**~~ Done (`Kit/StandardEmoji.swift`, `Kit/SuggestionCursor.swift`, `tools/design/emoji.py`): standard emoji in the `:` list after the server's own, and ↑ ↓ Tab Return and Escape in every list. Mention chips in the field are left out: a SwiftUI `TextField` draws no chips, and the rich `TextEditor` or a `UITextView` would need a device to prove the composer's focus and keys still hold (section 14).
 35. ~~**Timeline polish.**~~ Done (`Kit/FloatingDay.swift`, `Kit/MentionPulse.swift`, `Kit/ServerSession+Notices.swift`, `Timeline/TimelinePolish.swift`): the floating day while scrolling, the mention pulse on arrival, the 3-second wait for thread listings on first show, and the welcome notice in the first room. Notices still sit after the loaded messages rather than at their arrival position, and the floating day and pulse timing are unchecked on a device.
-36. **Keyboard shortcuts.** ⌘F for search (done with item 16), `x` to select, Alt+↑ and Alt+↓ to move a room, ← → in the image viewer, once the features behind them exist. S.
+36. ~~**Keyboard shortcuts.**~~ Done (`Kit/KeyboardCommands.swift`, `Timeline/TimelineView.swift`, `Media/MediaViewer.swift`): ⌘F for search (item 16), `x` on a focused message, Space and Return in select mode, ← → in the image viewer, and Alt+↑ and Alt+↓ with item 18. Left out: Shift-click ranges, since iOS gestures do not read modifier keys (Select Between stands in), and every key is still to be pressed on a device.

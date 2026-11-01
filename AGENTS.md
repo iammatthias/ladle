@@ -392,6 +392,10 @@ clone), which is only a worked example.
     members, where `mayAddMembers` allows. `moveToNewThread` checks `mayMoveAll` before
     `createRoom`. `markdownLog(of:in:)` is Copy's `MessageLog` with the room's timeline as
     `order`, names from the directory and each reaction's reactors.
+  - `KeyboardCommands` (`KeyboardCommands.swift`): what an iPad hardware key does where apron-web
+    binds one: `pressX` (`x` on a focused message starts select mode or picks and unpicks it) and
+    `step` (← → in the media viewer, stopping at either end). The timeline's message rows take
+    keyboard focus with `focusable(interactions: .activate)`, so a tap never focuses one.
   - `PlaceCard` (`PlaceCards.swift`): the card for an Apron link to a message, room or thread in
     a message's text, as apron-web's LinkCard, drawn only from what the device holds:
     `ServerSession.placeCards(in:sessions:)` reads each link (relative ones against the sender's

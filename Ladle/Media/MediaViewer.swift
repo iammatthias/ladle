@@ -4,11 +4,14 @@ import UIKit
 
 /// The web's MediaViewer, as a full-screen photo viewer: dark whatever the theme, the image's
 /// name, who sent it and when, a count, Open Original and Close. Swipe pages through the room's
-/// images, oldest first, as the web's arrows do; pinch or double-tap zooms, as a browser does.
+/// images, oldest first, as the web's arrows do, and so do ← and → on a hardware keyboard; pinch
+/// or double-tap zooms, as a browser does.
 struct MediaViewer: View {
     let items: [MediaItem]
     @State var selection: String
     @Environment(\.dismiss) private var dismiss
+    /// Holds the hardware keyboard's focus, so ← and → page, as the web's arrows do.
+    @FocusState private var focused: Bool
 
     var body: some View {
         let current = items.first { $0.id == selection }
@@ -20,6 +23,15 @@ struct MediaViewer: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
+        }
+        .focusable()
+        .focused($focused)
+        .focusEffectDisabled()
+        .defaultFocus($focused, true)
+        .onKeyPress(keys: [.leftArrow, .rightArrow]) { press in
+            guard let next = KeyboardCommands.step(items, from: selection, by: press.key == .leftArrow ? -1 : 1) else { return .ignored }
+            withAnimation { selection = next }
+            return .handled
         }
         .background(Palette.viewerGround.ignoresSafeArea())
         .environment(\.colorScheme, .dark)

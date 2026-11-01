@@ -819,6 +819,9 @@ Never for these: incoming messages, mentions, typing, connection changes, paging
 | Esc, ⌘. | Close suggestions first, then cancel reply or edit, close a sheet |
 | ↑ (empty composer) | Edit your last message |
 | ⌘F | Search Local History in a room (3.17) |
+| x (a message focused) | Start select mode with it, or pick or unpick it in select mode, as apron-web's |
+| Space, Return (a message focused, select mode) | Pick or unpick it, as the web's check box |
+| ←, → (image viewer) | The previous or next image; stops at either end |
 | ⌥⌘↑, ⌥⌘↓ | Previous or next room |
 | ⇧⌥⌘↑, ⇧⌥⌘↓ | Previous or next unread room |
 | ⌘↓ | Jump to latest |

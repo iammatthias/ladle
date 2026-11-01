@@ -644,6 +644,20 @@ struct TimelineView: View {
             .padding(.top, continues ? 0 : Tokens.Space.s3)
             .contentShape(Rectangle())
             .onTapGesture { if picking != nil, session.maySelect(message, in: roomID) { toggle(message.messageID) } }
+            .focusable(interactions: .activate)
+            .onKeyPress(keys: ["x"]) { press in
+                guard press.modifiers.isDisjoint(with: [.command, .control, .option]), !movingSelection,
+                      session.maySelect(message, in: roomID) else { return .ignored }
+                if picking == nil { editing = nil }
+                picking = KeyboardCommands.pressX(on: message.messageID, selection: picking, roomID: roomID,
+                                                   order: session.timeline(roomID).map(\.messageID))
+                return .handled
+            }
+            .onKeyPress(keys: [.space, .return]) { _ in
+                guard picking != nil, session.maySelect(message, in: roomID) else { return .ignored }
+                toggle(message.messageID)
+                return .handled
+            }
             .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Tokens.Radius.md))
             .contextMenu { if picking == nil { actions(for: message) } }
             .accessibilityActions { if picking == nil { actions(for: message) } }
@@ -730,6 +744,7 @@ struct TimelineView: View {
 
     // MARK: Select mode
 
+    /// A tap, or Space or Return on a focused message, as apron-web's check box, picks or unpicks it.
     private func toggle(_ id: LogID) {
         guard !movingSelection, var selection = picking else { return }
         picking = selection.toggle(id, order: session.timeline(roomID).map(\.messageID)) ? selection : nil
