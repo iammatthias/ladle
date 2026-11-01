@@ -428,11 +428,11 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
-| Export loaded chats as `.jsonl` (ARCHIVE.md) | #135 | missing | | iOS form: a `ShareLink` or file exporter. |
-| Include private rooms only when asked | #171 | missing | | |
-| Open an export read-only (`/archive`) | #135 | missing | | iOS form: open a `.jsonl` from Files. |
-| Ask before loading images an export names | #135 | missing | | |
-| `ext:archive` (EXT.md §10) | EXT.md §10 | missing | | Depends on export and archive. |
+| Export loaded chats as `.jsonl` (ARCHIVE.md) | #135 | has | `Kit/Archive.swift` (`text(of:)`), `Kit/ServerSession+Archive.swift` (`exportArchive`), `Servers/PreferencesView.swift` | Preferences > History > Export Chats, per server, through the share sheet; what is loaded and kept (section 2). The same lines, keys and values as apron-web's `exportArchive`, its tests mirrored; keys are in code point order, where the web writes them as received. |
+| Include private rooms only when asked | #171 | has | `Kit/ServerSession+Archive.swift`, `Servers/PreferencesView.swift` | Include Private Rooms, off each visit. Left out: private rooms, their threads, their records, replies' targets in them, and anyone known only from them; "4 private rooms left out." |
+| Open an export read-only (`/archive`) | #135 | has | `Kit/ArchiveServer.swift`, `Kit/ServerSession+Archive.swift` (`reading`), `Archive/ArchiveViewer.swift` | Open an Export… in History, or a `.jsonl` handed over from Files or another app (`project.yml` declares the type). A session reads it through apron-web's `ArchiveServer`, ported: guest only, read-only, rooms listed and stretches paged, replies' targets embedded. |
+| Ask before loading images an export names | #135 | has | `Archive/ArchiveViewer.swift` (`askImages`) | apron-web's "Load its images?" with Open Without Images and Load Images; nothing loads from elsewhere, whatever Preferences say. |
+| `ext:archive` (EXT.md §10) | EXT.md §10 | has | `Kit/ArchiveServer.swift`, `Kit/ServerSession+Archive.swift` (`archiveNote`), `Timeline/TimelineView.swift` | "An export from chat.example, saved Oct 27, 2026 at 12:00 PM. It’s read-only." in the composer's place. |
 
 ## 23. Preferences and appearance
 
@@ -556,7 +556,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 29. **`iframe` and `html` embeds.** A paused `iframe` with Load live view in a sandboxed `WKWebView`, and sanitized `html`, with the media gate's `srcset`, `background`, and `ping` rules. L.
 30. **Client-side commands.** Handle `/nick`, `/join`, `/leave`, `/topic`, `/kick`, and `/invite` locally, as the web does, and give a failed command's draft back. S.
 31. ~~**Appearance.**~~ Done (`Kit/Appearance.swift`, `Kit/ResolvedTheme.swift`, `Servers/AppearanceView.swift`): mode, the premade themes, custom theme CSS and the theme fonts, as apron-web #174.
-32. **Export and archive.** Export loaded chats as `.jsonl`, with Include private rooms, and open an export read-only from Files. M.
+32. ~~**Export and archive.**~~ Done (`Kit/Archive.swift`, `Kit/ArchiveServer.swift`, `Kit/ServerSession+Archive.swift`, `Archive/ArchiveViewer.swift`). Export loaded chats as `.jsonl`, with Include private rooms, and open an export read-only from Files. M.
 33. **Presence details.** An unknown status as a dashed placeholder with its value, the full status sort order, foldable member sections, and the `member_count` note. S.
 34. **Composer details.** Standard emoji `:shortcode` autocomplete, mention chips in the field, and hardware-keyboard ↑ ↓ Tab Enter in every picker. S.
 35. **Timeline polish.** The floating day while scrolling, the mention pulse on arrival, the 3-second wait for thread listings on first show, and the welcome notice in the first room. S.

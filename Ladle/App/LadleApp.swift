@@ -11,6 +11,8 @@ struct LadleApp: App {
     init() {
         // Picked files wait here only until they are fitted; a draft's fitted files are kept by `Drafts`.
         AttachmentStaging.clear()
+        // A shared export has gone where it was sent; the copy here doesn't outlive the launch.
+        try? FileManager.default.removeItem(at: URL.temporaryDirectory.appending(path: "Exports", directoryHint: .isDirectory))
     }
 
     var body: some Scene {

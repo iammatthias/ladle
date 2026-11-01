@@ -191,9 +191,13 @@ public struct ArchiveSource: Sendable {
     /// Whether a message outside every stretch goes when one in them replies to it (ARCHIVE.md
     /// §3.1). A kept log leaves them out: it pages them back from the server with their replies.
     public var references = true
+    /// Rooms left out, such as private ones: a reply's message from one doesn't go either.
+    public var hiddenRooms: Set<String> = []
 
     public init(server: String, you: UserObject?, media: [String], store: ReplayStore, users: [UserObject], joined: Set<String>,
-                rooms: [(id: String, stretch: ArchiveStretch)], header: [String: JSONValue] = [:], references: Bool = true) {
+                rooms: [(id: String, stretch: ArchiveStretch)], header: [String: JSONValue] = [:], references: Bool = true,
+                hiddenRooms: Set<String> = []) {
+        self.hiddenRooms = hiddenRooms
         self.server = server
         self.you = you
         self.media = media
@@ -255,7 +259,8 @@ extension Archive {
             }
         }
         let references = source.references
-            ? Set(kept.values.compactMap(\.replyTo)).subtracting(kept.keys).sorted().compactMap(store.message) : []
+            ? Set(kept.values.compactMap(\.replyTo)).subtracting(kept.keys).sorted().compactMap(store.message)
+                .filter { !source.hiddenRooms.contains($0.roomID) } : []
         for snapshot in kept.values.sorted(by: { $0.logID < $1.logID }) + references {
             logged.append((snapshot.logID, ["messages": [snapshot.json]]))
         }

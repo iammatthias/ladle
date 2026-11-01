@@ -17,6 +17,8 @@ struct RootView: View {
     @State private var preferences: PreferencesRequest?
     /// A link's message or member, for the room it opens to show.
     @State private var place: ApronLink?
+    /// An export opened from Files or another app.
+    @State private var readingExport: OpenedExport?
     @State private var restored = false
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
@@ -42,7 +44,11 @@ struct RootView: View {
         .environment(\.openPreferences, OpenPreferencesAction { preferences = $0 })
         .environment(\.requestSignIn, SignInAction { connecting = ConnectRequest(record: $0) })
         .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
-        .onOpenURL { url in ApronLink(url).map(open) }
+        .onOpenURL { url in
+            // An export handed over from Files or another app opens read-only.
+            if url.isFileURL { readingExport = OpenedExport(url: url) } else { ApronLink(url).map(open) }
+        }
+        .fullScreenCover(item: $readingExport) { ArchiveViewer(opened: $0) }
         .environment(\.openURL, OpenURLAction { url in
             guard let link = ApronLink(url) else { return .systemAction }
             open(link)

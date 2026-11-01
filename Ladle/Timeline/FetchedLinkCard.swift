@@ -49,6 +49,12 @@ extension LinkPreviews {
     }
 }
 
+extension EnvironmentValues {
+    /// Whether this device may fetch previews of links here: off while reading an export, which
+    /// loads nothing from sites the reader didn't agree to (`ArchiveViewer`).
+    @Entry var fetchesLinkPreviews = true
+}
+
 /// A link the server did not describe, as `LinkCard` with a preview this device fetched, when
 /// Show Link Previews is on. It fetches when the row appears. Until a preview arrives, or when
 /// none does, it shows `placeholder`: the embed's fallback card, or nothing for a link in the text.
@@ -57,8 +63,11 @@ struct FetchedLinkCard<Placeholder: View>: View {
     let url: URL
     var inset: CGFloat = 0
     let placeholder: Placeholder
-    @AppStorage(LinkPreviews.settingKey) private var enabled = true
+    @AppStorage(LinkPreviews.settingKey) private var setting = true
+    @Environment(\.fetchesLinkPreviews) private var fetches
     @State private var loaded: (preview: LinkPreview, image: UIImage?)?
+
+    private var enabled: Bool { setting && fetches }
 
     init(url: URL, inset: CGFloat = 0, @ViewBuilder placeholder: () -> Placeholder) {
         self.url = url

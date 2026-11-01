@@ -30,6 +30,7 @@ enum Screen: String, CaseIterable {
     case appearance, appearanceCustom = "appearance-custom", preferences, history
     case search, searchFiltered = "search-filtered", roomsSearch = "rooms-search"
     case select, selectLog = "select-log"
+    case archiveAsk = "archive-ask", archiveRooms = "archive-rooms", archiveTimeline = "archive-timeline"
     case threadRenamed = "thread-renamed", startThread = "start-thread", roomsInactive = "rooms-inactive", editRoom = "edit-room", descriptionPutAway = "description-put-away"
     case directMessage = "direct-message", addedBanner = "added-banner", newPrivate = "new-private", newPrivateGroup = "new-private-group"
     case newRoomPrivate = "new-room-private", privateFull = "private-full", roomsPrivate = "rooms-private"
@@ -335,6 +336,13 @@ enum Renderer {
         case .selectLog:
             // What Copy puts on the pasteboard for them: the Markdown log, shown as text.
             AnyView(SelectTextSheet(text: home.markdownLog(of: lastThree(home)?.ids ?? [], in: PreviewFixtures.busyRoomID, now: PreviewFixtures.now)) {})
+        case .archiveAsk:
+            // Home exported, then opened: first, whether its images may load from the site it names.
+            AnyView(ArchiveViewer(opened: OpenedExport(archive: exported(home, media: true))))
+        case .archiveRooms:
+            AnyView(ArchiveViewer(opened: OpenedExport(archive: exported(home, media: false))))
+        case .archiveTimeline:
+            AnyView(ArchiveTimelineShot(archive: exported(home, media: false), roomID: PreviewFixtures.busyRoomID))
         case .roomsSearch:
             AnyView(NavigationStack { RoomListView(session: home, selected: nil, open: { _ in }, startingSearch: "des") })
         case .roleChip:
@@ -348,6 +356,13 @@ enum Renderer {
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.typingRoomID), place: .constant(nil), connecting: .constant(nil)))
         }
+    }
+
+    /// Home exported with its private rooms, as read back; without `media`, as if it named none.
+    static func exported(_ home: ServerSession, media: Bool) -> Archive {
+        var archive = (try? Archive(text: home.exportArchive(includingPrivate: true, now: PreviewFixtures.now).text)) ?? Archive()
+        if !media { archive.media = [] }
+        return archive
     }
 
     /// The busy room's last three messages picked, as select mode holds them.
@@ -589,5 +604,29 @@ final class FixtureMedia: URLProtocol {
             file("receipt-flea-market.pdf", Data(count: 48_213), "application/pdf"),
             StagedFile(name: "IMG_4023.HEIC", phase: .preparing),
         ]
+    }
+}
+
+/// A room of an export, read through its archive server, signed in as the viewer.
+struct ArchiveTimelineShot: View {
+    let archive: Archive
+    let roomID: String
+    @State private var session: ServerSession?
+
+    var body: some View {
+        NavigationStack {
+            if let session {
+                TimelineView(session: session, roomID: roomID, reminders: Reminders(store: InMemoryReminderStore(), notifier: SilentReminderNotifier()),
+                             hidden: HiddenDescriptions(), drafts: Drafts())
+            }
+        }
+        .environment(\.fetchesLinkPreviews, false)
+        .task {
+            let reader = ServerSession.reading(archive, withImages: false)
+            reader.start()
+            for _ in 0 ..< 200 where reader.status != .signedOut { try? await Task.sleep(for: .milliseconds(5)) }
+            _ = try? await reader.signIn(.guest(name: nil))
+            session = reader
+        }
     }
 }

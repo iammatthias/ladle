@@ -155,6 +155,12 @@ struct TimelineView: View {
                                          // Refused before a title is asked for, as no thread is made that would stay empty.
                                          if session.mayMoveAll(picking.ids) { newThreadFromSelection = true } else { problem = notMovableWords }
                                      })
+                    } else if let note = session.archiveNote {
+                        // Reading an export (`ext:archive`): what it is, with no sign-in to offer.
+                        Text(note).apText(.sm).foregroundStyle(Palette.inkMuted)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, Tokens.Space.s4)
+                            .padding(.vertical, Tokens.Space.s3)
                     } else if !session.mayWrite {
                         ReadOnlyPrompt(session: session) { requestSignIn(session.record) }
                     } else {

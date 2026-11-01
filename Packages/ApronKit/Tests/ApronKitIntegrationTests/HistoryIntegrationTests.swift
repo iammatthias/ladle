@@ -52,7 +52,8 @@ final class HistoryIntegrationTests: XCTestCase {
         _ = try await bob.send("while you were away", in: "general")
 
         let again = session(ada.record)
-        try await waitFor("restored") { self.texts(again) == shown }
+        // Catch-up may land before the first look: what was kept leads either way.
+        try await waitFor("restored") { self.texts(again).starts(with: shown) }
         try await waitFor("caught up") { self.texts(again) == shown + ["while you were away"] }
         XCTAssertEqual(again.status, .signedIn)
         XCTAssertEqual(again.you?.userID, ada.you?.userID)

@@ -598,7 +598,7 @@ Connection state is not a screen. It is one model, rendered in the Rooms section
 - **Notifications.** Whether iOS lets Ladle notify (On, Off in Settings with **Open Settings**, or asked with your first reminder): Ladle notifies for Remind Me; alerts for messages need push (§4.9), not built. Then **Pause Notifications** for each server with `status` (3.11's former section, as apron-web's PauseNotifications), headed with the server's name when several show.
 - **Appearance.** 3.15.
 - **Media.** Below.
-- **History.** **Retention**, apron-web's six choices in its words (Don't keep, A day, A week, 30 days, A year, Forever; 30 days by default), for every server, with "Signing out deletes stored history." Under it, "Using about 12 MB." (every server's kept history as last written), or in red why keeping stopped ("There isn't enough space on this device to keep more history."). A new choice rewrites what each server keeps at once (2.5). Export Chats and Open an Export read "Not yet" (PARITY section 22).
+- **History.** **Retention**, apron-web's six choices in its words (Don't keep, A day, A week, 30 days, A year, Forever; 30 days by default), for every server, with "Signing out deletes stored history." Under it, "Using about 12 MB." (every server's kept history as last written), or in red why keeping stopped ("There isn't enough space on this device to keep more history."). A new choice rewrites what each server keeps at once (2.5). Then **Export Chats** with **Include Private Rooms** (off each visit, as apron-web #171) and **Open an Export…** (3.18).
 
 **Media layout.**
 
@@ -662,6 +662,15 @@ Connection state is not a screen. It is one model, rendered in the Rooms section
 - **Results.** The newest 100, newest first, each with its room (a thread's with its room's after it) in denim, the sender, the date and time, and up to three lines of its text from a little before the first match, the words found marked. "Type to search.", "Searching…" and "No messages match "ops"." stand in for an empty list; past 100, "Only the newest are listed. Add words to narrow it down."
 - **Opening a result.** The sheet closes and the message opens where it is, as a link to it does: its room, paged back to it from the device and then the server, scrolled to and highlighted.
 - **Rooms by name.** The rooms list's search field (`.searchable` where iOS places it, at the bottom on iPhone as 3.1 asks; at the top of the iPad sidebar, whose bar is hidden; the Mac render draws it under the title) narrows to the rooms and threads whose title or id holds the words, in any case, with or without accents: exact names first, then those starting with them, then the rest, each by title.
+
+### 3.18 Export and open an export
+
+**Purpose.** Save a server's chats as one file and read one back, as apron-web's export and `/archive` (#135, #171), in apron-web's ARCHIVE.md form: JSON Lines, a header, the rooms as `room_list` lists them, then each record as `history` gives it.
+
+- **Export.** Preferences > History > **Export Chats** (one button per server signed in, named for it when there are several) writes what Ladle has loaded and kept of the server (2.5) to `apron-<host>-<day>.jsonl` and opens the share sheet, to save it to Files or send it. Private rooms, their threads, their records and anyone known only from them go only with **Include Private Rooms**, off each time History opens (#171). Under the buttons: "Saved apron-home.example-2026-10-27.jsonl: 120 messages in 9 rooms; 4 private rooms left out." or "Nothing is loaded to export yet." The file waits in the temporary directory until the next launch.
+- **Opening one.** **Open an Export…** picks a `.jsonl` from Files; one handed to Ladle from Files or another app (Ladle registers JSON Lines as a type it views) opens the same way, and a copy left in the app's Inbox goes once read. A file that isn't an export says "This file isn’t an Apron export."; one from a newer format, "This export is from a newer version of Apron, which this one can’t read."
+- **Its images.** An export that names sites for its media first asks "Load its images?": "This export’s images load from chat.example. Loading them lets that site see that you’re reading it. Nothing loads from any other site: without them, images show as links and avatars as initials." with **Open Without Images** and **Load Images**. Nothing loads from anywhere else, whatever Preferences say: no avatars or images from other sites, and no link previews fetched by the device.
+- **Reading.** A full-screen viewer: the export's rooms and threads, each opening its timeline, read through a server in the app that serves the file read-only (ARCHIVE.md §4), so the timeline, threads, replies, reactions and paging back work as they do on a server. In the composer's place: "An export from chat.example, saved Oct 27, 2026 at 12:00 PM. It’s read-only." Nothing can be sent, and nothing about it is kept.
 
 ## 4. Cross-cutting
 

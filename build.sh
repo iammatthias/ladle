@@ -20,8 +20,11 @@ if [[ $ACTION == shots ]]; then
     -destination 'platform=macOS,variant=Mac Catalyst,arch=arm64' \
     -derivedDataPath "${DERIVED_DATA:-build}" build 2>&1 | grep -E "error:|BUILD" || exit 1
   OUT=${OUT:A}
+  # After a run that was killed or crashed (any worktree's: they share the bundle ID), AppKit
+  # asks with a modal alert whether to reopen windows, and the renderer waits on it until the
+  # timeout. Ignoring saved state skips the question.
   TZ=UTC LADLE_SHOTS_DIR=$OUT timeout 300 \
-    "${DERIVED_DATA:-build}/Build/Products/Debug-maccatalyst/LadleShots.app/Contents/MacOS/LadleShots" 2>/dev/null
+    "${DERIVED_DATA:-build}/Build/Products/Debug-maccatalyst/LadleShots.app/Contents/MacOS/LadleShots" -ApplePersistenceIgnoreState YES 2>/dev/null
   ls "$OUT" | wc -l | xargs echo "files in $OUT:"
   exit
 fi

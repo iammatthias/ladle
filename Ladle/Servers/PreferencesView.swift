@@ -271,10 +271,22 @@ private struct HistoryPreferences: View {
             }
             .listRowBackground(Palette.raised)
             Section {
-                LabeledContent("Export Chats", value: "Not yet")
-                LabeledContent("Open an Export", value: "Not yet")
+                Toggle("Include Private Rooms", isOn: $includePrivate)
+                ForEach(signedIn, id: \.record.id) { session in
+                    Button(signedIn.count == 1 ? "Export Chats" : "Export \(session.serverName)") { export(session) }
+                }
+                if let exportNote { Text(exportNote).apText(.sm).foregroundStyle(Palette.inkMuted) }
+            } header: {
+                Text("Export Chats")
             } footer: {
-                Text("apron-web saves what it has loaded as a .jsonl file and reads one back. Ladle doesn't yet.")
+                Text(signedIn.isEmpty ? "Sign in to a server to export what Ladle has loaded and kept of it."
+                     : "Saves what Ladle has loaded and kept of a server as a .jsonl file, to share or keep. Private rooms go only when included.")
+            }
+            .listRowBackground(Palette.raised)
+            Section {
+                Button("Open an Export…") { importing = true }
+            } footer: {
+                Text("Reads a .jsonl file saved here or from apron-web, read-only, without signing in to its server.")
             }
             .listRowBackground(Palette.raised)
         }
@@ -282,5 +294,54 @@ private struct HistoryPreferences: View {
         .background(Palette.chrome)
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $sharing) { ShareSheet(items: [$0.url]) }
+        .fileImporter(isPresented: $importing, allowedContentTypes: [.jsonLines, .json, .plainText, .data]) { result in
+            if case .success(let url) = result { reading = OpenedExport(url: url) }
+        }
+        .fullScreenCover(item: $reading) { ArchiveViewer(opened: $0) }
     }
+
+    /// apron-web's "Include private rooms", off until asked (#171), for this visit to History.
+    @State private var includePrivate = false
+    @State private var exportNote: String?
+    @State private var sharing: SharedFile?
+    @State private var importing = false
+    @State private var reading: OpenedExport?
+
+    private var signedIn: [ServerSession] {
+        store.records.compactMap { store.session(for: $0.id) }.filter { $0.you != nil }
+    }
+
+    /// Writes the export into `Exports` in the temporary directory, which `LadleApp` clears at
+    /// launch, and offers it through the share sheet.
+    private func export(_ session: ServerSession) {
+        let export = session.exportArchive(includingPrivate: includePrivate)
+        let folder = FileManager.default.temporaryDirectory.appending(path: "Exports", directoryHint: .isDirectory)
+        let url = folder.appending(path: export.name)
+        do {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            try Data(export.text.utf8).write(to: url, options: [.atomic, .completeFileProtection])
+            exportNote = export.messages == 0 && export.rooms == 0 ? "Nothing is loaded to export yet." : export.words
+            sharing = SharedFile(url: url)
+        } catch {
+            exportNote = "The export couldn’t be saved. Try again."
+        }
+    }
+}
+
+/// A file to hand to the share sheet.
+struct SharedFile: Identifiable {
+    let url: URL
+    var id: URL { url }
+}
+
+/// The system share sheet, for a file.
+struct ShareSheet: UIViewControllerRepresentable {
+    let items: [Any]
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: items, applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ controller: UIActivityViewController, context: Context) {}
 }
