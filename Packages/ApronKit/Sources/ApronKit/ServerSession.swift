@@ -129,7 +129,7 @@ public final class ServerSession {
     public private(set) var users = UserDirectory()
     public private(set) var joinedRoomIDs: Set<String> = []
     /// Transient notices (§3.5.3), newest last. Never installed as snapshots.
-    public private(set) var notices: [Notice] = []
+    public internal(set) var notices: [Notice] = []
     public private(set) var histories: [String: RoomHistory] = [:]
     /// Each room's first page while it loads, so a second `open` waits for it.
     @ObservationIgnored private var openings: [String: Task<Void, Error>] = [:]
@@ -795,10 +795,10 @@ public final class ServerSession {
 
     // MARK: Operations
 
-    /// Posts plain text (§3.5.1), or runs a command (§4.1): text that starts with `/` goes as a
-    /// `command`, and `//` sends a message that starts with `/`. Returns the new `message_id`, or
-    /// nil for a command or when the server logged nothing. A post into a room this user has
-    /// not joined joins it first, or the message would never come back (§4.2.2).
+    /// Posts plain text (§3.5.1), or with capability `command` runs a command (§4.1): text that
+    /// starts with `/` goes as a `command`, and `//` sends a message that starts with `/`. Returns
+    /// the new `message_id`, or nil for a command or when the server logged nothing. A post into a
+    /// room this user has not joined joins it first, or the message would never come back (§4.2.2).
     ///
     /// Each attachment goes as an `upload` embed titled with its name (§4.8.4), and is written to
     /// the `write_url` the result lists for it once the result arrives. The writes run on their
@@ -807,7 +807,7 @@ public final class ServerSession {
     @discardableResult
     public func send(_ text: String, in roomID: String, replyTo: LogID? = nil, mentions: [String] = [], attachments: [Attachment] = [],
                      id: String? = nil) async throws -> LogID? {
-        let draft = Draft(text: text)
+        let draft = Draft(text: text, commands: server?.has("command") == true)
         if !draft.isCommand, !joinedRoomIDs.contains(roomID), server?.has("rooms") == true, connection != nil, status == .signedIn {
             try await join(roomID)
         }
@@ -851,14 +851,18 @@ public final class ServerSession {
         return CommandsAsker(connection: connectionNumber, userID: you.userID, roles: you.roles.sorted())
     }
 
-    /// Composer text as §4.1 reads it.
+    /// Composer text as §4.1 reads it. Without capability `command` every text is a message as
+    /// written, as apron-web's `composerAction`.
     public struct Draft: Hashable, Sendable {
         /// The text to send: a `//` message loses its first slash.
         public var text: String
         public var isCommand: Bool
 
-        public init(text: String) {
-            if text.hasPrefix("//") {
+        public init(text: String, commands: Bool = true) {
+            if !commands {
+                self.text = text
+                isCommand = false
+            } else if text.hasPrefix("//") {
                 self.text = String(text.dropFirst())
                 isCommand = false
             } else {

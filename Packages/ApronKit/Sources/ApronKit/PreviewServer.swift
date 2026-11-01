@@ -4,8 +4,9 @@ import Foundation
 /// `room_list`, `history` by room, the user's read cursors as `activity` (§4.6), others' typing, and the
 /// mutes in effect (§4.5). A `status` mute is echoed back before its `{}`, as servers do. A room's
 /// unjoined threads are the script's `unjoinedThreads`. A `room_set` without a `room_id` creates
-/// the room as asked, with you its one member, in a `room_update` before its result. Every other
-/// request gets `{}`.
+/// the room as asked, with you its one member, in a `room_update` before its result. Removing
+/// someone else (`room_leave` with a `user_id`) is refused, as aprond refuses a member who did
+/// not create the room, for the failed command shot. Every other request gets `{}`.
 /// It never sends anything unasked, so a seeded session stays still.
 public actor PreviewServer: FrameTransport {
     public struct Script: Sendable {
@@ -85,6 +86,9 @@ public actor PreviewServer: FrameTransport {
             room["members"] = [["user_id": script.you["user_id"] ?? nil]]
             deliver(["method": "room_update", "params": ["joined": [.object(room)]]])
             deliver(["id": id, "result": ["room_id": .string(roomID)]])
+        case "room_leave" where params?["user_id"] != nil:
+            deliver(["id": id, "error": ["code": -32001,
+                                         "message": "Only an admin, the room's creator, or a bot's owner, can remove someone else"]])
         case "status" where params?["mute"] != nil:
             deliver(["method": "status", "params": params ?? [:]])
             deliver(["id": id, "result": [:]])

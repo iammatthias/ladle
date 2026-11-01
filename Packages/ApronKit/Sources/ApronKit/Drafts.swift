@@ -93,6 +93,15 @@ public final class Drafts {
         }
     }
 
+    /// Gives a failed command's draft back to `key`, as apron-web's `PaneDrafts.restore`, unless
+    /// something has been typed, replied to or attached there since. Returns whether it did.
+    @discardableResult
+    public func restore(_ draft: ComposerDraft, at key: DraftKey) -> Bool {
+        guard self[key].isEmpty else { return false }
+        self[key] = draft
+        return true
+    }
+
     /// Forgets every draft on a server, and their files, as when the server is removed.
     public func removeAll(server: UUID) {
         let gone = byKey.filter { $0.key.server == server }

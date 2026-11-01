@@ -299,9 +299,9 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Reply bar "Replying to" | bh | has | `Timeline/ComposerView.swift` | |
 | Command mode: Command tag, monospace, Run | bh | partial | `Timeline/ComposerView.swift`, `Kit/CommandHelp.swift` | Sends `command` and lists commands. No Command tag, monospace line, or Run label. |
 | `/help` lists the server's commands | bh | has | `Kit/CommandHelp.swift` | Ladle lists them as you type, a superset. |
-| `/nick`, `/join`, `/leave`, `/topic`, `/kick`, `/invite` handled by the client | bh | missing | | All go to the server. UX.md 3.7 chose that. |
+| `/nick`, `/join`, `/leave`, `/topic`, `/kick`, `/invite` handled by the client | bh | has | `Kit/ComposerCommands.swift` (`ComposerAction`, `run`) | As `composerAction`: `me`, `room_join`, `room_leave`, `room_set`, and `room_leave`/`room_join` with `user_id`. A picked `@Name` names its user exactly. With files attached they go to the server's command, where apron-web posts a `/nick` with files as a message. |
 | `//` posts a message starting with `/` | bh | has | `Kit/DraftField.swift` | |
-| Failed command gives the draft back | bh | partial | `Kit/ServerSession.swift` outbox | Not verified in code: the draft returns. |
+| Failed command gives the draft back | bh | has | `Kit/ComposerCommands.swift` (`CommandFailure`), `Kit/Drafts.swift` (`restore`), `Timeline/TimelineView.swift` | Local and server commands: the reason as a `~private` notice, and the text, mentions, reply and files back unless the room's draft changed since. |
 | Drafts per room | bh | has | `Kit/Drafts.swift` | See section 2. Reply keeps the text; an edit sits beside the draft and gives it back. |
 | Link previews above the composer with × to drop | #11, #19 | missing | | |
 | Rate limit: Send counts down under "Sending is paused" | #109 | has | `Kit/ServerSession+Limits.swift` (`sendWait`), `Timeline/RateLimitNotice.swift`, `Timeline/ComposerView.swift` | The ring, or a clock with × for an hour or more. |
@@ -554,7 +554,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 27. **Passkeys.** Sign in, create an account, add a passkey, and resume a held session with a tap. Needs `webcredentials` associated domains. L.
 28. **External sign-in and email extras.** External sign-in through `ASWebAuthenticationSession`. Add email to an account. Handle link `state` and the "Sign in or Add it" dialog with its warning. The "add a sign-in" nudge. M.
 29. **`iframe` and `html` embeds.** A paused `iframe` with Load live view in a sandboxed `WKWebView`, and sanitized `html`, with the media gate's `srcset`, `background`, and `ping` rules. L.
-30. **Client-side commands.** Handle `/nick`, `/join`, `/leave`, `/topic`, `/kick`, and `/invite` locally, as the web does, and give a failed command's draft back. S.
+30. ~~**Client-side commands.**~~ Done (`Kit/ComposerCommands.swift`): `/nick`, `/join`, `/leave`, `/topic`, `/kick` and `/invite` as the requests they spell, a failed command's reason as a notice with its draft given back, and without capability `command` every text a message as written.
 31. ~~**Appearance.**~~ Done (`Kit/Appearance.swift`, `Kit/ResolvedTheme.swift`, `Servers/AppearanceView.swift`): mode, the premade themes, custom theme CSS and the theme fonts, as apron-web #174.
 32. ~~**Export and archive.**~~ Done (`Kit/Archive.swift`, `Kit/ArchiveServer.swift`, `Kit/ServerSession+Archive.swift`, `Archive/ArchiveViewer.swift`). Export loaded chats as `.jsonl`, with Include private rooms, and open an export read-only from Files. M.
 33. ~~**Presence details.**~~ Done (`Kit/Timeline.swift` `memberSections`, `Timeline/MemberList.swift`): the unknown status's dashed placeholder, the full status sort order, Online and Offline folding and remembered, one list without presence, `member_count` in the count, the note, the profile card and Message. "No members listed." for an empty listing came with it.

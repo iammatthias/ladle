@@ -39,6 +39,7 @@ enum Screen: String, CaseIterable {
     case membersFolded = "members-folded", membersTruncated = "members-truncated", profileCardTruncated = "profile-card-truncated"
     case reconnectPill = "reconnect-pill", checkingPill = "checking-pill", catchingUpLine = "catching-up-line", olderPill = "older-pill"
     case roomsReconnecting = "rooms-reconnecting", ipadCatchingUp = "ipad-catching-up"
+    case commandFailed = "command-failed"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -129,6 +130,7 @@ enum Renderer {
             UserDefaults.standard.set(true, forKey: "memberOnlineOpen")
             UserDefaults.standard.set(shot.screen != .membersFolded, forKey: "memberOfflineOpen")
             if shot.screen == .limited { await seedWaits(home: home) }
+            if shot.screen == .commandFailed { await seedCommandFailure(home: home) }
             if shot.screen == .privateFull, !home.atPrivateRoomLimit { _ = try? await home.startPrivateRoom(with: []) }
             show(AnyView(view(shot.screen, store: store, home: home, staged: staged)
                 .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
@@ -391,6 +393,9 @@ enum Renderer {
             AnyView(SignInQRSheet(link: URL(string: PreviewFixtures.inviteDeviceLink)!) {})
         case .signInQRCode:
             AnyView(SignInQRSheet(link: URL(string: PreviewFixtures.inviteDeviceLink)!, revealed: true) {})
+        case .commandFailed:
+            // `/kick @dev` in ops, which the server refused: its reason as a notice, and the draft given back.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: "ops", reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: commandDrafts) })
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))
@@ -431,6 +436,21 @@ enum Renderer {
     /// Drafts holding one room's draft, for a shot of its composer.
     static func kept(_ session: ServerSession, _ roomID: String, _ draft: ComposerDraft) -> Drafts {
         Drafts([DraftKey(server: session.record.id, roomID: roomID): draft])
+    }
+
+    /// The drafts of the failed command shot, holding the draft its failure gave back.
+    static let commandDrafts = Drafts()
+
+    /// Runs `/kick @dev` in ops once, as the composer does: the preview server refuses it.
+    static func seedCommandFailure(home: ServerSession) async {
+        let key = DraftKey(server: home.record.id, roomID: "ops")
+        guard commandDrafts[key].isEmpty else { return }
+        let draft = ComposerDraft(field: DraftField(text: "/kick @Dev ", mentions: ["dev": "Dev"]))
+        do {
+            try await home.submit(draft, in: "ops")
+        } catch let failure as CommandFailure {
+            commandDrafts.restore(failure.draft, at: key)
+        } catch {}
     }
 
     /// A reminder an hour off on the busy room's last message from Bram, for its shot alone.

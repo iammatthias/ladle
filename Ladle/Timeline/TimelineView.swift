@@ -745,11 +745,21 @@ struct TimelineView: View {
     }
 
     /// An edit's save closes the editor and brings the kept draft back; anything else empties
-    /// the kept draft, as apron-web's `drafts.clear`.
-    private func send(_ field: DraftField, attachments: [Attachment]) {
-        if field.isEdit { editing = nil } else { drafts[draftKey] = ComposerDraft() }
+    /// the kept draft, as apron-web's `drafts.clear`. A failed command's draft comes back, and
+    /// its reason is a notice in the room; `/join` shows the room it joined.
+    private func send(_ draft: ComposerDraft) {
+        let key = draftKey, drafts = drafts
+        if draft.field.isEdit { editing = nil } else { drafts[key] = ComposerDraft() }
         sentCount += 1
-        perform { try await session.submit(field, in: roomID, attachments: attachments) }
+        Task {
+            do {
+                if let room = try await session.submit(draft, in: roomID) { openRoom(room) }
+            } catch let failure as CommandFailure {
+                drafts.restore(failure.draft, at: key)
+            } catch {
+                problem = errorText(error)
+            }
+        }
     }
 
     private func dayLabel(_ date: Date) -> String {

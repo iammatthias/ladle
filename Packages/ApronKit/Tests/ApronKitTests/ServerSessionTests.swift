@@ -78,7 +78,7 @@ final class Probes: Sendable {
 @MainActor
 final class ServerSessionTests: XCTestCase {
     static let greeting: JSONValue = ["method": "server", "params": [
-        "apron": 9, "auth": ["email", "token", "guest"], "capabilities": ["history", "edit", "rooms", "reactions"],
+        "apron": 9, "auth": ["email", "token", "guest"], "capabilities": ["history", "edit", "rooms", "reactions", "command"],
     ]]
     let record = ServerRecord(id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, url: URL(string: "wss://chat.example/ws")!)
     let tokens = InMemoryTokenStore()
@@ -1231,7 +1231,7 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(field.mentions, ["guest_1234": "guest_1234", "bob": "bob"], "an @user_id in the text keeps its mention")
         field.text = "@guest_1234 look, and @ad"
         field.insert(mention: "ada", named: "Ada")
-        let edit = Task { try await session.submit(field, in: "general", attachments: []) }
+        let edit = Task { try await session.submit(ComposerDraft(field: field), in: "general") }
         let sent = await frame(socket, 2)
         XCTAssertEqual(sent, #"{"id":"c3","method":"message","params":{"body":{"format":"markdown","mentions":["guest_1234","ada"],"text":"@guest_1234 look, and @Ada"},"message_id":"200","room_id":"general"}}"#,
                        "Bob's @ is gone and Ada is picked, in the order the text names them")

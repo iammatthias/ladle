@@ -73,7 +73,7 @@ final class ComposerIntegrationTests: XCTestCase {
         }
         field.insert(role: role.role)
         field.text += "can someone look"
-        try await carol.submit(field, in: "general", attachments: [])
+        try await carol.submit(ComposerDraft(field: field), in: "general")
 
         try await waitFor("ada has it") { ada.timeline("general").last?.plainText == "@&cooks can someone look" }
         let message = try XCTUnwrap(ada.timeline("general").last)

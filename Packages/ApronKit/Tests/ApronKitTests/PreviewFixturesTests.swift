@@ -126,4 +126,19 @@ final class PreviewFixturesTests: XCTestCase {
                        [["admin"], ["mod", "announce"], ["bot"], ["announce"], []], "role badges")
         XCTAssertEqual(home.roles(of: UserObject(["user_id": "zed", "roles": ["bot"]])!), ["bot"], "an unknown user's roles come from the object given")
     }
+
+    func testThePreviewServerRefusesAKickForTheFailedCommandShot() async throws {
+        let store = await PreviewFixtures.makeStore()
+        let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
+        let draft = ComposerDraft(field: DraftField(text: "/kick @Dev ", mentions: ["dev": "Dev"]))
+        do {
+            try await home.submit(draft, in: "ops")
+            XCTFail("kicked")
+        } catch let failure as CommandFailure {
+            XCTAssertEqual(failure.reason, "Only an admin, the room's creator, or a bot's owner, can remove someone else")
+            XCTAssertEqual(failure.draft, draft)
+        }
+        XCTAssertEqual(home.notices.filter { $0.roomID == "ops" }.compactMap { $0.body?["text"]?.stringValue }.last,
+                       "Only an admin, the room's creator, or a bot's owner, can remove someone else")
+    }
 }

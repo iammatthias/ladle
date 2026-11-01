@@ -21,7 +21,7 @@ struct ComposerView: View {
     @Binding var draft: ComposerDraft
     /// Where fitted files are kept while the draft holds them (`Drafts.staging`).
     let staging: URL
-    let onSend: (DraftField, [Attachment]) -> Void
+    let onSend: (ComposerDraft) -> Void
     /// Send while a wait holds it back: the notice shows again if it was put away.
     var onHeld: () -> Void = {}
     var onProblem: (String) -> Void = { _ in }
@@ -317,7 +317,7 @@ struct ComposerView: View {
     private func send() {
         if session.composerWait(withFiles: !draft.files.isEmpty) != nil { return onHeld() }
         guard canSend else { return }
-        onSend(draft.field, draft.field.isEdit ? [] : draft.files.compactMap(\.attachment))
+        onSend(draft)
     }
 }
 

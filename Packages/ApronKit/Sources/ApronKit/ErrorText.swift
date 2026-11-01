@@ -1,8 +1,8 @@
-import ApronKit
 import Foundation
 
-/// A sentence to show for an error from a session operation.
-func errorText(_ error: any Error) -> String {
+/// A sentence to show for an error from a session operation: in the app's banners, and in the
+/// notice a failed command leaves.
+public func errorText(_ error: any Error) -> String {
     switch error {
     case let error as RPCError:
         // A wait the server asked for says when to try again, as apron-web's `userFacingRpcError`.
