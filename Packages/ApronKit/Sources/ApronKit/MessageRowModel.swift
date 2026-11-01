@@ -95,13 +95,14 @@ public struct MessageRowModel {
     }
 
     /// What VoiceOver reads for the row: the reminder's due line, the sender and roles, the
-    /// mention, the reply, the text, the move, the cards and embeds, the edit, the time and the
-    /// reactions.
-    public func spoken(reminderDue: Date?, now: Date) -> String {
+    /// mention, the reply, the text and its `liveLine`, the move, the cards and embeds, the edit,
+    /// the time and the reactions.
+    public func spoken(reminderDue: Date?, now: Date, liveLine: String? = nil) -> String {
         var parts = (reminderDue.map { [Reminder.label(due: $0, now: now)] } ?? []) + [name] + roles
         if mentionsYou { parts.append("mentions you") }
         if let replyLine { parts.append(replyLine) }
         parts.append(spokenText)
+        if let liveLine { parts.append(liveLine) }
         if let movedFrom { parts.append(movedFrom) }
         parts += cards.map(\.spoken)
         parts += embeds.map(\.embed.summary)

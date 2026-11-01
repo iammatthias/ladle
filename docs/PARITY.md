@@ -2,7 +2,7 @@
 
 This is the backlog of record for parity with apron-web. The rule is that every apron-web feature exists in Ladle. The iOS form may differ. Ladle may do more. Nothing is left out.
 
-The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`. It carries upstream through #178 and #179, role mentions (#181), themes (#174), Preferences sections (#184), #186, the Inactive threads section (#185), protocol v10 live text (#162), read receipts (#187), append edits (#189), the jump-to-latest fix (#190), blocked origins (#193) and the live text waiting state of #191 (its `/live` typing is gap item 37), at 0811a18 for the design tokens, plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
+The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`. It carries upstream through #178 and #179, role mentions (#181), themes (#174), Preferences sections (#184), #186, the Inactive threads section (#185), protocol v10 live text (#162), read receipts (#187), append edits (#189), the jump-to-latest fix (#190), blocked origins (#193), at 0811a18 for the design tokens, plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. Upstream #191 (live typing, and the live text waiting state) is not yet in `homelab-3`; Ladle follows upstream's waiting state, and its `/live` typing is gap item 37. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
 
 Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections 3.10 to 3.12 describe the profile card, You and the server pane as built.
 

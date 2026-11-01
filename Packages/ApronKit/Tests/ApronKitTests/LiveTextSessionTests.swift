@@ -66,6 +66,8 @@ final class LiveTextSessionTests: XCTestCase {
         let before = MessageRowModel(waiting, in: session)
         XCTAssertEqual([before.isWaiting, before.isWriting], [true, false])
         XCTAssertEqual(before.liveLine, "Waiting to stream…")
+        let time = waiting.date.formatted(date: .omitted, time: .shortened)
+        XCTAssertEqual(before.spoken(reminderDue: nil, now: .now, liveLine: before.liveLine), "Bram, Drafting the ramp report:\n\n, Waiting to stream…, \(time)")
         XCTAssertNil(before.liveAppend)
         XCTAssertEqual(String(MessageBlock.flattened(before.blocks).characters), "Drafting the ramp report:")
 

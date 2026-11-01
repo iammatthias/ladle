@@ -95,8 +95,7 @@ struct MessageRow: View {
             }
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(row.spoken(reminderDue: reminderDue, now: .now) + (row.liveLine.map { ", " + $0 } ?? "")
-            + (seenBy.isEmpty ? "" : ", " + SeenBy.words(seenBy.map(\.name))))
+        .accessibilityLabel(row.spoken(reminderDue: reminderDue, now: .now, liveLine: row.liveLine) + (seenBy.isEmpty ? "" : ", " + SeenBy.words(seenBy.map(\.name))))
         .accessibilityAction(named: "\(name)’s Profile", onProfile)
         .task(id: session.server?.emojiCatalogURL) {
             if session.needsEmojiCatalog(message) { await session.loadEmojiCatalog() }
