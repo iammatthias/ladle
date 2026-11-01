@@ -4,7 +4,9 @@ import SwiftUI
 /// A room's messages, oldest first, paging back as the top comes into view. The web's timeline:
 /// day pills, the New line in denim, thread cards where each thread began, room notices as
 /// callouts, and queued messages at the end. Problems show inline, never as alerts. A link's
-/// `place` in this room scrolls to its message and highlights it, or shows its member.
+/// `place` in this room scrolls to its message and highlights it, or shows its member. The first
+/// page waits for its thread listing (`ServerSession.held`); scrolling floats the day in view at
+/// the top; a mention of you that arrives pulses once.
 struct TimelineView: View {
     let session: ServerSession
     let roomID: String
@@ -51,6 +53,15 @@ struct TimelineView: View {
     /// The pill, the catching-up line and the older pill, on the session's clock.
     @State private var loadingWatch: PaneLoadingWatch?
     @Environment(\.heldPaneLoading) private var heldLoading
+    /// The day of the messages at the top, which floats there while scrolling and
+    /// `FloatingDay.shownFor` after.
+    @State private var floatingDay: Date?
+    @State private var scrolling = false
+    @State private var dayShown = false
+    @State private var pulse = MentionPulse()
+    @State private var pulsing: Set<LogID> = []
+    @Environment(\.fixedNow) private var fixedNow
+    @Environment(\.shotPins) private var shotPins
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openRoom) private var openRoom
@@ -90,27 +101,35 @@ struct TimelineView: View {
         })
     }
 
+    private var items: [TimelineItem] {
+        session.timelineItems(roomID, lineBefore: session.newLine(in: roomID, after: visit.after))
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
+                let held = session.held.contains(roomID)
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if let intro = session.privateIntro(roomID) { PrivateIntroCard(session: session, intro: intro) }
-                    if session.canLoadOlder(roomID) {
+                    if held {
+                        ProgressView().frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget * 2)
+                    } else if session.canLoadOlder(roomID) {
                         Color.clear
                             .frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget)
                             .task(id: session.histories[roomID]?.olderBefore) {
                                 do { try await session.loadOlder(roomID) } catch { problem = errorText(error) }
                             }
                     }
-                    ForEach(session.timelineItems(roomID, lineBefore: session.newLine(in: roomID, after: visit.after))) { item in
+                    ForEach(held ? [] : items) { item in
                         row(item).id(item.id)
                     }
-                    ForEach(Array(session.notices.enumerated()).filter { $0.element.roomID == roomID }, id: \.offset) { _, notice in
+                    ForEach(Array((held ? [] : session.notices(in: roomID)).enumerated()), id: \.offset) { _, notice in
                         let menu = NoticeMenu(notice, in: session)
                         Callout(title: menu.title) {
-                            MessageBlocksView(blocks: MessageText.blocks(notice.body, rooms: session.referencedTitle), catalog: nil, role: .ui,
-                                              gate: session.mediaGate, settings: session.mediaSettings)
+                            MessageBlocksView(blocks: MessageText.blocks(notice.body, emoji: session.emojiCatalog, rooms: session.referencedTitle),
+                                              catalog: session.emojiCatalog, role: .ui, gate: session.mediaGate, settings: session.mediaSettings)
                                 .tint(Palette.denim)
+                                .task(id: session.server?.emojiCatalogURL) { await session.loadEmojiCatalog(for: MessageText.plain(notice.body)) }
                             ForEach(menu.signInLinks, id: \.self) { link in
                                 Button("Show QR Code", systemImage: "qrcode") { signInQR = SignInQRRequest(link: link) }
                                     .buttonStyle(GhostButtonStyle(tone: Palette.accent))
@@ -125,6 +144,7 @@ struct TimelineView: View {
                     }
                     Color.clear.frame(height: Tokens.Space.s3).id("bottom")
                 }
+                .scrollTargetLayout()
             }
             .defaultScrollAnchor(.bottom)
             .scrollDismissesKeyboard(.interactively)
@@ -133,6 +153,26 @@ struct TimelineView: View {
             } action: { _, bottom in
                 atBottom = bottom
             }
+            .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.01) { ids in
+                let day = FloatingDay.day(of: items, visible: Set(ids))
+                if day != floatingDay { floatingDay = day }
+            }
+            .onScrollPhaseChange { _, phase in scrolling = phase.isScrolling }
+            .task(id: scrolling) {
+                if scrolling {
+                    dayShown = true
+                    return
+                }
+                do { try await Task.sleep(for: FloatingDay.shownFor) } catch { return }
+                dayShown = false
+            }
+            .overlay(alignment: .top) {
+                if let floatingDay, shotPins.floatingDay || (dayShown && !atBottom) {
+                    FloatingDayPill(label: DayLabel.text(floatingDay, now: fixedNow ?? .now))
+                        .transition(reduceMotion ? .identity : .opacity.combined(with: .offset(y: -4)))
+                }
+            }
+            .animation(Motion.slow(reduceMotion), value: dayShown && !atBottom)
             .onChange(of: jumpTarget) {
                 guard let jumpTarget else { return }
                 withAnimation(Motion.slide(reduceMotion)) { proxy.scrollTo(jumpTarget, anchor: .center) }
@@ -305,6 +345,17 @@ struct TimelineView: View {
             visible = false
             session.show(roomID, false)
         }
+        .onChange(of: PulseFeed(shown: session.histories[roomID] != nil && !session.held.contains(roomID), messages: session.timeline(roomID)),
+                  initial: true) { _, feed in
+            guard feed.shown else { return }
+            for id in pulse.arrivals(in: feed.messages, latest: session.store.latestLogID(of: roomID), you: session.you?.userID) {
+                pulsing.insert(id)
+                Task {
+                    try? await Task.sleep(for: MentionPulse.held)
+                    pulsing.remove(id)
+                }
+            }
+        }
         .onChange(of: ReadMark(reading: isReading, through: session.timeline(roomID).last?.messageID), initial: true) { _, mark in
             guard mark.reading, let through = mark.through else { return }
             Task { await session.markRead(roomID, through: through) }
@@ -326,6 +377,14 @@ struct TimelineView: View {
             guard let link, link.room == roomID else { return }
             focus = link
             place = nil
+        }
+        .task {
+            // The renderer's scrolled state: twice, as the lazy rows above settle their heights.
+            guard let target = shotPins.scrollTo else { return }
+            for _ in 0 ..< 2 {
+                try? await Task.sleep(for: .milliseconds(300))
+                jumpTarget = target
+            }
         }
         .task(id: Focus(link: focus, signedIn: session.status == .signedIn)) {
             guard let link = focus, session.status == .signedIn else { return }
@@ -535,6 +594,7 @@ struct TimelineView: View {
                 }
                 MessageRow(session: session, message: message, continues: continues,
                            highlighted: highlighted == message.messageID || picking?.contains(message.messageID) == true,
+                           pulsing: pulsing.contains(message.messageID),
                            reminderDue: reminding.reminder(on: message)?.due,
                            onClearReminder: { reminding.forget(message) },
                            onReact: { emoji in perform { try await session.toggleReaction(emoji, on: message.messageID) } },
@@ -552,7 +612,7 @@ struct TimelineView: View {
             .accessibilityActions { if picking == nil { actions(for: message) } }
             .accessibilityAddTraits(picking?.contains(message.messageID) == true ? .isSelected : [])
         case .day(let date):
-            TimelineDivider(kind: .day, label: dayLabel(date))
+            TimelineDivider(kind: .day, label: DayLabel.text(date, now: fixedNow ?? .now))
                 .padding(.top, Tokens.Space.s6)
                 .padding(.bottom, Tokens.Space.s2)
         case .unreadLine:
@@ -762,13 +822,6 @@ struct TimelineView: View {
         }
     }
 
-    private func dayLabel(_ date: Date) -> String {
-        let calendar = Calendar.current
-        if calendar.isDateInToday(date) { return "Today" }
-        if calendar.isDateInYesterday(date) { return "Yesterday" }
-        return date.formatted(.dateTime.weekday(.wide).month(.wide).day())
-    }
-
     private func perform(_ operation: @escaping () async throws -> Void) {
         Task {
             do { try await operation() } catch { problem = errorText(error) }
@@ -802,6 +855,12 @@ struct Focus: Equatable {
 struct ReadMark: Equatable {
     var reading: Bool
     var through: LogID?
+}
+
+/// What `MentionPulse` reads: the room's messages, once its first page is shown.
+struct PulseFeed: Equatable {
+    var shown: Bool
+    var messages: [MessageSnapshot]
 }
 
 /// The text Select Text shows (`MessageMenu.selectableText`, `NoticeMenu.text`).

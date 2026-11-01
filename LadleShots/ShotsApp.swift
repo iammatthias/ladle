@@ -41,6 +41,7 @@ enum Screen: String, CaseIterable {
     case roomsReconnecting = "rooms-reconnecting", ipadCatchingUp = "ipad-catching-up"
     case commandFailed = "command-failed"
     case emojiStandard = "emoji-standard"
+    case floatingDay = "floating-day", mentionPulse = "mention-pulse", welcome
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -400,6 +401,19 @@ enum Renderer {
         case .commandFailed:
             // `/kick @dev` in ops, which the server refused: its reason as a notice, and the draft given back.
             AnyView(NavigationStack { TimelineView(session: home, roomID: "ops", reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: commandDrafts) })
+        case .floatingDay:
+            // Scrolled back to Eun-ji's mention: the day of the rows at the top floats there.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
+                .environment(\.shotPins, ShotPins(floatingDay: true, scrollTo: "1793092500000")))
+        case .mentionPulse:
+            // Eun-ji's mention of Sam as it arrives, its ring a third of the way out.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
+                .environment(\.shotPins, ShotPins(pulse: 0.35, scrollTo: "1793092500000")))
+        case .welcome:
+            // The demo's welcome before `auth`, in its first room, help.
+            AnyView(NavigationStack {
+                if let demo = store.session(for: PreviewFixtures.demoID) { TimelineView(session: demo, roomID: "help", reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
+            })
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))

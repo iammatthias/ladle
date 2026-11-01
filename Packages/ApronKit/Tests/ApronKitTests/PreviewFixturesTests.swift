@@ -117,6 +117,11 @@ final class PreviewFixturesTests: XCTestCase {
                        "Not among the recently active members of lobby")
         XCTAssertNil(home.memberListNote(PreviewFixtures.busyRoomID))
         XCTAssertFalse(demo.mayWrite, "a guest the demo lets only read")
+        XCTAssertEqual(demo.firstRoom, "help")
+        XCTAssertEqual(demo.notices(in: "help").map { $0.body?["text"]?.stringValue }, [PreviewFixtures.demoWelcome],
+                       "the welcome before auth, kept for a guest given no token, in the first room")
+        XCTAssertEqual(demo.notices(in: "lobby"), [])
+        XCTAssertFalse(home.notices.contains(where: \.welcome))
         XCTAssertEqual(demo.serverName, "Apron Demo", "named by its title")
         XCTAssertEqual(demo.serverAvatarURL?.absoluteString, PreviewFixtures.demoAvatarURL)
         XCTAssertTrue(home.mayWrite)

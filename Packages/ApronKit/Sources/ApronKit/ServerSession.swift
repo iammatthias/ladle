@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import Synchronization
 
 /// One server and its single account: the connection lifecycle, sign-in, the record stores, and
 /// the chat operations. The app holds one per `ServerRecord`, in a `SessionStore`.
@@ -67,6 +68,10 @@ public final class ServerSession {
         public var typing: TypingTimes
         /// The wall clock, which mutes end by (§4.5).
         public var now: @Sendable () -> Date
+        /// How long a room's first page waits for its thread listing, so the thread cards come
+        /// with its messages. A slow listing still installs when it comes. Real time, not
+        /// `sleep`, which tests release one sleep at a time.
+        public var threadsWait: Duration
 
         public init(
             makeTransport: @escaping @Sendable (ServerRecord) -> any FrameTransport,
@@ -82,7 +87,8 @@ public final class ServerSession {
             fetchConnectionStatus: @escaping ConnectionStatusFetch = ConnectionStatusProbe.live,
             readCursorInterval: Duration = .seconds(5),
             typing: TypingTimes = TypingTimes(),
-            now: @escaping @Sendable () -> Date = { Date() }
+            now: @escaping @Sendable () -> Date = { Date() },
+            threadsWait: Duration = .seconds(3)
         ) {
             self.makeTransport = makeTransport
             self.sleep = sleep
@@ -98,6 +104,7 @@ public final class ServerSession {
             self.readCursorInterval = readCursorInterval
             self.typing = typing
             self.now = now
+            self.threadsWait = threadsWait
         }
 
         public static let live = Environment(makeTransport: { record in
@@ -133,6 +140,8 @@ public final class ServerSession {
     public private(set) var histories: [String: RoomHistory] = [:]
     /// Each room's first page while it loads, so a second `open` waits for it.
     @ObservationIgnored private var openings: [String: Task<Void, Error>] = [:]
+    /// The rooms whose first page and thread listing are loading, which the timeline holds back.
+    public private(set) var held: Set<String> = []
     /// Threads this device started, by the message each was started from (`startThread`).
     @ObservationIgnored var startedThreads: [LogID: String] = [:]
     /// The rooms on screen, which a catch-up pages before the others.
@@ -473,6 +482,10 @@ public final class ServerSession {
         signInNeeded = nil
         setAccount(ServerRecord.Account(userID: identity.userID, name: identity.json["name"]?.stringValue, scheme: method.scheme))
         status = .signedIn
+        // A welcome speaks to whoever connected; an account signed in by a code, or given a token
+        // of its own, is past it (apron-web's `dropWelcomes`).
+        let registered = if case .emailCode = method { true } else { result["token"]?.stringValue != nil }
+        if registered { notices.removeAll(where: \.welcome) }
         // A connection starts attended (§4.5): an idle app says so at once.
         syncIdle()
         if let rooms, let listing = try? await rooms.value { applyRoomList(listing) }
@@ -547,7 +560,7 @@ public final class ServerSession {
         case "server":
             if let info = ServerInfo(params: params) { server = info }
         case "message":
-            guard case .notice(let notice) = MessageFrame(params: params) else { break }
+            guard case .notice(var notice) = MessageFrame(params: params) else { break }
             if let help = CommandHelp(notice: notice) {
                 commands = help
                 commandsAskedAs = commandsAsker
@@ -555,6 +568,12 @@ public final class ServerSession {
                     commandsNoticeAwaited = nil
                     break
                 }
+            }
+            if status != .signedIn {
+                notice.welcome = true
+                notices.removeAll(where: \.welcome)
+            } else if notice.roomID == nil {
+                notice.roomID = onScreen.sorted(by: codePointLess).first
             }
             notices.append(notice)
         case "room_update":
@@ -670,10 +689,14 @@ public final class ServerSession {
                 histories[roomID] = nil
                 throw error
             }
-            await listThreads(of: roomID)
+            await listThreads(of: roomID, waitingAtMost: environment.threadsWait)
         }
         openings[roomID] = opening
-        defer { openings[roomID] = nil }
+        held.insert(roomID)
+        defer {
+            openings[roomID] = nil
+            held.remove(roomID)
+        }
         try await opening.value
     }
 
@@ -687,6 +710,21 @@ public final class ServerSession {
         let params: JSONValue = ["parent_room_id": .string(roomID), "filter": "not_joined"]
         guard let result = try? await connection.request("room_list", params: params) else { return }
         install(Records(roomListResult: result))
+    }
+
+    /// `listThreads`, waited for at most `limit`.
+    private func listThreads(of roomID: String, waitingAtMost limit: Duration) async {
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            let first = FirstOf(done)
+            Task {
+                await listThreads(of: roomID)
+                first.resume()
+            }
+            Task {
+                try? await Task.sleep(for: limit)
+                first.resume()
+            }
+        }
     }
 
     /// Loads the page before the oldest one loaded, while there is one (§4.3.2).
@@ -1283,4 +1321,17 @@ extension RPCError {
     /// What a `retry_after` holds back (`data.ext.limits`, extension `ext:limits`): `read`,
     /// `write` or `upload`, or nil when it names none.
     var limitCategory: String? { data?["ext"]?["limits"]?.stringValue }
+}
+
+/// Resumes a continuation once, for whichever of the tasks racing to it comes first.
+private final class FirstOf: Sendable {
+    private let continuation: Mutex<CheckedContinuation<Void, Never>?>
+
+    init(_ continuation: CheckedContinuation<Void, Never>) {
+        self.continuation = Mutex(continuation)
+    }
+
+    func resume() {
+        continuation.withLock { $0.take() }?.resume()
+    }
 }

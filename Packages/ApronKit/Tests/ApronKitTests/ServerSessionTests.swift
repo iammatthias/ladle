@@ -1647,3 +1647,115 @@ extension ServerSessionTests {
                        [nil, "\u{2068}Ada\u{2069} is typing…", "2 people are typing…", "3 people are typing…"])
     }
 }
+
+// MARK: First show and the welcome
+
+extension ServerSessionTests {
+    private func roomlessNotice(_ text: String) -> JSONValue {
+        ["method": "message", "params": ["from": ["user_id": "~private", "name": "Only you"], "body": ["text": .string(text)]]]
+    }
+
+    private func noticeTexts(in roomID: String) -> [String?] {
+        session.notices(in: roomID).map { $0.body?["text"]?.stringValue }
+    }
+
+    /// Signs in as a guest the server gives no token, in two rooms listed Zoo first.
+    private func signInAsTokenlessGuest(on socket: FakeTransport) async throws {
+        await eventually("signed out") { session.status == .signedOut }
+        let signIn = Task { try await session.signIn(.guest(name: nil)) }
+        _ = await frames(socket, count: 2)
+        await socket.deliver(["id": "c1", "result": ["you": ["user_id": "guest_1"]]])
+        await socket.deliver(["id": "c2", "result": ["joined": [
+            ["room_id": "zoo", "log_id": "100", "title": "Zoo", "latest_log_id": "100", "history_log_id": "100"],
+            ["room_id": "atrium", "log_id": "101", "title": "Atrium", "latest_log_id": "101", "history_log_id": "101"],
+        ]]])
+        _ = try await signIn.value
+    }
+
+    func testTheWelcomeBeforeAuthShowsInTheFirstRoomAndTheNextConnectionsReplacesIt() async throws {
+        session.start()
+        let socket = await transport(0)
+        await socket.deliver(roomlessNotice("Guests can read."))
+        await socket.deliver(roomlessNotice("Guests can read. Sign in with passkey to post."))
+        try await signInAsTokenlessGuest(on: socket)
+        XCTAssertEqual(session.firstRoom, "atrium", "the rooms list's first, by title, not the listing's")
+        XCTAssertEqual(noticeTexts(in: "atrium"), ["Guests can read. Sign in with passkey to post."], "a welcome replaces the one before")
+        XCTAssertEqual(noticeTexts(in: "zoo"), [])
+        XCTAssertEqual(session.notices.map(\.welcome), [true])
+
+        session.show("zoo", true)
+        await socket.deliver(roomlessNotice("Reminder: standup"))
+        await eventually("the notice after sign-in") { session.notices.count == 2 }
+        XCTAssertEqual(noticeTexts(in: "zoo"), ["Reminder: standup"], "after sign-in, a notice without a room shows in the one on screen")
+
+        let second = queueTransport(capabilities: ["history", "edit", "rooms", "reactions"])
+        await socket.dropFromServer()
+        await eventually("backoff") { clock.recorded.count == 1 }
+        clock.release()
+        await eventually("connected again") { session.status == .signedOut }
+        await second.deliver(roomlessNotice("Welcome back."))
+        await eventually("the new welcome") { noticeTexts(in: "atrium") == ["Welcome back."] }
+        XCTAssertEqual(noticeTexts(in: "zoo"), ["Reminder: standup"])
+    }
+
+    func testASignInThatGivesATokenDropsTheWelcome() async throws {
+        session.start()
+        let socket = await transport(0)
+        await socket.deliver(roomlessNotice("Guests can read."))
+        await eventually("the welcome") { session.notices.count == 1 }
+        try await signInAsGuest(on: socket)
+        XCTAssertEqual(session.notices, [], "a token of its own makes it a registered session, which the welcome no longer speaks to")
+    }
+
+    func testAFirstPageIsHeldUntilItsThreadListingComes() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        let open = Task { try await session.open("general") }
+        _ = await frame(socket, 2)
+        XCTAssertEqual(session.held, ["general"])
+        await socket.deliver(["id": "c3", "result": [
+            "messages": [message("104", "d")], "first_log_id": "104", "last_log_id": "104", "more": false, "latest_log_id": "104",
+        ]])
+        _ = await frame(socket, 3)
+        XCTAssertEqual(session.held, ["general"], "the page waits for the listing")
+        await socket.deliver(["id": "c4", "result": ["not_joined": [
+            ["room_id": "130", "log_id": "130", "parent_room_id": "general", "title": "Deploy", "latest_log_id": "130", "history_log_id": "130"],
+        ]]])
+        try await open.value
+        XCTAssertEqual(session.held, [])
+        XCTAssertEqual(session.timelineItems("general", lineBefore: nil).map(\.id).filter { !$0.hasPrefix("day-") }, ["104", "thread-130"],
+                       "the thread card comes with the page")
+        try await session.open("general")
+        XCTAssertEqual(session.held, [], "shown again, it does not wait")
+    }
+
+    func testASlowThreadListingHoldsTheFirstPageForThreadsWaitAtMost() async throws {
+        await session.stop()
+        let counter = Mutex(0)
+        let transports = transports, clock = clock
+        session = ServerSession(record: record, tokens: tokens, positions: positions, environment: ServerSession.Environment(
+            makeTransport: { _ in transports.next() },
+            sleep: { try await clock.sleep($0) },
+            jitter: { 1 },
+            makeRequestID: { counter.withLock { $0 += 1; return "c\($0)" } },
+            pageSize: 3,
+            threadsWait: .milliseconds(50)
+        ))
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        let open = Task { try await session.open("general") }
+        _ = await frame(socket, 2)
+        await socket.deliver(["id": "c3", "result": [
+            "messages": [message("104", "d")], "first_log_id": "104", "last_log_id": "104", "more": false, "latest_log_id": "104",
+        ]])
+        try await open.value
+        XCTAssertEqual(session.held, [], "shown once the wait is up, with no listing yet")
+        await socket.deliver(["id": "c4", "result": ["not_joined": [
+            ["room_id": "130", "log_id": "130", "parent_room_id": "general", "title": "Deploy", "latest_log_id": "130", "history_log_id": "130"],
+        ]]])
+        await eventually("the late listing") { session.store.room("130") != nil }
+        XCTAssertEqual(session.timelineItems("general", lineBefore: nil).last?.id, "thread-130")
+    }
+}

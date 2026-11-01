@@ -352,15 +352,16 @@ The HIG has no Live Text or scanning page. The `live-text` page returned 404, so
 - The header shows the sender name, role labels as text capsules (§3.3.4), and the time from `message_id` (§2.1). Consecutive messages from one sender within 5 minutes omit the header.
 - **Name.** `Name (@user_id)` whenever another known user has the same name (§3.3.1 MUST). The muted `@user_id` also shows when there is room, which means regular width. **Judgment call** for compact width, to save the line.
 - System senders. `~server` and `~room` show their names with `megaphone` and `number`. `~private` notices show "Only you", a dashed outline, and `eye.slash`, plus a close button. They are never installed as records (§3.5.3).
-- Date separators ("Today", "Yesterday", "Tuesday 21 October") are headings.
+- Date separators ("Today", "Yesterday", "Mon, Oct 26", with the year when it is not this year's, as apron-web's `dayLabelOf`) are headings. While you scroll back, the day of the first message in view floats at the top as the same pill with the float shadow, unless its own separator shows above it; it fades 1.2 s after scrolling stops and never shows at the bottom (apron-web's FloatingDay).
 - A **New** divider sits above the first unread message. The room opens at the divider when there are unread messages, otherwise at the bottom (2.5).
-- When you are mentioned (`body.mentions` contains your `user_id`), the row gets a leading bar, an `at` glyph, and the label "Mentions you". It is never tint alone.
+- When you are mentioned (`body.mentions` contains your `user_id`), the row gets a leading bar, an `at` glyph, and the label "Mentions you". It is never tint alone. A mention that arrives while the room is shown, or an edit that adds you, rings once (an accent ring spreading 12 pt over 0.9 s, apron-web's `ap-ping`); what the room held when shown never does, and Reduce Motion turns it off.
 
 **Scrolling.**
 
 - At the bottom, new messages scroll into view. Scrolled up, they never move what you are reading; **Jump to Latest** counts them instead.
 - Sending scrolls to the bottom.
 - Older pages load when the top is within one screen. A `ProgressView` row shows while a page loads.
+- The first time a room is shown in a session, its messages wait for its thread listing, at most 3 s, with a `ProgressView` in their place, so the thread cards come with them instead of shifting the timeline afterwards. Shown again, or after a reconnect, it does not wait.
 - At the end of history, show "Start of #General". If `history_log_id` cut history short, show "Earlier messages are no longer available." Without `history`, show "Messages from before you connected aren't available on this server." (§4 fallback).
 
 **Navigation.**
@@ -411,7 +412,7 @@ The reply drag mirrors in right-to-left layouts ([right-to-left]).
 | Deleted (tombstone) | "Message deleted" in secondary italics, with no reactions (§4.4) and no actions except Copy Link |
 | Reply to a deleted target | The quote shows "Message deleted" |
 | Reply to an unknown target | The quote shows "Message unavailable" and is not a button |
-| Transient `~private` notice | Shown inline with "Only you" and a close button. It lasts for the session and is never stored. A notice without `room_id` shows in the sign-in sheet if it is open, otherwise under the server's section header. |
+| Transient `~private` notice | Shown inline with "Only you" and a close button. It lasts for the session and is never stored. A notice without `room_id` that came before `auth`, such as the server's welcome (Appendix B.1), shows in the first room of the rooms list; the next connection's welcome replaces it, and signing in by a code, or with a token the server gives, drops it, as apron-web's. One without `room_id` after sign-in shows in the room on screen. |
 | Same display name | `Name (@user_id)`, from `UserDirectory` |
 | Mention of someone else | `@user_id` in the text shows the user's current name in the mention style. An unknown ID renders as written (§A.3). Never inside code. |
 | Unknown embed kind | Render from `og` (title, description, image) if present. Otherwise a fallback card with the kind name and `url` or `text` (§3.5.2 MUST). |

@@ -31,7 +31,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Your own dot shows the connection state (dashed ring) | bh | has | `Kit/PaneLoading.swift` (`ownPresence`, `ownPresenceWords`), `Kit/Profile.swift` (`profileLine`), `Rooms/RoomListView.swift` profile bar | The line under your name says the connection's words ("Reconnecting…") while the dot is the ring, as the web's `statusLabel` replaces the status words. |
 | Request toast after 600 ms ("Leaving…"), error toast with × | #69, bh | partial | `Timeline/TimelineView.swift` banner | Errors show inline with Dismiss. No in-flight toast. |
 | Connection error in a corner with × that stays away until it clears | bh | partial | `Rooms/RoomListView.swift` banner | Banner has no "stay dismissed until it clears" rule. |
-| First room shown waits up to 3 s for its thread listing | bh | missing | | Thread cards can shift the timeline after they arrive. |
+| First room shown waits up to 3 s for its thread listing | bh | has | `Kit/ServerSession.swift` (`open`, `held`, `threadsWait`), `Timeline/TimelineView.swift` | Each room's first page in a session is held (a spinner) until its thread listing comes, at most 3 s; a slow listing still installs. Shown again or after a reconnect, it does not wait. |
 | New version deployed: Reload or Later | #7 | N/A-iOS | | The App Store and TestFlight update the app. |
 
 ## 2. Reload, kept view, and local history
@@ -214,12 +214,12 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
 | Anchored at the bottom, stays put when the composer grows | #64 | has | `Timeline/TimelineView.swift` | |
-| Sender groups, day dividers, floating day | #65 | partial | `Kit/Timeline.swift` (day pills) | Day pills show. No floating day while scrolling. |
+| Sender groups, day dividers, floating day | #65 | has | `Kit/Timeline.swift` (day pills), `Kit/FloatingDay.swift`, `Timeline/TimelinePolish.swift` (`FloatingDayPill`) | While scrolling up, the day of the first message in view floats at the top, not over its own pill, and fades 1.2 s after scrolling stops. Day pills say "Mon, Oct 26" as the web's `dayLabelOf`, with the year when it is not this year's. |
 | New divider above the first unread | #100 | has | `Kit/ServerSession.swift` (`newLine`) | |
 | Open at the New divider, not the latest | #100 | missing | AGENTS.md "A room opens at its latest message" | Needs on-device scroll checks. |
 | Jump bar to latest, rust with Jump to mention | #28 | has | `Timeline/TimelineView.swift` (`JumpBar`) | |
 | Mentioned row tinted with a rust rule | bh | has | `Timeline/MessageRow.swift` | |
-| Mention pulse once on arrival | bh | missing | | |
+| Mention pulse once on arrival | bh | has | `Kit/MentionPulse.swift`, `Timeline/TimelinePolish.swift` (`PulseRing`) | One accent ring spreading 12 pt over 0.9 s, for a message mentioning you that arrives after the room was shown or an edit that adds you; never for history. Off under Reduce Motion. |
 | Edited label | bh | has | `Timeline/MessageRow.swift` | |
 | Moved from #room | #54 | has | `Timeline/MessageRow.swift` | |
 | Hide deleted messages from the feed (fork) | fork "Hide deleted messages from the feed" | has | `Kit/ServerSession.swift` (`timeline`) | |
@@ -239,7 +239,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Rename lines ("Room renamed to “Ops”", "Thread name cleared") in rooms and threads | #170 | has | `Kit/ReplayStore.swift` (`renames`), `Kit/MembershipLines.swift` (`rename`) | |
 | System senders as quiet lines; `~private`, `~room`, `~server` as notice cards | bh | has | `Timeline/TimelineView.swift` (`Callout`), `Kit/MessageMenu.swift` (`NoticeMenu`) | |
 | Transient notices for the session, never stored | bh | has | `Kit/ServerSession.swift` (`notices`) | |
-| Welcome notice in the first room | bh | partial | `Servers/ConnectView.swift` | The welcome shows in the Connect sheet, not in the first room. |
+| Welcome notice in the first room | bh | has | `Kit/ServerSession+Notices.swift` (`firstRoom`, `notices(in:)`), `Servers/ConnectView.swift` | A notice before `auth` (Appendix B.1) shows in the rooms list's first room (by title, where the web takes its listing's first), with custom emoji; the next connection's replaces it, and a sign-in by code or one that gives a token drops it. A later notice without `room_id` shows in the room on screen. `server.welcome` stays in the Connect sheet, as on the web. |
 | Copy button on a notice's code block | bh | has | `Timeline/TimelineView.swift` (`noticeActions`) | Copy each code span from the menu. |
 | Show QR code for a sign-in link in a `~private` notice (fork) | fork "Show a sign-in link from a ~private notice as a QR code" | has | `Timeline/SignInQRSheet.swift`, `NoticeMenu.signInLinks` | Show QR Code under the notice and in its menu; the sheet shows the warning first, then the code. |
 | Typing indicator, others' | bh, `TypingIndicator.svelte`, `RoomHeader.svelte` | has | `Kit/ServerSession+Typing.swift`, `Timeline/TypingIndicator.swift` | On iPhone a centered denim line under the navigation bar ("Ada is typing…", "2 people are typing…"), the words of the web's header subtitle under 720 px, kept out of the bar so its centered title never moves; on iPad a line with three bobbing dots above the composer ("Ada and Bram are typing…", "Several people are typing…"), its row kept so nothing moves. Reduce Motion stills and dims the dots. Held at most 300 s; a message from them or `typing: 0` ends it. |
@@ -559,5 +559,5 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 32. ~~**Export and archive.**~~ Done (`Kit/Archive.swift`, `Kit/ArchiveServer.swift`, `Kit/ServerSession+Archive.swift`, `Archive/ArchiveViewer.swift`). Export loaded chats as `.jsonl`, with Include private rooms, and open an export read-only from Files. M.
 33. ~~**Presence details.**~~ Done (`Kit/Timeline.swift` `memberSections`, `Timeline/MemberList.swift`): the unknown status's dashed placeholder, the full status sort order, Online and Offline folding and remembered, one list without presence, `member_count` in the count, the note, the profile card and Message. "No members listed." for an empty listing came with it.
 34. ~~**Composer details.**~~ Done (`Kit/StandardEmoji.swift`, `Kit/SuggestionCursor.swift`, `tools/design/emoji.py`): standard emoji in the `:` list after the server's own, and ↑ ↓ Tab Return and Escape in every list. Mention chips in the field are left out: a SwiftUI `TextField` draws no chips, and the rich `TextEditor` or a `UITextView` would need a device to prove the composer's focus and keys still hold (section 14).
-35. **Timeline polish.** The floating day while scrolling, the mention pulse on arrival, the 3-second wait for thread listings on first show, and the welcome notice in the first room. S.
+35. ~~**Timeline polish.**~~ Done (`Kit/FloatingDay.swift`, `Kit/MentionPulse.swift`, `Kit/ServerSession+Notices.swift`, `Timeline/TimelinePolish.swift`): the floating day while scrolling, the mention pulse on arrival, the 3-second wait for thread listings on first show, and the welcome notice in the first room. Notices still sit after the loaded messages rather than at their arrival position, and the floating day and pulse timing are unchecked on a device.
 36. **Keyboard shortcuts.** ⌘F for search (done with item 16), `x` to select, Alt+↑ and Alt+↓ to move a room, ← → in the image viewer, once the features behind them exist. S.

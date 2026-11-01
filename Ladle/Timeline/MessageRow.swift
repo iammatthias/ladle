@@ -5,11 +5,13 @@ import SwiftUI
 /// above, the text, embeds, and reactions. A message that mentions you sits on accent-soft with
 /// an accent bar, as the web marks it. One a link opened to is highlighted on `hover`, as the
 /// web's `ap-msg-highlighted`. One with a reminder has an accent edge and says when it is due.
+/// One `pulsing` because a mention of you just arrived rings once, as the web's `ap-msg-pinged`.
 struct MessageRow: View {
     let session: ServerSession
     let message: MessageSnapshot
     let continues: Bool
     var highlighted = false
+    var pulsing = false
     var reminderDue: Date?
     var onClearReminder: () -> Void = {}
     var onReact: (String) -> Void = { _ in }
@@ -21,6 +23,8 @@ struct MessageRow: View {
     @Environment(\.fixedTypeSize) private var fixedTypeSize
     @Environment(\.liveSessions) private var liveSessions
     @Environment(\.openURL) private var openURL
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.shotPins) private var shotPins
 
     var body: some View {
         let row = MessageRowModel(message, in: session, sessions: liveSessions.find)
@@ -72,6 +76,11 @@ struct MessageRow: View {
         .overlay {
             if reminderDue != nil {
                 RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.accent, lineWidth: 1.5).accessibilityHidden(true)
+            }
+        }
+        .overlay {
+            if row.mentionsYou, shotPins.pulse != nil || (pulsing && Motion.medium(reduceMotion) != nil) {
+                PulseRing(frozen: shotPins.pulse)
             }
         }
         .overlay(alignment: .leading) {

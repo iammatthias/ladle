@@ -6,7 +6,8 @@ import Foundation
 /// unjoined threads are the script's `unjoinedThreads`. A `room_set` without a `room_id` creates
 /// the room as asked, with you its one member, in a `room_update` before its result. Removing
 /// someone else (`room_leave` with a `user_id`) is refused, as aprond refuses a member who did
-/// not create the room, for the failed command shot. Every other request gets `{}`.
+/// not create the room, for the failed command shot. Every other request gets `{}`. A script's `welcome`
+/// goes right after the greeting.
 /// It never sends anything unasked, so a seeded session stays still.
 public actor PreviewServer: FrameTransport {
     public struct Script: Sendable {
@@ -26,6 +27,11 @@ public actor PreviewServer: FrameTransport {
         public var statuses: [JSONValue] = []
         /// `room_list {parent_room_id, filter: not_joined}` results' `not_joined`, by parent.
         public var unjoinedThreads: [String: JSONValue] = [:]
+        /// A `~private` notice without `room_id` sent right after the greeting, before `auth`,
+        /// as a server's welcome is (Appendix B.1).
+        public var welcome: JSONValue?
+        /// The `token` in the `auth` result; none, as for a guest who cannot resume.
+        public var token: String? = "preview"
     }
 
     private let script: Script
@@ -40,6 +46,7 @@ public actor PreviewServer: FrameTransport {
 
     public func connect() async throws {
         deliver(["method": "server", "params": script.greeting])
+        if let welcome = script.welcome { deliver(["method": "message", "params": welcome]) }
     }
 
     public func send(_ text: String) async throws {
@@ -49,7 +56,9 @@ public actor PreviewServer: FrameTransport {
         let params = request["params"]
         switch request["method"]?.stringValue {
         case "auth":
-            deliver(["id": id, "result": ["you": script.you, "token": "preview"]])
+            var result: [String: JSONValue] = ["you": script.you]
+            if let token = script.token { result["token"] = .string(token) }
+            deliver(["id": id, "result": .object(result)])
             for status in script.statuses { deliver(["method": "status", "params": status]) }
         case "room_list" where params?["parent_room_id"] != nil:
             deliver(["id": id, "result": ["not_joined": script.unjoinedThreads[params?["parent_room_id"]?.stringValue ?? ""] ?? []]])

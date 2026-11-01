@@ -562,6 +562,12 @@ public enum PreviewFixtures {
                 line(-200, "host", "Ask here. Logs help: include your client and server versions."),
             ]),
         ],
-        readCursors: ["lobby": message(-120), "help": message(-200)]
+        readCursors: ["lobby": message(-120), "help": message(-200)],
+        welcome: ["from": ["user_id": "~private", "name": "Only you"], "body": ["text": .string(demoWelcome), "format": "markdown"]],
+        token: nil
     )
+
+    /// The demo's welcome before `auth`, which shows in its first room, help, for a guest it gives
+    /// no token.
+    public static let demoWelcome = "Welcome to the Apron demo. Guests can read. **Sign in with a passkey** to post."
 }

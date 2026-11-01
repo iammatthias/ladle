@@ -251,6 +251,7 @@ enum TypeTable {
 enum Motion {
     static func fast(_ reduce: Bool) -> Animation? { reduce ? nil : .easeOut(duration: Tokens.Duration.fast) }
     static func medium(_ reduce: Bool) -> Animation? { reduce ? nil : .easeOut(duration: Tokens.Duration.medium) }
+    static func slow(_ reduce: Bool) -> Animation? { reduce ? nil : .easeInOut(duration: Tokens.Duration.slow) }
     static func slide(_ reduce: Bool) -> Animation? { reduce ? nil : Tokens.easeSlide.animation(duration: Tokens.Duration.slide) }
 }
 

@@ -71,6 +71,9 @@ public struct Notice: Hashable, Sendable {
     public var roomID: String?
     public var from: UserObject
     public var body: JSONValue?
+    /// It came before this connection signed in, as a server's welcome does (Appendix B.1): the
+    /// next connection's replaces it, and an account signing in past it drops it.
+    public var welcome = false
 }
 
 /// One user's complete emoji set on one message at one log position (§4.7).
