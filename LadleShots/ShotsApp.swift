@@ -29,6 +29,7 @@ enum Screen: String, CaseIterable {
     case muted, paused, notificationsPaused = "notifications-paused", limited
     case appearance, appearanceCustom = "appearance-custom", preferences, history
     case search, searchFiltered = "search-filtered", roomsSearch = "rooms-search"
+    case select, selectLog = "select-log"
     case threadRenamed = "thread-renamed", startThread = "start-thread", roomsInactive = "rooms-inactive", editRoom = "edit-room", descriptionPutAway = "description-put-away"
     case directMessage = "direct-message", addedBanner = "added-banner", newPrivate = "new-private", newPrivateGroup = "new-private-group"
     case newRoomPrivate = "new-room-private", privateFull = "private-full", roomsPrivate = "rooms-private"
@@ -325,6 +326,15 @@ enum Renderer {
         case .searchFiltered:
             // Started narrowed to the design room, as from its header, with "room:" suggesting rooms at the caret.
             AnyView(SearchView(session: home, initial: ServerSession.searchStart(in: PreviewFixtures.linkRoomID) + "icon room:", focusesField: false))
+        case .select:
+            // The busy room's last three messages picked, the bar in the composer's place.
+            AnyView(NavigationStack {
+                TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions,
+                             drafts: Drafts(), picking: lastThree(home))
+            })
+        case .selectLog:
+            // What Copy puts on the pasteboard for them: the Markdown log, shown as text.
+            AnyView(SelectTextSheet(text: home.markdownLog(of: lastThree(home)?.ids ?? [], in: PreviewFixtures.busyRoomID, now: PreviewFixtures.now)) {})
         case .roomsSearch:
             AnyView(NavigationStack { RoomListView(session: home, selected: nil, open: { _ in }, startingSearch: "des") })
         case .roleChip:
@@ -338,6 +348,14 @@ enum Renderer {
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.typingRoomID), place: .constant(nil), connecting: .constant(nil)))
         }
+    }
+
+    /// The busy room's last three messages picked, as select mode holds them.
+    static func lastThree(_ home: ServerSession) -> MessageSelection? {
+        let ids = home.timeline(PreviewFixtures.busyRoomID).suffix(3).map(\.messageID)
+        guard var selection = ids.first.map({ MessageSelection(roomID: PreviewFixtures.busyRoomID, first: $0) }) else { return nil }
+        for id in ids.dropFirst() { _ = selection.toggle(id, order: []) }
+        return selection
     }
 
     /// Drafts holding one room's draft, for a shot of its composer.

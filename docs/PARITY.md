@@ -258,26 +258,26 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Start thread | bh | has | `Kit/MessageMenu.swift` (`startsThread`) | In a room's messages, not a thread's. |
 | Edit (own) | bh | has | `Kit/DraftField.swift` (edit mode) | |
 | Edit keeps and edits embeds as tiles, rename uploads | #70 | missing | | Edit changes text and mentions only. |
-| Select (enter select mode) | #14, #54 | missing | | |
+| Select (enter select mode) | #14, #54 | has | `Timeline/TimelineView.swift` (Select) | In the message's menu, on any message in the room that isn't deleted. |
 | Copy text | bh | has | `Kit/MessageMenu.swift` | |
 | Copy link | #112 | has | `Kit/MessageMenu.swift` | Web form. |
 | Remove reply reference | bh | missing | | |
 | Delete with confirm | bh | has | `Timeline/TimelineView.swift` | |
 | Move to thread or back to room | #54 | has | `Kit/MessageMenu.swift` (`moveDestinations`) | One message at a time. |
 | Second tap puts the toolbar away | #118 | N/A-iOS | | The context menu dismisses natively. |
-| `x` on a message selects it | bh | missing | | iPad hardware keyboard. Depends on select mode. |
+| `x` on a message selects it | bh | missing | | iPad hardware keyboard. Select mode exists; the timeline has no keyboard focus on a message for `x` to act on. |
 
 ## 13. Select mode, move, and copy
 
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
-| Select mode with shift-click range | #14, #54 | missing | | iOS form: an Edit mode with checkmarks and a drag-select. |
-| Selection bar: count, Move to thread, New thread, Cancel | #54, #175 | missing | | |
-| Move all or nothing; anyone's with `move_any` | #54 | partial | `Kit/ServerSession.swift` (`move`, `mayMove`) | Single message only. |
-| Move to a new thread | #54 | missing | | |
-| Moved messages' authors added to the thread | #95 | missing | | |
-| Copy the selection as a Markdown log | #164 | missing | | |
-| Copy quotes what a reply answers, marks cut snippets, reactions, omitted notes | #168, #172 | missing | | |
+| Select mode with shift-click range | #14, #54 | has | `Kit/MessageSelection.swift`, `Timeline/TimelineView.swift` | iOS form: a check circle on each message, a tap picks or unpicks, and **Select Between** fills from the earliest picked to the latest (`spanOf`), which stands in for shift-click. `toggle(range:)` is `rangeBetween` for a hardware keyboard's range, not yet wired to a key. |
+| Selection bar: count, Move to thread, New thread, Cancel | #54, #175 | has | `Timeline/SelectionBar.swift` | In the composer's place: "3 messages selected", Select Between, "1 of 3 couldn’t be moved", Cancel, Copy, and Move (Move to Room, the room's threads, New Thread…); "Moving 3…" while it goes. |
+| Move all or nothing; anyone's with `move_any` | #54 | has | `Kit/ServerSession+Selection.swift` (`move`) | Someone else's message goes first, alone; refused, nothing else is sent ("No messages were moved: …"). The rest go one by one, where the web sends them at once; those refused stay picked. |
+| Move to a new thread | #54 | has | `Kit/ServerSession+Selection.swift` (`moveToNewThread`), `Timeline/TimelineView.swift` | Refused before the form opens when a picked message may not move. The form suggests the earliest picked message's first line; the thread opens once its messages are in it. |
+| Moved messages' authors added to the thread | #95 | has | `Kit/ServerSession+Selection.swift` (`addAuthors`) | Once each, not you, `~` identities or members; only where you may add people. "Moved, but the author couldn’t be added to the thread: …". |
+| Copy the selection as a Markdown log | #164 | partial | `Kit/MessageLog.swift`, `Kit/ServerSession+Selection.swift` (`markdownLog`), `Timeline/SelectionBar.swift` (Copy) | Copy puts the log on the pasteboard and ends select mode, as the web. The web also writes an HTML rendering for rich editors (`messageLogHtml`); Ladle writes the Markdown as text only. |
+| Copy quotes what a reply answers, marks cut snippets, reactions, omitted notes | #168, #172 | has | `Kit/MessageLog.swift` | Its tests are the web's with literal strings. |
 
 ## 14. Composer
 
@@ -475,7 +475,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Escape closes pickers, dialogs, the editor | bh | has | `Timeline/ComposerView.swift` (`.cancelAction`) | |
 | ↑ ↓ Tab Enter in mention, room, emoji, command lists | bh | missing | `Timeline/ComposerView.swift` | Hardware keyboard on iPad. Touch picks work. |
 | Ctrl or ⌘F opens Search local history | #137 | has | `Timeline/TimelineView.swift` | ⌘F in a room. |
-| `x` selects a message | bh | missing | | Depends on select mode. |
+| `x` selects a message | bh | missing | | Select mode exists; the timeline has no keyboard focus on a message yet (section 12). |
 | Alt+↑ and Alt+↓ move a room | #151 | missing | | Depends on room order. |
 | ← → in the image viewer | #53 | partial | `Media/MediaViewer.swift` | Swipe pages. No arrow keys. |
 | Arrow keys resize the side panels | #59 | N/A-iOS | | No resizable columns. |
@@ -539,7 +539,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 12. ~~**Join, leave, and rename lines.**~~ Done (`Kit/MembershipLines.swift`): netted per run, baselines of 21 joins skipped, adds as joins and renames in rooms and threads (#170).
 13. **Open at the New divider.** Land on the divider instead of the latest message. Needs a device to verify the scroll. S.
 14. ~~**Member management.**~~ Done (`Kit/Members.swift`, `Timeline/AddMembersSheet.swift`, `Timeline/MemberList.swift`): Add People with the people picker, Remove from Room after a confirmation, and the member menu (Profile, Direct Message, Remove) on a long press, a tap opening the card. A server that answers `unsupported` stops the offers.
-15. **Select mode.** Select several messages, move them to a thread or a new thread, add authors to the thread, and copy them as a Markdown log with quotes, cut marks, and reactions. M.
+15. ~~**Select mode.**~~ Done (`Kit/MessageSelection.swift`, `Kit/ServerSession+Selection.swift`, `Kit/MessageLog.swift`, `Timeline/SelectionBar.swift`), but for the HTML copy and `x`. Select several messages, move them to a thread or a new thread, add authors to the thread, and copy them as a Markdown log with quotes, cut marks, and reactions. M.
 16. ~~**Search local history.**~~ Done (`Kit/LocalSearch.swift`, `Kit/ServerSession+Search.swift`, `Timeline/SearchView.swift`). As-you-type search with `user:` and `room:`, narrowed to the open room, opening results in place. Also search rooms by name. Depends on item 11. M.
 17. **Message editing with embeds.** Edit shows embeds as tiles with ×. Remove an embed from a sent message (asking for uploads). Rename a file before and after sending. Remove reply reference. M.
 18. **Rooms list order and folding.** Keep room order on device with drag to reorder. Fold sections to rooms with news, remember folded rooms, and fold a room's threads when it is picked again. Make Browse Rooms show member counts and descriptions, and open a room to read before joining. M.

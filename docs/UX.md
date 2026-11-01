@@ -498,6 +498,12 @@ Items that do not apply are hidden, not dimmed ([context-menus]: "Hide unavailab
 
 **Offline.** Reply works and queues (4.2). React, Edit, Delete, and Start Thread are hidden while offline. A banner at the top of the menu, "Offline. Reactions and edits are available when connected.", says why. **Judgment call**, because they are hidden, not dimmed, so the reason must be stated.
 
+**Select mode.** **Select** (`checkmark.circle`) in a message's menu, as apron-web's (#14, #54), picks it and puts a check circle by every message in the room; a tap picks or unpicks one, and the last unpicked ends select mode. Messages don't open menus, links or reactions while it lasts. A bar takes the composer's place, as the web's SelectionBar: "3 messages selected" and **Select Between** (everything from the earliest picked to the latest, the iOS form of shift-click), then **Cancel**, **Copy** and **Move**.
+
+- **Copy** puts the picked messages on the pasteboard as apron-web's Markdown log (#164, #168, #172) and ends select mode: each sender's run a quote under their name and time, the first with its full date, the day again where it changes; a reply's one-line quote of what it answers (`> ↪ **Ada**: Deploy is green…`); reactions after the name (`(👍 from Bob, Cy)`); `_(3 messages omitted)_` where the picked ones skip some.
+- **Move** lists **Move to Room** or the room's threads, and **New Thread…**. A move is all or nothing as far as permission goes: someone else's message goes first, alone, and if the server refuses it nothing else is sent ("No messages were moved: …"). Those refused after that stay picked, and the bar says "1 of 3 couldn’t be moved". Into a thread, the moved messages' authors who aren't in it are added (#95); one the server won't add says "Moved, but the author couldn’t be added to the thread: …". "Moving 3…" shows while it goes.
+- **New Thread…** opens the thread form with the earliest picked message's first line as the title and "Moving 3 messages" under it. Before it opens, a selection holding a message you may not move says "You can only move your own messages, so none were moved", so no thread is left empty. The thread opens once its messages are in it.
+
 ### 3.9 Reaction picker and chips
 
 **Palette.** Six emoji in the context menu (3.8). This is the Messages tapback model.
@@ -790,7 +796,6 @@ Ladle overrides no standard shortcut ([keyboards]: "Respect standard keyboard sh
 | Inline `iframe` and `html` embeds | Rendering them safely needs a sandboxed `WKWebView` that matches the §4.8 iframe sandbox. A mistake there exposes the token. They render as fallback cards. |
 | Live stream reading | v1 shows the finished `text`. Reading the live `url` needs streaming HTTP and a reconnect rule. |
 | Passkeys and external sign-in | AGENTS.md records the open questions about Apple's documentation. Token, email, and guest cover v1. |
-| Moving messages and select mode | Rare on a phone, and the web client covers it. Ladle shows moves correctly. |
 | Edit history (`prev_log_id`) | Rarely needed. "Edited" is enough. |
 | A browsable emoji picker | The system emoji keyboard covers any emoji (3.9). |
 | An app-wide settings screen | Nothing app-wide needs a setting. Appearance and text size follow the system ([settings]: "Respect people's systemwide settings"). |

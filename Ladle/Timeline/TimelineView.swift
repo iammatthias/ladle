@@ -29,6 +29,10 @@ struct TimelineView: View {
     @State private var dismissedWaits: Set<Date> = []
     @State private var showingMembers = false
     @State private var searchingHistory = false
+    /// Select mode: the messages picked, and a move under way.
+    @State private var picking: MessageSelection?
+    @State private var movingSelection = false
+    @State private var newThreadFromSelection = false
     @State private var atBottom = true
     @State private var visit = Visit.opening
     @State private var visible = false
@@ -51,12 +55,13 @@ struct TimelineView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     init(session: ServerSession, roomID: String, reminders: Reminders, hidden: HiddenDescriptions, drafts: Drafts,
-         place: Binding<ApronLink?> = .constant(nil), showingMembers: Bool = false) {
+         place: Binding<ApronLink?> = .constant(nil), showingMembers: Bool = false, picking: MessageSelection? = nil) {
         self.session = session
         self.roomID = roomID
         self.drafts = drafts
         self.hidden = hidden
         _place = place
+        _picking = State(initialValue: picking)
         _reminding = State(initialValue: MessageReminders(session: session, reminders: reminders))
         _showingMembers = State(initialValue: showingMembers)
     }
@@ -140,7 +145,17 @@ struct TimelineView: View {
                     if sizeClass != .compact, session.server?.has("activity") == true {
                         TypingIndicator(names: session.typingNames(in: roomID))
                     }
-                    if !session.mayWrite {
+                    if let picking {
+                        SelectionBar(session: session, selection: picking, moving: movingSelection,
+                                     onSelectBetween: { self.picking?.fillBetween(order: session.timeline(roomID).map(\.messageID)) },
+                                     onCancel: { self.picking = nil },
+                                     onCopy: copySelection,
+                                     onMove: moveSelection,
+                                     onNewThread: {
+                                         // Refused before a title is asked for, as no thread is made that would stay empty.
+                                         if session.mayMoveAll(picking.ids) { newThreadFromSelection = true } else { problem = notMovableWords }
+                                     })
+                    } else if !session.mayWrite {
                         ReadOnlyPrompt(session: session) { requestSignIn(session.record) }
                     } else {
                         waits
@@ -202,6 +217,24 @@ struct TimelineView: View {
                 startedThread = thread
                 // A thread of a private room is private too: the room's other members are added, so they see it.
                 Task { if let note = await session.includeMembers(of: roomID, in: thread) { problem = note } }
+            }
+        }
+        .sheet(isPresented: $newThreadFromSelection, onDismiss: {
+            if let startedThread { openRoom(startedThread) }
+            startedThread = nil
+        }) {
+            let first = picking?.earliest(order: session.timeline(roomID).map(\.messageID)).flatMap(session.store.message)
+            let count = picking?.ids.count ?? 0
+            RoomFormSheet(kind: .thread, mode: .create, subtitle: count == 1 ? "Moving 1 message" : "Moving \(count) messages",
+                          isPrivate: session.isPrivate(roomID), title: first.map { ThreadStart.title($0.body) } ?? "", description: "") { title, description in
+                guard var selection = picking else { return }
+                let parent = session.store.room(roomID)?.parentRoomID ?? roomID
+                let result = await session.moveToNewThread(&selection, title: title, description: description)
+                guard let thread = result.roomID else { throw SelectionProblem(text: result.problem ?? "No messages were moved") }
+                picking = result.moved ? nil : selection
+                problem = result.problem ?? result.unadded
+                if result.moved { startedThread = thread }
+                Task { if let note = await session.includeMembers(of: parent, in: thread) { problem = note } }
             }
         }
         .sheet(isPresented: $editingRoom) {
@@ -459,18 +492,30 @@ struct TimelineView: View {
     private func row(_ item: TimelineItem) -> some View {
         switch item {
         case .message(let message, let continues):
-            MessageRow(session: session, message: message, continues: continues, highlighted: highlighted == message.messageID,
-                       reminderDue: reminding.reminder(on: message)?.due,
-                       onClearReminder: { reminding.forget(message) },
-                       onReact: { emoji in perform { try await session.toggleReaction(emoji, on: message.messageID) } },
-                       onAddReaction: { reacting = message },
-                       onJump: { jumpTarget = $0.text },
-                       onProfile: { profile = ProfileRequest(user: message.from, roomID: roomID) })
-                .padding(.horizontal, Tokens.Space.s2)
-                .padding(.top, continues ? 0 : Tokens.Space.s3)
-                .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Tokens.Radius.md))
-                .contextMenu { actions(for: message) }
-                .accessibilityActions { actions(for: message) }
+            HStack(alignment: .top, spacing: 0) {
+                if let picking {
+                    SelectMark(on: picking.contains(message.messageID))
+                        .padding(.leading, Tokens.Space.s2)
+                        .padding(.top, continues ? Tokens.Space.s1 : Tokens.Space.s3)
+                }
+                MessageRow(session: session, message: message, continues: continues,
+                           highlighted: highlighted == message.messageID || picking?.contains(message.messageID) == true,
+                           reminderDue: reminding.reminder(on: message)?.due,
+                           onClearReminder: { reminding.forget(message) },
+                           onReact: { emoji in perform { try await session.toggleReaction(emoji, on: message.messageID) } },
+                           onAddReaction: { reacting = message },
+                           onJump: { jumpTarget = $0.text },
+                           onProfile: { profile = ProfileRequest(user: message.from, roomID: roomID) })
+                    .allowsHitTesting(picking == nil)
+            }
+            .padding(.horizontal, Tokens.Space.s2)
+            .padding(.top, continues ? 0 : Tokens.Space.s3)
+            .contentShape(Rectangle())
+            .onTapGesture { if picking != nil, session.maySelect(message, in: roomID) { toggle(message.messageID) } }
+            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Tokens.Radius.md))
+            .contextMenu { if picking == nil { actions(for: message) } }
+            .accessibilityActions { if picking == nil { actions(for: message) } }
+            .accessibilityAddTraits(picking?.contains(message.messageID) == true ? .isSelected : [])
         case .day(let date):
             TimelineDivider(kind: .day, label: dayLabel(date))
                 .padding(.top, Tokens.Space.s6)
@@ -530,6 +575,12 @@ struct TimelineView: View {
         if let link = menu.link {
             Button("Copy Link", systemImage: "link") { UIPasteboard.general.url = link }
         }
+        if session.maySelect(message, in: roomID) {
+            Button("Select", systemImage: "checkmark.circle") {
+                editing = nil
+                picking = MessageSelection(roomID: roomID, first: message.messageID)
+            }
+        }
         if !menu.moveDestinations.isEmpty {
             Menu("Move To", systemImage: "arrow.right.square") {
                 ForEach(menu.moveDestinations, id: \.self) { roomID in
@@ -542,6 +593,33 @@ struct TimelineView: View {
         if menu.editable {
             Button("Edit", systemImage: "pencil") { editing = ComposerDraft(field: DraftField(editing: message, in: session)) }
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
+        }
+    }
+
+    // MARK: Select mode
+
+    private func toggle(_ id: LogID) {
+        guard !movingSelection, var selection = picking else { return }
+        picking = selection.toggle(id, order: session.timeline(roomID).map(\.messageID)) ? selection : nil
+    }
+
+    /// Copy, as apron-web's `copySelectionLog`: the picked messages as a Markdown log, then
+    /// select mode ends.
+    private func copySelection() {
+        guard let picking else { return }
+        UIPasteboard.general.string = session.markdownLog(of: picking.ids, in: roomID)
+        self.picking = nil
+    }
+
+    /// Moves the selection to a thread or back to the room; what was refused stays picked.
+    private func moveSelection(to target: String) {
+        guard var selection = picking, !movingSelection else { return }
+        movingSelection = true
+        Task {
+            let result = await session.move(&selection, to: target)
+            movingSelection = false
+            picking = result.moved ? nil : selection
+            problem = result.problem ?? result.unadded
         }
     }
 
