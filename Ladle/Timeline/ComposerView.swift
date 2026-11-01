@@ -23,6 +23,11 @@ import SwiftUI
 /// link previews: built from the URL at once, then from the site's public API once typing pauses
 /// (`DraftLinkPreviews`). Each goes out with the message as a `link` embed unless its (x) takes
 /// it off the draft. A command, an edit and a composer that can't write show none.
+///
+/// Typing live (`/live`, `live`), the draft is a message everyone already sees as it is typed: a
+/// Live tag with a blinking dot leads the field, a line above the box says so with a Stop button
+/// that takes the message back (`onStopLive`, with capability `edit`), Send finishes it even with
+/// the field empty, and there are no attachments, link previews or commands.
 struct ComposerView: View {
     let session: ServerSession
     let roomID: String
@@ -33,6 +38,10 @@ struct ComposerView: View {
     /// Send while a wait holds it back: the notice shows again if it was put away.
     var onHeld: () -> Void = {}
     var onProblem: (String) -> Void = { _ in }
+    /// The draft is the message being typed live.
+    var live = false
+    /// Takes the live message back, keeping the draft; nil where the server can't delete it.
+    var onStopLive: (() -> Void)?
     @FocusState private var focused: Bool
     @State private var pickingPhotos = false
     @State private var photoItems: [PhotosPickerItem] = []
@@ -61,6 +70,7 @@ struct ComposerView: View {
             }
             .padding(.horizontal, Tokens.Space.s4)
             .padding(.bottom, Tokens.Space.s1)
+            if live { liveLine }
             if draft.field.mode != .new {
                 HStack(spacing: Tokens.Space.s2) {
                     targetLine
@@ -215,9 +225,30 @@ struct ComposerView: View {
         return Text("Replying to \(who)")
     }
 
+    /// What typing live means, over the box, with Stop where the message can be taken back.
+    private var liveLine: some View {
+        HStack(spacing: Tokens.Space.s2) {
+            Text("Everyone sees this as you type. Send finishes it.")
+                .apText(.ui)
+                .foregroundStyle(Palette.inkMuted)
+                .lineLimit(2)
+            Spacer(minLength: 0)
+            if let onStopLive {
+                Button("Stop Typing Live", systemImage: "xmark", action: onStopLive)
+                    .labelStyle(.iconOnly)
+                    .foregroundStyle(Palette.inkMuted)
+                    .touchTarget()
+                    .accessibilityHint("Deletes the live message and keeps what you typed")
+            }
+        }
+        .padding(.leading, Tokens.Space.s4)
+        .padding(.trailing, Tokens.Space.s2)
+    }
+
     @ViewBuilder
     private var field: some View {
         if canAttach { attachMenu }
+        if live { LiveTag().padding(.leading, Tokens.Space.s1) }
         TextField(placeholder, text: $draft.field.text, axis: .vertical)
             .apText(.field)
             .foregroundStyle(Palette.ink)
@@ -314,11 +345,11 @@ struct ComposerView: View {
         return replyLine(id)
     }
 
-    private var canAttach: Bool { session.canAttach && !draft.field.isEdit }
+    private var canAttach: Bool { session.canAttach && !draft.field.isEdit && !live }
 
     /// Whether the draft's links show previews: not for a command, an edit, or while it can't write.
     private var previewsShown: Bool {
-        canWrite && !draft.field.isEdit && !ServerSession.Draft(text: draft.field.text, commands: session.server?.has("command") == true).isCommand
+        canWrite && !live && !draft.field.isEdit && !ServerSession.Draft(text: draft.field.text, commands: session.server?.has("command") == true).isCommand
     }
 
     /// The `link` embeds the draft goes out with (`submit` builds them the same way).
@@ -392,7 +423,8 @@ struct ComposerView: View {
     }
 
     private var canSend: Bool {
-        canWrite && draft.field.canSend(readyFiles: draft.files.compactMap(\.attachment).count,
+        if live { return canWrite && !textLimit.isOver }
+        return canWrite && draft.field.canSend(readyFiles: draft.files.compactMap(\.attachment).count,
                                         preparing: draft.files.contains { $0.attachment == nil })
     }
 
@@ -407,8 +439,11 @@ struct ComposerView: View {
     }
 
     /// The list above the field, unless Escape put it away at this text.
+    /// The live draft is no command, so it lists none.
     private var suggestions: DraftSuggestions? {
-        cursor.shows(draft.field.text) ? session.suggestions(for: draft.field, in: roomID) : nil
+        guard cursor.shows(draft.field.text), let list = session.suggestions(for: draft.field, in: roomID) else { return nil }
+        if live, case .commands = list { return nil }
+        return list
     }
 
     /// A key pressed while a list shows, as the web's AutocompletePicker: whether the list took it.
@@ -443,6 +478,29 @@ struct ComposerView: View {
         if session.composerWait(withFiles: !draft.files.isEmpty) != nil { return onHeld() }
         guard canSend else { return }
         onSend(draft)
+    }
+}
+
+/// apron-web's Live tag: the composer's draft is a message others already see, so the tag says so
+/// with a dot that blinks unless Reduce Motion is on, accent on accent-soft.
+struct LiveTag: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        HStack(spacing: Tokens.Space.s1) {
+            SwiftUI.TimelineView(.periodic(from: .now, by: 1)) { context in
+                let on = reduceMotion || Int(context.date.timeIntervalSinceReferenceDate) % 2 == 0
+                Circle().fill(Palette.accent).frame(width: 6, height: 6).opacity(on ? 1 : 0)
+            }
+            .frame(width: 6, height: 6)
+            Text("Live").apText(.ui, .medium).foregroundStyle(Palette.accent)
+        }
+        .padding(.horizontal, Tokens.Space.s2)
+        .frame(height: Tokens.Control.md)
+        .background(Palette.accentSoft, in: Capsule())
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Live")
+        .accessibilityHint("Everyone sees this message as you type it; Send finishes it")
     }
 }
 

@@ -34,7 +34,8 @@ public enum PreviewFixtures {
                 return DraftLinkPreviews.Response(status: 200, body: answer.serializedData())
             },
             typing: TypingTimes(longest: .seconds(3600)),
-            readLiveText: readLiveText
+            readLiveText: readLiveText,
+            writeLiveText: writeLiveText
         )
         let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment)
         try? tokens.setToken("preview", for: homeID)

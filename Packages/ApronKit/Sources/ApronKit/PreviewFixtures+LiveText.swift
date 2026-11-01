@@ -9,6 +9,9 @@ import Foundation
 extension PreviewFixtures {
     public static let liveTerminalURL = URL(string: "https://home.example/live/ramp")!
     public static let liveAppendURL = URL(string: "https://home.example/live/plan")!
+    /// The live text `/live` types, read back as the composer holds it.
+    public static let liveTypingURL = URL(string: "https://home.example/live/typing")!
+    public static let liveTypingText = "Rolled back 0042. Renewing the runner’s cert now, then I’ll re-run the dep"
 
     /// The Load test thread's live terminal and live reply.
     public static let liveTerminalMessageID = message(-139)
@@ -23,6 +26,7 @@ extension PreviewFixtures {
             let text: String? = switch url {
             case liveTerminalURL: terminalDemo
             case liveAppendURL: appendDemo
+            case liveTypingURL: liveTypingText
             default: nil
             }
             guard let text else {
@@ -36,6 +40,12 @@ extension PreviewFixtures {
                 continuation.yield(.bytes(Data(bytes[start..<min(start + 7, bytes.count)])))
             }
         }
+    }
+
+    /// A write that takes everything typed and never answers, so `/live` stays live.
+    static let writeLiveText: LiveTextWrite = { _, body in
+        for await _ in body {}
+        return LiveTextWriteResponse(status: 200)
     }
 
     private static let esc = "\u{1B}"

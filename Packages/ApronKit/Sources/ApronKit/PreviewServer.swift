@@ -93,6 +93,20 @@ public actor PreviewServer: FrameTransport {
         case "reactions" where params?["emojis"]?.arrayValue?.contains(.string(Self.slowReaction)) == true:
             deliver(["id": id, "error": ["code": -32002, "message": "Posting limit reached",
                                          "data": ["retry_after": 45, "ext": ["limits": "write"]]]])
+        case "message" where params?["body"]?["embeds"]?.arrayValue?.contains(["kind": "append"]) == true:
+            // `/live`: the message is broadcast with its live text's url as the write starts, a
+            // minute before the fixtures' now. Each is the same message, so a renderer that starts
+            // it again for another shot shows one.
+            let messageID = PreviewFixtures.message(59)
+            var message = params?.objectValue ?? [:]
+            message["message_id"] = .string(messageID)
+            message["log_id"] = .string(messageID)
+            message["from"] = script.you
+            var body = params?["body"]?.objectValue ?? [:]
+            body["embeds"] = [["embed_id": "embed_live", "kind": "append", "url": .string(PreviewFixtures.liveTypingURL.absoluteString)]]
+            message["body"] = .object(body)
+            deliver(["method": "message", "params": .object(message)])
+            deliver(["id": id, "result": ["message_id": .string(messageID), "embeds": [["embed_id": "embed_live", "kind": "append", "write_url": "https://home.example/write/live"]]]])
         case "message" where LimitScope.addsUpload("message", params):
             deliver(["id": id, "error": ["code": -32002, "message": "Daily upload limit reached",
                                          "data": ["retry_after": 7500, "ext": ["limits": "upload"]]]])

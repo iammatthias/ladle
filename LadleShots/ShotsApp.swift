@@ -56,6 +56,8 @@ enum Screen: String, CaseIterable {
     /// The rooms list in an order of the user's own, rather than as first listed.
     var isReordered: Bool { self == .roomsOrdered || self == .roomsReorder }
     case editEmbeds = "edit-embeds", stagedRename = "staged-rename"
+    // Last declared: `/live` posts into the Load test thread, which the live text shots show.
+    case liveTyping = "live-typing"
 
     /// Shots of home with its notifications paused.
     var isPaused: Bool { self == .paused || self == .notificationsPaused }
@@ -171,6 +173,11 @@ enum Renderer {
                 .dynamicTypeSize(shot.large ? .accessibility3 : .large)
                 .apronStyle()
                 .id(UUID())))
+            if shot.screen == .liveTyping {
+                // Once the last shot's view is gone: leaving the room it typed live in finished it.
+                try? await Task.sleep(for: .milliseconds(300))
+                await seedLiveTyping(home: home)
+            }
             try? await Task.sleep(for: .milliseconds(shot.screen.isPad ? 2500 : 1500))
             if shot.look?.drawnIn != nil {
                 ActiveTheme.shared.theme = store.appearance.shown
@@ -298,6 +305,9 @@ enum Renderer {
             // Scrolled to the live terminal, above the two waiting for their writer.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.liveTextRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
                 .environment(\.shotPins, ShotPins(scrollTo: PreviewFixtures.liveTerminalMessageID)))
+        case .liveTyping:
+            // `/live` in the Load test thread: the composer's draft is the newest message, as it is typed.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.liveTextRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: liveDrafts) })
         case .liveTextWaiting:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.liveTextRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .terminalViewer:
@@ -626,6 +636,21 @@ enum Renderer {
         } catch let failure as CommandFailure {
             commandDrafts.restore(failure.draft, at: key)
         } catch {}
+    }
+
+    /// The drafts of the live typing shot, holding the live draft.
+    static let liveDrafts = Drafts()
+
+    /// Runs `/live` in the Load test thread as the composer does, then types into it. Each shot
+    /// starts it again once its view shows, as leaving the last one's room finished it.
+    static func seedLiveTyping(home: ServerSession) async {
+        let key = DraftKey(server: home.record.id, roomID: PreviewFixtures.liveTextRoomID)
+        let drafts = liveDrafts
+        let live = LiveDraft(forget: { drafts[key] = ComposerDraft() }, restore: { drafts.restore(ComposerDraft(field: $0), at: key) })
+        try? await home.submit(ComposerDraft(field: DraftField(text: "/live")), in: key.roomID, live: live)
+        let field = DraftField(text: PreviewFixtures.liveTypingText)
+        drafts[key] = ComposerDraft(field: field)
+        home.typedLive(field, in: key.roomID)
     }
 
     /// A reminder an hour off on the busy room's last message from Bram, for its shot alone.

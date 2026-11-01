@@ -251,7 +251,8 @@ struct TimelineView: View {
                     } else {
                         waits
                         ComposerView(session: session, roomID: roomID, draft: draft, staging: drafts.staging, onSend: send,
-                                     onHeld: { dismissedWaits = [] }, onProblem: { problem = $0 })
+                                     onHeld: { dismissedWaits = [] }, onProblem: { problem = $0 },
+                                     live: composingLive, onStopLive: session.server?.has("edit") == true ? { session.stopLiveTyping() } : nil)
                     }
                 }
                 .background(Palette.timeline)
@@ -389,6 +390,8 @@ struct TimelineView: View {
             visible = true
             session.show(roomID, true)
         }
+        // Each change to the live draft goes out as it is made: typing, a mention, an emoji, a paste.
+        .onChange(of: drafts[draftKey].field) { _, field in session.typedLive(field, in: roomID) }
         .onDisappear {
             visible = false
             session.show(roomID, false)
@@ -911,16 +914,22 @@ struct TimelineView: View {
         }
     }
 
+    /// The open draft is the message being typed live here (`/live`).
+    private var composingLive: Bool { editing == nil && session.liveMessage?.roomID == roomID }
+
     /// An edit's save closes the editor and brings the kept draft back; anything else empties
     /// the kept draft, as apron-web's `drafts.clear`. A failed command's draft comes back, and
-    /// its reason is a notice in the room; `/join` shows the room it joined.
+    /// its reason is a notice in the room; `/join` shows the room it joined. `/live` keeps its
+    /// draft here, emptied when it is finished and given back when it can't be made.
     private func send(_ draft: ComposerDraft) {
         let key = draftKey, drafts = drafts
         if draft.field.isEdit { editing = nil } else { drafts[key] = ComposerDraft() }
         sentCount += 1
+        let live = LiveDraft(forget: { drafts[key] = ComposerDraft(files: drafts[key].files) },
+                             restore: { drafts.restore(ComposerDraft(field: $0), at: key) })
         Task {
             do {
-                if let room = try await session.submit(draft, in: roomID) { openRoom(room) }
+                if let room = try await session.submit(draft, in: roomID, live: live) { openRoom(room) }
             } catch let failure as CommandFailure {
                 drafts.restore(failure.draft, at: key)
             } catch {
