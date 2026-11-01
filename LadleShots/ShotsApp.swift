@@ -19,6 +19,7 @@ struct ShotsApp: App {
 
 enum Screen: String, CaseIterable {
     case firstRun = "first-run", servers, connect, connectScanned = "connect-scanned", rooms, timeline, mention, members, reaction, attachments, media, links, viewer, ipad
+    case roomsReturned = "rooms-returned"
     case textLimit = "text-limit", guestComposer = "guest-composer"
     case emoji, emojiPicker = "emoji-picker", emojiShortcode = "emoji-shortcode", commands
     case linkCards = "link-cards", composerLinkPreviews = "composer-link-previews", sentLinkPreview = "sent-link-preview", roomMention = "room-mention", selectText = "select-text"
@@ -232,6 +233,9 @@ enum Renderer {
                                 canScan: true))
         case .rooms:
             AnyView(NavigationStack { RoomListView(session: home, selected: PreviewFixtures.busyRoomID, open: { _ in }) })
+        case .roomsReturned:
+            // The phone's own stack, without a selection set: #general opened, then Back.
+            AnyView(PhoneShot(store: store, server: home.record.id, returningFrom: PreviewFixtures.busyRoomID))
         case .timeline:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .mention:
@@ -874,5 +878,24 @@ struct ArchiveTimelineShot: View {
             _ = try? await reader.signIn(.guest(name: nil))
             session = reader
         }
+    }
+}
+
+/// The iPhone's `PhoneLayout` on a server's rooms list, as the app's stack builds it, having
+/// opened `returningFrom` and gone Back, so no selection reaches the list but what it keeps.
+struct PhoneShot: View {
+    let store: SessionStore
+    let server: UUID
+    var returningFrom: String?
+    @State private var path: [PhoneLayout.Route] = []
+
+    var body: some View {
+        PhoneLayout(store: store, path: $path, serverID: .constant(nil), roomID: .constant(nil), place: .constant(nil), connecting: .constant(nil))
+            .task {
+                path = [.server(server)] + (returningFrom.map { [.room(server, $0)] } ?? [])
+                guard returningFrom != nil else { return }
+                try? await Task.sleep(for: .milliseconds(400))
+                path = [.server(server)]
+            }
     }
 }

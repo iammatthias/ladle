@@ -12,7 +12,7 @@ struct RootView: View {
     var loadError: String?
     @SceneStorage("server") private var serverID: String?
     @SceneStorage("room") private var roomID: String?
-    @State private var path: [Route] = []
+    @State private var path: [PhoneLayout.Route] = []
     @State private var connecting: ConnectRequest?
     @State private var preferences: PreferencesRequest?
     /// A link's message or member, for the room it opens to show.
@@ -26,11 +26,6 @@ struct RootView: View {
     @State private var linkOutcome: String?
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
-
-    enum Route: Hashable {
-        case server(UUID)
-        case room(UUID, String)
-    }
 
     var body: some View {
         Group {
@@ -97,28 +92,7 @@ struct RootView: View {
     // MARK: iPhone
 
     private var stack: some View {
-        NavigationStack(path: $path) {
-            ServerListView(store: store, loadError: loadError, open: { path = [.server($0)] }, connecting: $connecting)
-                .navigationDestination(for: Route.self) { route in
-                    switch route {
-                    case .server(let id):
-                        if let session = store.session(for: id) {
-                            RoomListView(session: session, open: { path.append(.room(id, $0)) },
-                                         onSignIn: { connecting = ConnectRequest(record: session.record) },
-                                         onConnect: { connecting = ConnectRequest() })
-                                .resolvingLinks(from: session)
-                                .onAppear { serverID = id.uuidString; roomID = nil }
-                        }
-                    case .room(let id, let room):
-                        if let session = store.session(for: id) {
-                            TimelineView(session: session, roomID: room, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: store.drafts, place: $place)
-                                .resolvingLinks(from: session)
-                                .environment(\.openRoom, OpenRoomAction { path.append(.room(id, $0)) })
-                                .onAppear { serverID = id.uuidString; roomID = room }
-                        }
-                    }
-                }
-        }
+        PhoneLayout(store: store, loadError: loadError, path: $path, serverID: $serverID, roomID: $roomID, place: $place, connecting: $connecting)
     }
 
     // MARK: iPad
@@ -219,6 +193,47 @@ private struct ResolvingLinks: ViewModifier {
             openURL(ApronLink.outbound(url, from: server))
             return .handled
         })
+    }
+}
+
+/// The compact-width layout: one pane at a time, servers, then a server's rooms, then a room.
+struct PhoneLayout: View {
+    let store: SessionStore
+    var loadError: String?
+    @Binding var path: [Route]
+    @Binding var serverID: String?
+    @Binding var roomID: String?
+    @Binding var place: ApronLink?
+    @Binding var connecting: ConnectRequest?
+
+    enum Route: Hashable {
+        case server(UUID)
+        case room(UUID, String)
+    }
+
+    var body: some View {
+        NavigationStack(path: $path) {
+            ServerListView(store: store, loadError: loadError, open: { path = [.server($0)] }, connecting: $connecting)
+                .navigationDestination(for: Route.self) { route in
+                    switch route {
+                    case .server(let id):
+                        if let session = store.session(for: id) {
+                            RoomListView(session: session, open: { path.append(.room(id, $0)) },
+                                         onSignIn: { connecting = ConnectRequest(record: session.record) },
+                                         onConnect: { connecting = ConnectRequest() })
+                                .resolvingLinks(from: session)
+                                .onAppear { serverID = id.uuidString; roomID = nil }
+                        }
+                    case .room(let id, let room):
+                        if let session = store.session(for: id) {
+                            TimelineView(session: session, roomID: room, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: store.drafts, place: $place)
+                                .resolvingLinks(from: session)
+                                .environment(\.openRoom, OpenRoomAction { path.append(.room(id, $0)) })
+                                .onAppear { serverID = id.uuidString; roomID = room }
+                        }
+                    }
+                }
+        }
     }
 }
 
