@@ -181,7 +181,7 @@ private struct MediaPreferences: View {
 
             SiteListSection(title: "Blocked Sites", sites: settings.blocked, prompt: "Block a site, such as ads.example",
                             refusal: "Enter a site or address, such as ads.example or https://ads.example/a.png.",
-                            footer: "Media from a blocked site never shows on any server, even from a trusted site or under Any Site. Block on a waiting image adds its site here.",
+                            footer: "Media from a blocked site, or from a site under it such as a.ads.example, never shows on any server, even from a trusted site or under Any Site. Block on a waiting image adds its site here.",
                             parse: MediaSettings.parseBlockedOrigins, add: { settings.addBlocked($0) }, remove: settings.unblock)
 
             let named = serverSites

@@ -93,31 +93,47 @@ public final class MediaSettings {
     /// full URLs (`https://cdn.example/a.png`) or bare hosts (`cdn.example`), separated by spaces,
     /// commas or lines. A host needs a dot; anything else is dropped.
     public nonisolated static func parseOrigins(_ text: String) -> [String] {
-        var seen = Set<String>()
-        return text.split(whereSeparator: { $0.isWhitespace || $0 == "," }).compactMap { entry -> String? in
-            let written = String(entry)
-            let hasScheme = written.range(of: #"^[a-z][a-z0-9+.-]*://"#, options: [.regularExpression, .caseInsensitive]) != nil
-            guard let url = URL(string: hasScheme ? written : "https://" + written), url.scheme?.lowercased() == "https",
-                  url.host()?.contains(".") == true, let origin = MediaGate.origin(of: url) else { return nil }
-            return seen.insert(origin).inserted ? origin : nil
+        parseEntries(text) { url in
+            url.scheme?.lowercased() == "https" && url.host()?.contains(".") == true ? MediaGate.origin(of: url) : nil
         }
     }
 
     /// The sites `text` names to block, each once, in order, as `https:` origins of their hosts, as
     /// apron-web's `parseBlockedOrigins`: full `http(s)` URLs or bare hosts, separated by spaces,
     /// commas or lines, the scheme and port dropped since a block holds for the host whatever they
-    /// are. Wildcards and anything else are dropped.
+    /// are. Wildcards, single labels but `localhost`, and anything else are dropped.
     public nonisolated static func parseBlockedOrigins(_ text: String) -> [String] {
+        parseEntries(text) { url in
+            guard let host = MediaGate.blockableHost(of: url) else { return nil }
+            let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+            // A single label other than localhost (`com`, or `tracker:` read as one) would block a whole top-level domain.
+            guard labels.allSatisfy({ !$0.isEmpty }), !host.contains("*"), labels.count > 1 || host == "localhost" else { return nil }
+            return "https://" + (host.contains(":") ? "[\(host)]" : host)
+        }
+    }
+
+    /// What `keep` makes of each URL named in `text`, separated by spaces, commas or lines: each
+    /// once, in order (apron-web's `parseEntries`).
+    private nonisolated static func parseEntries(_ text: String, keep: (URL) -> String?) -> [String] {
         var seen = Set<String>()
         return text.split(whereSeparator: { $0.isWhitespace || $0 == "," }).compactMap { entry -> String? in
-            let written = String(entry)
-            guard !written.contains("*") else { return nil }
-            let hasScheme = written.range(of: #"^[a-z][a-z0-9+.-]*://"#, options: [.regularExpression, .caseInsensitive]) != nil
-            guard let url = URL(string: hasScheme ? written : "https://" + written), ["http", "https"].contains(url.scheme?.lowercased()),
-                  let host = MediaGate.blockableHost(of: url) else { return nil }
-            let origin = "https://" + (host.contains(":") ? "[\(host)]" : host)
-            return seen.insert(origin).inserted ? origin : nil
+            guard let value = entryURL(String(entry)).flatMap(keep) else { return nil }
+            return seen.insert(value).inserted ? value : nil
         }
+    }
+
+    /// The `http(s):` URL an entry names, as apron-web's `entryUrl`: one that starts with a scheme
+    /// and `//` as it stands (`ftp://` names none), anything else as it stands or else as a bare
+    /// host (`cdn.example`, or `cdn.example:443`, which reads alone as a scheme) under `https:`.
+    private nonisolated static func entryURL(_ entry: String) -> URL? {
+        // Only a scheme at the start names one: a bare host can have `://` further on, in its query.
+        let hasScheme = entry.range(of: #"^[a-z][a-z0-9+.-]*://"#, options: [.regularExpression, .caseInsensitive]) != nil
+        for candidate in hasScheme ? [entry] : [entry, "https://" + entry] {
+            // The web's URL reads `http:/host` and `http:host` as `http://host`; Foundation leaves them without a host.
+            let written = candidate.replacingOccurrences(of: #"^(https?):[/\\]*"#, with: "$1://", options: [.regularExpression, .caseInsensitive])
+            if let url = URL(string: written), ["http", "https"].contains(url.scheme?.lowercased()), url.host() != nil { return url }
+        }
+        return nil
     }
 
     private func save() {

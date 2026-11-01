@@ -71,7 +71,7 @@ public struct MediaGate: Hashable, Sendable {
     /// URLs tapped to load (Load), which load wherever they are.
     public var loadedOnce: Set<URL>
     /// The hosts of the viewer's blocked sites (`blockableHost`), matched whatever the scheme or
-    /// port, and not the hosts under them.
+    /// port, and every host under them (blocking `tracker.example` blocks `a.tracker.example`).
     public var blockedHosts: Set<String>
 
     public init(serverURL: URL, server: ServerInfo?, policy: MediaPolicy = .trusted, viewerOrigins: some Sequence<String> = [String](),
@@ -87,7 +87,7 @@ public struct MediaGate: Hashable, Sendable {
     public func decide(_ url: URL, for use: Use = .timeline) -> MediaDecision {
         if Self.isSmallDataImage(url) { return .load(url) }
         guard let candidate = Self.origin(of: url) else { return .hidden }
-        if let host = Self.blockableHost(of: url), blockedHosts.contains(host) { return .hidden }
+        if let host = Self.blockableHost(of: url), isBlocked(host) { return .hidden }
         if candidate == origin || serverOrigins.contains(candidate) { return .load(url) }
         if policy == .trusted, viewerOrigins.contains(candidate) { return .load(url) }
         switch use {
@@ -95,6 +95,17 @@ public struct MediaGate: Hashable, Sendable {
             return policy == .any && url.scheme?.lowercased() == "https" ? .load(url) : .hidden
         case .timeline:
             return policy == .any || loadedOnce.contains(url) ? .load(url) : .ask(MediaAsk(url))
+        }
+    }
+
+    /// `host` or a host it is under is blocked; not one it merely ends like (`eviltracker.example`).
+    private func isBlocked(_ host: String) -> Bool {
+        guard !blockedHosts.isEmpty else { return false }
+        var rest = Substring(host)
+        while true {
+            if blockedHosts.contains(String(rest)) { return true }
+            guard let dot = rest.firstIndex(of: ".") else { return false }
+            rest = rest[rest.index(after: dot)...]
         }
     }
 

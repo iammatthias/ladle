@@ -222,10 +222,13 @@ clone), which is only a worked example.
     names, small `data:image` URLs (always), and the viewer's `MediaSettings`
     (`MediaSettings.swift`: policy `trusted` or `any`, trusted sites global across servers,
     parsed as apron-web's `parseMediaOrigins`, blocked sites parsed as its `parseBlockedOrigins`
-    (any `http(s)` host, scheme and port dropped, no wildcards), both kept in
+    (any `http(s)` host, scheme and port dropped, no wildcards, no single label but `localhost`),
+    both read by one entry parser (`entryURL`: a scheme and `//` as written, else also as a bare
+    host, so `cdn.example:443` is a host), both kept in
     `media-settings.json` beside `servers.json`; Load's URLs for this launch). A blocked host
-    (lowercased, trailing dot dropped, any scheme or port, not its subdomains) is `.hidden` for
-    every use, over the server's own origin, `ext:media`, trusted sites, `any` and Load (#193).
+    (lowercased, trailing dot dropped, any scheme or port) and every host under it, not a
+    look-alike (`eviltracker.example`) or a parent, is `.hidden` for every use, over the
+    server's own origin, `ext:media`, trusted sites, `any` and Load (#193, #194).
     Under `trusted`, timeline media elsewhere asks,
     and avatars and custom emoji elsewhere are hidden; under `any`, avatars and emoji elsewhere
     load over `https:` only. An export's session (`ServerSession.reading`) takes the store's

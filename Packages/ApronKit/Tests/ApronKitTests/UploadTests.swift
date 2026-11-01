@@ -142,8 +142,14 @@ final class MediaGateTests: XCTestCase {
         XCTAssertEqual(MediaGate(serverURL: serverURL, server: server(), blocked: blocked).decide(URL(string: "https://tracker.example/t.gif")!), .hidden,
                        "under This Server and Trusted Sites it does not ask either")
         XCTAssertEqual(gate.decide(URL(string: "https://elsewhere.example/a.png")!), .load(URL(string: "https://elsewhere.example/a.png")!))
-        XCTAssertEqual(gate.decide(URL(string: "https://a.tracker.example/t.gif")!), .load(URL(string: "https://a.tracker.example/t.gif")!),
-                       "a block is of that host, not the ones under it")
+        for text in ["https://a.tracker.example/t.gif", "https://x.y.tracker.example./t.gif"] {
+            let url = URL(string: text)!
+            XCTAssertEqual(gate.decide(url), .hidden, "a block is of that host and every one under it: \(text)")
+            XCTAssertEqual(gate.decide(url, for: .avatar), .hidden, text)
+        }
+        XCTAssertEqual(gate.decide(URL(string: "https://eviltracker.example/t.gif")!), .load(URL(string: "https://eviltracker.example/t.gif")!),
+                       "not one that merely ends alike")
+        XCTAssertEqual(gate.decide(URL(string: "https://example/t.gif")!), .load(URL(string: "https://example/t.gif")!), "nor one it is under")
         XCTAssertEqual(gate.decide(URL(string: "https://chat.example/a.png")!), .load(URL(string: "https://chat.example/a.png")!))
         let pixel = URL(string: "data:image/png;base64,iVBORw0KGgo=")!
         XCTAssertEqual(gate.decide(pixel), .load(pixel))
@@ -245,8 +251,9 @@ final class MediaGateTests: XCTestCase {
     }
 
     func testSitesToBlockAreReadByHostWhateverTheSchemePortOrTrailingDotWithoutWildcards() {
-        XCTAssertEqual(MediaSettings.parseBlockedOrigins("http://plain.example:8080/a.png TRACKER.example. localhost https://cdn.example:443 *.wild.example ftp://x.example plain.example"),
-                       ["https://plain.example", "https://tracker.example", "https://localhost", "https://cdn.example"])
+        XCTAssertEqual(MediaSettings.parseBlockedOrigins("http://plain.example:8080/a.png TRACKER.example. localhost https://cdn.example:443 *.wild.example ftp://x.example http:/slash.example plain.example com tracker: nonsense:/ .. q.example/p.gif?ref=https://site.example"),
+                       ["https://plain.example", "https://tracker.example", "https://localhost", "https://cdn.example", "https://slash.example",
+                        "https://q.example"])
     }
 
     @MainActor
@@ -259,6 +266,7 @@ final class MediaGateTests: XCTestCase {
         XCTAssertEqual(held.decide(URL(string: "https://cdn.example/a.png")!), .ask(MediaAsk(URL(string: "https://cdn.example/a.png")!)),
                        "neither Any Site nor the trusted sites")
         XCTAssertEqual(held.decide(URL(string: "https://tracker.example/t.gif")!), .hidden)
+        XCTAssertEqual(held.decide(URL(string: "https://a.tracker.example/t.gif")!), .hidden, "and the hosts under it")
         settings.loadOnce(URL(string: "https://cdn.example/a.png")!)
         XCTAssertEqual(settings.gate(serverURL: archive, server: nil, heldToServer: true).decide(URL(string: "https://cdn.example/a.png")!),
                        .load(URL(string: "https://cdn.example/a.png")!))
