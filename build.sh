@@ -6,7 +6,8 @@
 # `test` also checks that the tokens, theme goldens, fonts and standard emoji match apron-web's pins.
 # `shots <dir>` builds the LadleShots Mac Catalyst renderer and writes the web-parity PNGs
 # and contrast.json to <dir>; it needs no simulator. LADLE_SHOTS_ONLY=<text> takes only the
-# shots whose file name contains it.
+# shots whose file name contains it. Each checkout's renderer gets its own bundle id: two
+# copies under one id, from two worktrees, both stall until the timeout and write nothing.
 set -o pipefail
 cd "$(dirname "$0")"
 ACTION=${1:-build}
@@ -18,7 +19,9 @@ if [[ $ACTION == shots ]]; then
   xcodegen generate -q
   xcodebuild -project Ladle.xcodeproj -scheme LadleShots \
     -destination 'platform=macOS,variant=Mac Catalyst,arch=arm64' \
-    -derivedDataPath "${DERIVED_DATA:-build}" build 2>&1 | grep -E "error:|BUILD" || exit 1
+    -derivedDataPath "${DERIVED_DATA:-build}" \
+    PRODUCT_BUNDLE_IDENTIFIER="app.ladle.ios.shots.$(print -rn -- $PWD | shasum | cut -c1-8)" \
+    build 2>&1 | grep -E "error:|BUILD" || exit 1
   OUT=${OUT:A}
   # After a run that was killed or crashed (any worktree's: they share the bundle ID), AppKit
   # asks with a modal alert whether to reopen windows, and the renderer waits on it until the
