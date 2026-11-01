@@ -316,8 +316,8 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Link to another server opens the connect screen first | bh | has | `Kit/LinkRoute.swift` | |
 | Message link scrolls to the message and highlights it | #86 | has | `Kit/ServerSession.swift` (`reveal`), `Timeline/MessageRow.swift` | |
 | User link opens the profile | #86 | partial | `App/RootView.swift` | Opens the member list. No profile card. |
-| Apron links as chips that say what they are ("Message in #general") | #119 | missing | `Kit/MessageText.swift` | They show as plain links. |
-| Other-server link as an outlined globe chip | #119 | missing | | |
+| Apron links as chips that say what they are ("Message in #general") | #119 | has | `Kit/LinkChips.swift` (`linkChip`, `LinkChipKey`), `Kit/MessageText.swift`, `Timeline/LinkChipViews.swift` | Only a link written as its own URL; a user's is a mention chip. The icons are SF Symbols (bubble, number, corner arrow) for the web's Lucide ones. |
+| Other-server link as an outlined globe chip | #119 | has | `Kit/LinkChips.swift`, `Timeline/LinkChipViews.swift` (`LinkChipRenderer`) | Host, "· Message" or "· Room", ↗, a `line-strong` outline drawn by a `TextRenderer`. |
 | Place cards for messages, rooms, threads (up to 3) | #119 | has | `Kit/PlaceCards.swift`, `Timeline/PlaceCardView.swift` | |
 | Skip a link preview that duplicates a place card | #155 | has | `Kit/PlaceCards.swift` (`previews`) | |
 | Copy and share links in the web form | #112 | has | `Kit/ApronLink.swift` (`outbound`) | Plus `ShareLink`. |
@@ -544,7 +544,7 @@ Sizes are rough. S is a day or less. M is a few days. L is a week or more, or ne
 17. **Message editing with embeds.** Edit shows embeds as tiles with ×. Remove an embed from a sent message (asking for uploads). Rename a file before and after sending. Remove reply reference. M.
 18. **Rooms list order and folding.** Keep room order on device with drag to reorder. Fold sections to rooms with news, remember folded rooms, and fold a room's threads when it is picked again. Make Browse Rooms show member counts and descriptions, and open a room to read before joining. M.
 19. **Streams and terminal output.** Read a stream's `url` live with a Live badge. Render `terminal` with ANSI colors and carriage-return overwrite. Only from the server's origin. M.
-20. **Apron link chips.** Draw Apron links as chips that say what they are ("Message in #general"), and other-server links as a globe chip. S.
+20. ~~**Apron link chips.**~~ Done (`Kit/LinkChips.swift`, `Timeline/LinkChipViews.swift`). The chip keeps the link as written, not the web's https form under it; Copy Link and Share already hand on the web form. A link that repeats a key or carries `state` alone still reads as a place, since `ApronLink` takes first values where the web's `readPlaceLink` refuses it.
 21. ~~**Rate limit feedback.**~~ Done (`Kit/ServerSession+Limits.swift`, `Timeline/RateLimitNotice.swift`). "Loading history is paused" by the loading row is not built: history paging waits silently.
 22. ~~**Server pane.**~~ Done (`Profile/ServerPaneView.swift`). Disconnect signs out of that server, with a confirmation; a disconnect that keeps the saved session is not offered, since each server keeps its own connection.
 23. **Reconnect feedback.** A floating pill with the 400/600/300 ms timing, "Checking for new messages…", the catching-up line under the header, and your own dot as a dashed ring while reconnecting. S.

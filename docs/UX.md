@@ -368,6 +368,7 @@ The HIG has no Live Text or scanning page. The `live-text` page returned 404, so
 - Tap a reply quote to jump to the target. In the same room it scrolls and highlights the target for 1.5 s. In another room it opens that room first.
 - Tap a sender name or avatar to open User Profile (3.10).
 - Tap a `#room` chip to open the room.
+- An Apron link written as its own URL (bare or `<…>`) shows as a chip that says what it is, as apron-web #119: "Message in #general", a room's title after a hash, a thread's title "in #general" after a corner arrow, a known user as `@name` (a mention chip), denim on denim-soft. A room the device holds no record of shows its `room_id`. A link to another server is an outlined chip in ink: a globe, its host, "· Message" or "· Room", and ↗, since opening it leaves this server. A link with words of its own (`[that one](…)`), one with a token or a key Ladle does not know, and an unknown or other-server user stay links. A tap opens the link as any Apron link (2.4); VoiceOver reads the chip's words ("Message on demo.apron.example, another server").
 - Tap an Apron link to handle it per 2.4. Other `https` links open in Safari.
 
 **States.**

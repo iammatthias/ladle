@@ -9,8 +9,9 @@ import Foundation
 /// has outside code and links carries `CustomEmojiKey`, for the app to show as the emoji's
 /// image. With `rooms`, each `#room_id` outside code and links (Appendix A.3) that it gives a
 /// title for shows as `#title`, carries `RoomReferenceKey`, and links to the room, as
-/// apron-web's room chips; any other `#word` stays text. Mentions are marked outside code and
-/// links.
+/// apron-web's room chips; any other `#word` stays text. With `links`, an Apron link written as
+/// its own URL that it reads as a place shows as its `LinkChip`'s words. Mentions are marked
+/// outside code and links.
 public enum MessageText {
     /// CommonMark that isn't a message, such as a room's `description` or `server.welcome`.
     public static func markdown(_ text: String, emoji: EmojiCatalog? = nil) -> [MessageBlock] {
@@ -18,32 +19,32 @@ public enum MessageText {
     }
 
     public static func blocks(_ body: JSONValue?, emoji: EmojiCatalog? = nil, rooms: ((String) -> String?)? = nil,
-                              mentions: [String: String] = [:], you: String? = nil) -> [MessageBlock] {
+                              links: ((URL) -> LinkChip?)? = nil, mentions: [String: String] = [:], you: String? = nil) -> [MessageBlock] {
         let text = TextDirection.withoutOverrides(body?["text"]?.stringValue ?? "")
         guard body?["format"]?.stringValue == "markdown" else {
-            return text.isEmpty ? [] : [.paragraph(decorated(AttributedString(text), emoji: emoji, rooms: rooms, mentions: mentions, you: you))]
+            return text.isEmpty ? [] : [.paragraph(decorated(AttributedString(text), emoji: emoji, rooms: rooms, links: links, mentions: mentions, you: you))]
         }
         let options = AttributedString.MarkdownParsingOptions(interpretedSyntax: .full, failurePolicy: .returnPartiallyParsedIfPossible)
         guard var parsed = try? AttributedString(markdown: text, options: options) else {
-            return [.paragraph(decorated(AttributedString(text), emoji: emoji, rooms: rooms, mentions: mentions, you: you))]
+            return [.paragraph(decorated(AttributedString(text), emoji: emoji, rooms: rooms, links: links, mentions: mentions, you: you))]
         }
         for run in parsed.runs.reversed() where run.inlinePresentationIntent?.contains(.softBreak) == true {
             var hard = AttributedString("\n", attributes: run.attributes)
             hard.inlinePresentationIntent = nil
             parsed.replaceSubrange(run.range, with: hard)
         }
-        return BlockReader.blocks(parsed).map { $0.mapText { decorated($0, emoji: emoji, rooms: rooms, mentions: mentions, you: you) } }
+        return BlockReader.blocks(parsed).map { $0.mapText { decorated($0, emoji: emoji, rooms: rooms, links: links, mentions: mentions, you: you) } }
     }
 
     /// The body's blocks as one string (`MessageBlock.flattened`), for its runs.
     public static func attributed(_ body: JSONValue?, emoji: EmojiCatalog? = nil, rooms: ((String) -> String?)? = nil,
-                                  mentions: [String: String] = [:], you: String? = nil) -> AttributedString {
-        MessageBlock.flattened(blocks(body, emoji: emoji, rooms: rooms, mentions: mentions, you: you))
+                                  links: ((URL) -> LinkChip?)? = nil, mentions: [String: String] = [:], you: String? = nil) -> AttributedString {
+        MessageBlock.flattened(blocks(body, emoji: emoji, rooms: rooms, links: links, mentions: mentions, you: you))
     }
 
     /// One block's text with its links checked, bare links linked and its chips marked.
     private static func decorated(_ text: AttributedString, emoji: EmojiCatalog?, rooms: ((String) -> String?)?,
-                                  mentions: [String: String], you: String?) -> AttributedString {
+                                  links: ((URL) -> LinkChip?)?, mentions: [String: String], you: String?) -> AttributedString {
         var out = text
         var bare: [(offset: Int, length: Int, url: URL)] = []
         var unsafe: [Range<AttributedString.Index>] = []
@@ -65,6 +66,7 @@ public enum MessageText {
             let lower = out.unicodeScalars.index(out.startIndex, offsetBy: link.offset)
             out[lower ..< out.unicodeScalars.index(lower, offsetBy: link.length)].link = link.url
         }
+        if let links { markLinkChips(in: &out, links, you: you) }
         if let rooms { markRooms(in: &out, rooms) }
         if let emoji { markKeys(in: &out, emoji) }
         markRoles(in: &out)
@@ -107,6 +109,33 @@ public enum MessageText {
             }
         }
     }
+
+    /// Each link written as its own URL (bare, or `<…>`) that `chip` reads as a place, outside
+    /// code, as its chip, the link kept as written; a link with words of its own stays them. A
+    /// user's chip is a mention (`MentionKey`).
+    private static func markLinkChips(in out: inout AttributedString, _ chip: (URL) -> LinkChip?, you: String?) {
+        for (link, range) in out.runs[\.link].reversed() {
+            guard let link, let first = out[range].runs.first,
+                  !out[range].runs.contains(where: { $0.inlinePresentationIntent?.contains(.code) == true }),
+                  asWritten(String(out[range].characters)) == asWritten(link.absoluteString), let found = chip(link) else { continue }
+            var replacement = AttributedString(found.label, attributes: first.attributes)
+            if case .user(let id) = found.kind {
+                replacement[MentionKey.self] = MentionChip(userID: id, isYou: id == you)
+            } else {
+                replacement[LinkChipKey.self] = LinkChipPart(chip: found, isDetail: false)
+                if let detail = found.detail {
+                    var after = AttributedString(detail, attributes: first.attributes)
+                    after[LinkChipKey.self] = LinkChipPart(chip: found, isDetail: true)
+                    replacement += after
+                }
+            }
+            out.replaceSubrange(range, with: replacement)
+        }
+    }
+
+    /// A link or its text as it reads, its percent-encoding decoded, so an autolink whose href
+    /// Markdown encoded (`<https://link.apron.chat/#room=général>`) still is its own URL.
+    private static func asWritten(_ text: String) -> String { text.removingPercentEncoding ?? text }
 
     /// Each `#room_id` that `title` names, outside code and links, as a chip: `#title`, linked.
     private static func markRooms(in out: inout AttributedString, _ title: (String) -> String?) {

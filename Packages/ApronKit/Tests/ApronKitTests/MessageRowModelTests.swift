@@ -39,7 +39,7 @@ final class MessageRowModelTests: XCTestCase {
         XCTAssertEqual(notes.embeds.map(\.index), [], "the link embed for the same message is hidden")
         XCTAssertEqual(notes.message.embedList.count, 1)
         let places = try row(PreviewFixtures.linkCardRoomID, "1793090640000", in: store)
-        XCTAssertEqual(spoken(places), "Sam, Checklist is in apron:?room=1793092125000, and the cert note in apron:?room=ops&message=1793074800000, Thread Release 0.2, 3 members, Room ops, private, 2 members, TIME")
+        XCTAssertEqual(spoken(places), "Sam, Checklist is in \u{2068}Release 0.2\u{2069} in #\u{2068}general\u{2069}, and the cert note in Message in #\u{2068}ops\u{2069}, Thread Release 0.2, 3 members, Room ops, private, 2 members, TIME")
     }
 
     func testAFetchedPreviewTakesTheLinkEmbedsPlaceOrGoesUnderTheEmbeds() async throws {

@@ -159,8 +159,17 @@ struct MessageRow: View {
 /// (`RoomReferenceKey`) and a mention (`MentionKey`) in denim on denim-soft, a mention of you in
 /// on-accent on accent, and a role (`RoleMentionKey`) in denim on denim-soft with a dotted denim
 /// rule under it in place of the web's ring, which a run of `Text` cannot draw: it opens nothing.
+/// An Apron link drawn as a chip (`LinkChipKey`) is denim, its detail lighter, and one to another
+/// server ink, its detail muted; `LinkChipText` adds the icon and `LinkChipRenderer` the ground.
 func styled(_ text: AttributedString) -> AttributedString {
     var out = text
+    for run in out.runs {
+        guard let part = run[LinkChipKey.self] else { continue }
+        let elsewhere = part.chip.kind == .elsewhere
+        let ink = elsewhere ? Palette.ink : Palette.denim
+        out[run.range].foregroundColor = part.isDetail ? (elsewhere ? Palette.inkMuted : ink.opacity(Tokens.Opacity.dim)) : ink
+        out[run.range].inlinePresentationIntent = part.isDetail ? nil : .stronglyEmphasized
+    }
     for run in out.runs where run[RoleMentionKey.self] != nil {
         out[run.range].backgroundColor = Palette.denimSoft
         out[run.range].foregroundColor = Palette.denim

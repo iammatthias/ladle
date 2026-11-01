@@ -20,7 +20,7 @@ final class MessageMenuTests: XCTestCase {
         XCTAssertEqual(theirs.link?.absoluteString, "https://link.apron.chat/#server=wss://home.example/ws&room=general&message=\(ada.messageID.text)")
         XCTAssertEqual(theirs.text, ada.plainText)
 
-        let linking = try XCTUnwrap(home.timeline(PreviewFixtures.linkCardRoomID).last)
+        let linking = try XCTUnwrap(home.timeline(PreviewFixtures.linkCardRoomID).last { $0.plainText.hasPrefix("Checklist") })
         let menu = MessageMenu(linking, in: home)
         XCTAssertEqual(menu.links.map(\.title), ["apron:?room=1793092125000", "apron:?room=ops&message=1793074800000"], "a link without a host by its text")
         XCTAssertEqual(menu.selectableText, MessageText.plain(linking.body))

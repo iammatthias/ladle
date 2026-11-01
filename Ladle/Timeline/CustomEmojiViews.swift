@@ -51,13 +51,32 @@ struct EmojiText: View {
     @Environment(\.roleFace) private var face
 
     var body: some View {
+        let (line, chips) = drawn()
+        if chips > 0 {
+            line.textRenderer(LinkChipRenderer())
+        } else {
+            line
+        }
+    }
+
+    /// The line, read by VoiceOver as its words, and how many link chips it holds.
+    private func drawn() -> (Text, Int) {
         let size = ScaledRole.size(role, at: fixed ?? dynamic)
         let font = UIFont.systemFont(ofSize: size)
         let text = inMonoFace(face?.emphasized(self.text) ?? self.text, size: ScaledRole.size(.ui, at: fixed ?? dynamic))
         var out = Text("")
         var spoken = ""
-        for (key, range) in text.runs[CustomEmojiKey.self] {
+        var chips = 0
+        for (key, chip, range) in text.runs[CustomEmojiKey.self, LinkChipKey.self] {
             let written = text[range]
+            if let chip {
+                if !chip.isDetail {
+                    chips += 1
+                    spoken += chip.chip.spoken
+                }
+                out = Text("\(out)\(LinkChipText.part(chip, written, number: chips))")
+                continue
+            }
             guard let key, let emoji = catalog?[key], let image = EmojiImages.shared.image(emoji, height: font.lineHeight, reduceMotion: reduceMotion) else {
                 out = Text("\(out)\(Text(AttributedString(written)))")
                 spoken += String(written.characters)
@@ -69,7 +88,7 @@ struct EmojiText: View {
                 spoken += emoji.label
             }
         }
-        return out.accessibilityLabel(spoken)
+        return (out.accessibilityLabel(spoken), chips)
     }
 
     /// Inline code in the theme's `--font-mono` at the ui size on the `--bg-300` ground, as the

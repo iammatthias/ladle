@@ -432,6 +432,8 @@ public enum PreviewFixtures {
                 line(-17, "eunji", "Linking the notes from #general so we don't lose them: \(notesLink)",
                      embeds: [["kind": "link", "url": .string(notesLink), "og": ["title": "general on Home", "site_name": "link.apron.chat"]]]),
                 line(-16, "sam", "Checklist is in apron:?room=\(releaseThread), and the cert note in apron:?room=ops&message=\(message(-280))"),
+                // Apron links as chips: a message, a room, a thread, a user, and a room on another server.
+                line(-15, "sam", "Round-up: apron:?room=general&message=\(message(5)), apron:?room=design, apron:?room=\(releaseThread), apron:?room=\(iconThread)&user=ada, and the demo's https://link.apron.chat/#server=wss://demo.apron.example/ws&room=lobby"),
             ]),
             "random": history("random", [
                 line(-90, "chiara", "Found a 1970s Dansk enamel pot at the flea market."),

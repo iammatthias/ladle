@@ -101,11 +101,16 @@ final class PreviewFixturesTests: XCTestCase {
             case .audio(_, let cover): cover == nil ? "audio" : "audio with cover"
             }
         }, ["video with poster", "audio with cover"])
-        let linking = home.timeline(PreviewFixtures.linkCardRoomID).suffix(2)
-        XCTAssertEqual(linking.map { home.placeCards(in: $0).map(\.roomTitle) }, [["general"], ["Release 0.2", "ops"]], "a message, a thread, a private room")
+        let linking = home.timeline(PreviewFixtures.linkCardRoomID).suffix(3)
+        XCTAssertEqual(linking.map { home.placeCards(in: $0).map(\.roomTitle) }, [["general"], ["Release 0.2", "ops"], ["general", "design", "Release 0.2"]],
+                       "a message, a thread, a private room; the chips' places, three at most")
         XCTAssertEqual(linking.map { message in
             message.embedList.filter { PlaceCard.previews($0, in: home.placeCards(in: message), from: home.record.url) }.count
-        }, [1, 0], "a sender's preview the card hides")
+        }, [1, 0, 0], "a sender's preview the card hides")
+        let chips = MessageBlock.flattened(MessageRowModel(try XCTUnwrap(linking.last), in: home).blocks)
+        XCTAssertEqual(chips.runs.compactMap { run in run[LinkChipKey.self].map { _ in String(chips[run.range].characters) } ?? run[MentionKey.self].map { _ in String(chips[run.range].characters) } },
+                       ["Message", " in #\u{2068}general\u{2069}", "\u{2068}design\u{2069}", "\u{2068}Release 0.2\u{2069}", " in #\u{2068}general\u{2069}",
+                        "@\u{2068}Ada Okafor\u{2069}", "demo.apron.example", " · Room"], "the round-up's link chips")
         XCTAssertEqual(demo.unreadCount(in: "lobby"), 3)
         XCTAssertEqual(demo.memberListNote("lobby"), "Showing 3 of 1204: the most recently active", "the lobby's listing is truncated")
         XCTAssertEqual(demo.profile(of: UserObject(["user_id": "mo", "name": "Mo"])!, in: "lobby").membership,

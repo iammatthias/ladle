@@ -35,7 +35,7 @@ public struct MessageRowModel {
         let names = Dictionary(message.mentionIDs.map { id in
             (id, session.users.user(id).flatMap(UserObject.init).map(session.displayName(for:)) ?? id)
         }, uniquingKeysWith: { first, _ in first })
-        blocks = MessageText.blocks(message.body, emoji: session.emojiCatalog, rooms: session.referencedTitle, mentions: names,
+        blocks = MessageText.blocks(message.body, emoji: session.emojiCatalog, rooms: session.referencedTitle, links: session.linkChip, mentions: names,
                                       you: session.you?.userID)
         cards = session.placeCards(in: message, sessions: sessions)
         embeds = message.embedList.enumerated()
@@ -43,7 +43,7 @@ public struct MessageRowModel {
             .map { (index: $0.offset, embed: $0.element) }
         unfurl = message.unfurlURL
         unfurledEmbed = unfurl.flatMap { [embeds] url in embeds.first { $0.embed.kind == "link" && $0.embed.url == url }?.index }
-        spokenText = EmojiKeys.spoken(message.plainText, catalog: session.emojiCatalog)
+        spokenText = EmojiKeys.spoken(Self.chipsSpoken(message.plainText, in: blocks, session: session), catalog: session.emojiCatalog)
         replyLine = message.replyTo.map { target in
             let quoted = session.store.message(target)
             return "replying to " + (quoted.map { $0.isTombstone ? "a deleted message" : session.displayName(for: $0.from) } ?? "an unavailable message")
@@ -52,6 +52,19 @@ public struct MessageRowModel {
         reactions = session.store.reactions(on: message.messageID).map { summaries in
             summaries.map { "\(ReactionEntry.label($0.emoji, catalog: session.emojiCatalog)) \($0.userIDs.count)" }.joined(separator: ", ")
         }
+    }
+
+    /// The text with each link drawn as a chip read as its words, as the row shows it.
+    @MainActor
+    private static func chipsSpoken(_ text: String, in blocks: [MessageBlock], session: ServerSession) -> String {
+        var out = text
+        let shown = MessageBlock.flattened(blocks)
+        for (link, range) in shown.runs[\.link] {
+            guard let link, shown[range].runs.contains(where: { $0[LinkChipKey.self] != nil || $0[MentionKey.self] != nil }),
+                  let chip = session.linkChip(link) else { continue }
+            out = out.replacingOccurrences(of: link.absoluteString.removingPercentEncoding ?? link.absoluteString, with: chip.spoken)
+        }
+        return out
     }
 
     /// What VoiceOver reads for the row: the reminder's due line, the sender and roles, the
