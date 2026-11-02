@@ -172,8 +172,19 @@ final class PreviewFixturesTests: XCTestCase {
                        ["The tomatoes made it through the frost.", "Who has the rota this week?", "Me. Watering Tuesday and Friday."])
         XCTAssertFalse(home.joinedRoomIDs.contains(PreviewFixtures.gardenRoomID))
         XCTAssertFalse(home.roomTree.contains { $0.roomID == PreviewFixtures.gardenRoomID }, "read, not listed with your rooms")
-        XCTAssertEqual(home.readingNode(open: PreviewFixtures.gardenRoomID), RoomNode(roomID: PreviewFixtures.gardenRoomID, threadIDs: []),
-                       "but shown open under Other Rooms while it is the one read")
+        let node = try XCTUnwrap(home.readingNode(open: PreviewFixtures.gardenRoomID), "but shown open under Other Rooms while it is the one read")
+        XCTAssertEqual(node.threadIDs.map(home.title(of:)), ["Seed swap", "Compost", "Tool shed", "Plot 14"], "with its threads, listed on opening it")
+        let list = home.threadList(of: node, open: PreviewFixtures.gardenRoomID, othersFolded: true)
+        XCTAssertEqual([list.others.map(home.title(of:)), [String(list.bare), String(list.moreOthers)]],
+                       [["Seed swap", "Compost", "Tool shed", "Plot 14"], ["true", "0"]], "all of them, with no Other Threads heading")
+
+        try await home.open(PreviewFixtures.seedSwapThreadID)
+        XCTAssertEqual(home.timeline(PreviewFixtures.seedSwapThreadID).map(\.plainText), ["Spare runner bean seeds, anyone?", "Yes please, I'll bring chard."])
+        XCTAssertEqual([home.joinedRoomIDs.contains(PreviewFixtures.seedSwapThreadID), home.joinedRoomIDs.contains(PreviewFixtures.gardenRoomID)], [false, false],
+                       "reading a thread joins neither it nor its room")
+        XCTAssertEqual(home.readingNode(open: PreviewFixtures.seedSwapThreadID), node, "reading it keeps the garden open under Other Rooms")
+        XCTAssertEqual(home.threadNode(of: PreviewFixtures.seedSwapThreadID), node, "and its Threads sheet lists the garden's")
+        XCTAssertEqual(home.threadList(of: node, open: PreviewFixtures.seedSwapThreadID).others, node.threadIDs)
         XCTAssertEqual(home.threadNode(of: PreviewFixtures.gardenRoomID)?.roomID, PreviewFixtures.gardenRoomID)
         XCTAssertEqual([home.readingNode(open: "general"), home.readingNode(open: PreviewFixtures.releaseThreadID), home.readingNode(open: nil)],
                        [nil, nil, nil], "a joined room, a thread of one, or nothing open")

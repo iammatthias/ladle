@@ -66,6 +66,32 @@ final class ThreadsTests: XCTestCase {
         XCTAssertEqual([elsewhere.joined, elsewhere.others], [["c"], []], "another room shows only its joined threads with news")
     }
 
+    /// apron-web #198's Sidebar case: a room open without joining lists all its threads, with no
+    /// Other Threads heading and none behind "N more…", whatever fold was saved; joining one sets
+    /// the rest apart again.
+    func testARoomOpenWithoutJoiningListsAllItsThreadsBareUntilOneIsJoined() {
+        let entry = { (id: String, joined: Bool, activity: String) in
+            ThreadList.Entry(id: id, joined: joined, activity: LogID(activity), hasNews: false)
+        }
+        let threads = [entry("t0", false, "40"), entry("t1", false, "30"), entry("t2", false, "20"), entry("t3", false, "10")]
+        let bare = ThreadList(threads, isOpenRoom: true, openThread: nil, othersFolded: true, allOthers: false, roomUnjoined: true)
+        XCTAssertEqual([bare.others, [String(bare.bare), String(bare.othersCount), String(bare.moreOthers)]],
+                       [["t0", "t1", "t2", "t3"], ["true", "4", "0"]])
+        let reading = ThreadList(threads, isOpenRoom: true, openThread: "t3", othersFolded: false, allOthers: false, roomUnjoined: true)
+        XCTAssertEqual([reading.others, [String(reading.bare), String(reading.moreOthers)]], [["t0", "t1", "t2", "t3"], ["true", "0"]],
+                       "reading one keeps them all, in their order")
+
+        var joinedOne = threads
+        joinedOne[0].joined = true
+        let split = ThreadList(joinedOne, isOpenRoom: true, openThread: nil, othersFolded: false, allOthers: false, roomUnjoined: true)
+        XCTAssertEqual([split.joined, split.others, [String(split.bare), String(split.othersCount), String(split.moreOthers)]],
+                       [["t0"], ["t1", "t2", "t3"], ["false", "3", "0"]])
+
+        let joinedRoom = ThreadList(threads, isOpenRoom: true, openThread: nil, othersFolded: false, allOthers: false)
+        XCTAssertEqual([joinedRoom.others, [String(joinedRoom.bare), String(joinedRoom.moreOthers)]], [["t0", "t1", "t2"], ["false", "1"]],
+                       "a joined room's threads are others to it, under the heading")
+    }
+
     func testInactivePutsAwayQuietJoinedThreadsPastTheNewestFive() {
         let now = Date(timeIntervalSince1970: 1_800_000_000)
         let ago = { (hours: Double) in LogID(String(Int64((now.timeIntervalSince1970 - hours * 3600) * 1000)))! }

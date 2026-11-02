@@ -325,26 +325,26 @@ public enum PreviewFixtures {
     public static let releaseThreadID = releaseThread
     private static let iconThread = String(start + 3 * 60_000 + 45_000)
 
-    /// A thread of #general started `minute` minutes from the start (45 s past it).
-    private static func generalThread(_ minute: Int) -> String { String(start + Int64(minute) * 60_000 + 45_000) }
+    /// A thread started `minute` minutes from the start (45 s past it).
+    private static func threadStarted(_ minute: Int) -> String { String(start + Int64(minute) * 60_000 + 45_000) }
 
     /// #general's other joined threads, quiet for a while: the newest five of all its joined
     /// threads stay up top, and the two quiet for more than three days fold under Inactive, one
     /// of them untitled.
-    private static let loadTestThread = generalThread(-150)
-    private static let originThread = generalThread(-500)
-    private static let docsThread = generalThread(-1200)
-    private static let passkeyThread = generalThread(-5100)
-    public static let untitledThreadID = generalThread(-9100)
-    private static let archiveThread = generalThread(-600_100)
+    private static let loadTestThread = threadStarted(-150)
+    private static let originThread = threadStarted(-500)
+    private static let docsThread = threadStarted(-1200)
+    private static let passkeyThread = threadStarted(-5100)
+    public static let untitledThreadID = threadStarted(-9100)
+    private static let archiveThread = threadStarted(-600_100)
 
     /// #general's threads Sam has not joined, for Other Threads: last active 4 days, 9 weeks, 2
     /// years and 3 years before `now`, the last behind "1 more…".
     private static let otherThreads: [JSONValue] = [
-        room(generalThread(-5900), "Benchmarks", parent: "general", members: ["bram"], latest: -5800),
-        room(generalThread(-91000), "Hiring", parent: "general", members: ["ada"], description: "Two roles, both remote", latest: -90700),
-        room(generalThread(-1_060_000), "2024 offsite", parent: "general", members: ["chiara"], latest: -1_055_000),
-        room(generalThread(-1_600_000), "Icons v1", parent: "general", members: ["eunji"], latest: -1_590_000),
+        room(threadStarted(-5900), "Benchmarks", parent: "general", members: ["bram"], latest: -5800),
+        room(threadStarted(-91000), "Hiring", parent: "general", members: ["ada"], description: "Two roles, both remote", latest: -90700),
+        room(threadStarted(-1_060_000), "2024 offsite", parent: "general", members: ["chiara"], latest: -1_055_000),
+        room(threadStarted(-1_600_000), "Icons v1", parent: "general", members: ["eunji"], latest: -1_590_000),
     ]
 
     /// Rooms Sam has not joined, for Browse Rooms: the garden, read before joining, and the book
@@ -353,6 +353,16 @@ public enum PreviewFixtures {
     private static let unjoinedRooms: [JSONValue] = [
         room(gardenRoomID, "garden", members: ["ada", "bram", "chiara"], description: "Seeds, soil and the allotment rota", latest: -41),
         room("books", "book-club", members: ["eunji"], description: "This month: *The Dispossessed*", latest: -700, memberCount: 12),
+    ]
+
+    /// The garden's threads, all unjoined like the garden, so they list under it without the
+    /// Other Threads heading, all four (#198). Seed swap has a history, to read without joining.
+    public static let seedSwapThreadID = threadStarted(-37)
+    private static let gardenThreads: [JSONValue] = [
+        room(seedSwapThreadID, "Seed swap", parent: gardenRoomID, members: ["bram", "chiara"], latest: -35),
+        room(threadStarted(-1500), "Compost", parent: gardenRoomID, members: ["ada"], latest: -1400),
+        room(threadStarted(-12000), "Tool shed", parent: gardenRoomID, members: ["bram"], latest: -11000),
+        room(threadStarted(-30000), "Plot 14", parent: gardenRoomID, members: ["chiara"], latest: -29000),
     ]
 
     /// When the rooms list's shots are taken, so "4d" and Inactive read the same every run:
@@ -515,6 +525,10 @@ public enum PreviewFixtures {
                 line(-43, "bram", "Who has the rota this week?"),
                 line(-41, "ada", "Me. Watering Tuesday and Friday."),
             ]),
+            seedSwapThreadID: history(seedSwapThreadID, [
+                line(-36, "chiara", "Spare runner bean seeds, anyone?"),
+                line(-35, "bram", "Yes please, I'll bring chard."),
+            ]),
             "kitchen": history("kitchen", [
                 line(-130, "ada", "Shipped the new glaze :apron: :partyparrot:",
                      reactions: [":partyparrot:": ["sam", "bram"], ":apron:": ["sam"], ":retired:": ["bram"], "👍": ["eunji"]]),
@@ -575,7 +589,7 @@ public enum PreviewFixtures {
             ["room_id": .string(groupRoomID), "from": ["user_id": "chiara"], "read_message_id": .string(message(34))],
         ],
         statuses: [["room_id": .string(mutedRoomID), "mute": true]],
-        unjoinedThreads: ["general": .array(otherThreads)],
+        unjoinedThreads: ["general": .array(otherThreads), gardenRoomID: .array(gardenThreads)],
         unjoinedRooms: unjoinedRooms
     )
 

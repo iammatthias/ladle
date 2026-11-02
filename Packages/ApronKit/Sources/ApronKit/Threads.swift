@@ -114,8 +114,9 @@ public enum LastActive {
 /// What the rooms list shows of one room's threads, as apron-web's ThreadList. Under the open
 /// room: its joined threads, most recently active first, then Inactive, the quiet ones put away
 /// (apron-web #185), then Other Threads, those you have not joined, the first three and "N
-/// more…". Under any other room, only joined threads with news, so activity there is not missed,
-/// and the thread open in it.
+/// more…". Under a room open without joining it, while none of its threads are joined either,
+/// all of them right under it, with no Other Threads heading (apron-web #198). Under any other
+/// room, only joined threads with news, so activity there is not missed, and the thread open in it.
 public struct ThreadList: Hashable, Sendable {
     /// One thread as the list weighs it.
     public struct Entry: Hashable, Sendable {
@@ -155,14 +156,18 @@ public struct ThreadList: Hashable, Sendable {
     public var others: [String] = []
     /// The others not shown: the "N more…" row.
     public var moreOthers = 0
+    /// The room is not joined and none of its threads are: they are not others to anything, so
+    /// they list without the Other Threads heading, none folded or held back.
+    public var bare = false
 
     public init() {}
 
     /// `entries` in any order. `isOpenRoom` is the room open or holding the open thread;
     /// `openThread` the thread open in it, if any, and `openedQuiet` the side it was on when it
     /// was opened, where it stays until another is, so reading it never moves its row.
+    /// `roomUnjoined` is the room open without joining it.
     public init(_ entries: [Entry], isOpenRoom: Bool, openThread: String?, othersFolded: Bool, allOthers: Bool,
-                now: Date = Date(), inactiveFolded: Bool = true, openedQuiet: Bool? = nil) {
+                now: Date = Date(), inactiveFolded: Bool = true, openedQuiet: Bool? = nil, roomUnjoined: Bool = false) {
         let ordered = entries.sorted(by: Self.byActivity)
         guard isOpenRoom else {
             joined = ordered.filter { $0.joined && ($0.hasNews || $0.id == openThread) }.map(\.id)
@@ -182,7 +187,10 @@ public struct ThreadList: Hashable, Sendable {
         let unjoined = ordered.filter { !$0.joined }.map(\.id)
         othersCount = unjoined.count
         let open = unjoined.first { $0 == openThread }
-        if othersFolded {
+        bare = roomUnjoined && mine.isEmpty
+        if bare {
+            others = unjoined
+        } else if othersFolded {
             others = open.map { [$0] } ?? []
         } else {
             others = allOthers ? unjoined : Array(unjoined.prefix(Self.othersShown))
@@ -240,7 +248,8 @@ extension ServerSession {
                              hasNews: unreadCount(in: id) > 0 || mentionCount(in: id) > 0)
         }
         return ThreadList(entries, isOpenRoom: openRoom == node.roomID && !threadsFolded, openThread: openRoomID == openRoom ? nil : openRoomID,
-                          othersFolded: othersFolded, allOthers: allOthers, now: now, inactiveFolded: inactiveFolded, openedQuiet: openedQuiet)
+                          othersFolded: othersFolded, allOthers: allOthers, now: now, inactiveFolded: inactiveFolded, openedQuiet: openedQuiet,
+                          roomUnjoined: !joinedRoomIDs.contains(node.roomID))
     }
 
     /// The rooms list's node for a room or thread on screen: its room's, whose threads the phone's

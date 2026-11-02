@@ -181,4 +181,31 @@ final class RoomsIntegrationTests: XCTestCase {
         try await bob.join(roomID)
         try await waitFor("joined") { bob.joinedRoomIDs.contains(roomID) }
     }
+
+    /// apron-web #198: a room read before joining lists its threads under it, all of them with no
+    /// Other Threads heading, and one reads through `history` without joining it or the room.
+    func testAThreadOfARoomNotJoinedListsUnderItAndReadsWithoutJoining() async throws {
+        let server = try await started()
+        let admin = try await admin(server)
+        let room = try await admin.createRoom(title: "Allotment")
+        let roomID = try XCTUnwrap(room)
+        let thread = try await admin.createRoom(title: "Seed swap", parentRoomID: roomID)
+        let threadID = try XCTUnwrap(thread)
+        try await admin.open(threadID)
+        _ = try await admin.send("Spare runner beans", in: threadID)
+
+        let bob = try await connected(server)
+        try await bob.signIn(.guest(name: nil))
+        _ = try await bob.listUnjoinedRooms()
+        try await bob.open(roomID)
+        try await waitFor("its threads listed") { bob.readingNode(open: roomID)?.threadIDs == [threadID] }
+        let node = try XCTUnwrap(bob.readingNode(open: roomID))
+        let list = bob.threadList(of: node, open: roomID, othersFolded: true)
+        XCTAssertEqual([list.others, [String(list.bare), String(list.moreOthers)]], [[threadID], ["true", "0"]])
+
+        try await bob.open(threadID)
+        try await waitFor("thread history read") { bob.timeline(threadID).map(\.plainText) == ["Spare runner beans"] }
+        XCTAssertEqual([bob.joinedRoomIDs.contains(threadID), bob.joinedRoomIDs.contains(roomID)], [false, false], "reading is not joining")
+        XCTAssertEqual(bob.readingNode(open: threadID), RoomNode(roomID: roomID, threadIDs: [threadID]), "the room stays open under Other Rooms")
+    }
 }
