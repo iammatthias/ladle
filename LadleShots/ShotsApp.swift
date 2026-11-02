@@ -52,6 +52,10 @@ enum Screen: String, CaseIterable {
     // which the `#` list would then offer.
     case roomsOrdered = "rooms-ordered", roomsFolded = "rooms-folded", roomsThreadsFolded = "rooms-threads-folded", roomsReorder = "rooms-reorder"
     case browseRooms = "browse-rooms", roomPeek = "room-peek", roomsReading = "rooms-reading"
+    case threadPeek = "thread-peek", roomsReadingThread = "rooms-reading-thread", threadsSheetReading = "threads-sheet-reading"
+
+    /// Shots of the garden read before joining, with its threads listed under it (#198).
+    var readsGarden: Bool { [.roomsReading, .threadPeek, .roomsReadingThread, .threadsSheetReading].contains(self) }
 
     /// The rooms list in an order of the user's own, rather than as first listed.
     var isReordered: Bool { self == .roomsOrdered || self == .roomsReorder }
@@ -153,15 +157,18 @@ enum Renderer {
             await seedPause(shot.screen.isPaused, home: home)
             seedSites(shot.screen.hasSiteLists, in: store)
             UserDefaults.standard.set(shot.screen == .roomsInactive, forKey: "inactiveThreadsOpen")
-            UserDefaults.standard.set(shot.screen == .roomsFolded || shot.screen == .roomsReading, forKey: "roomsSectionFolded")
-            UserDefaults.standard.set(shot.screen == .roomsFolded || shot.screen == .roomsReading, forKey: "privateSectionFolded")
+            UserDefaults.standard.set(shot.screen == .roomsFolded || shot.screen.readsGarden, forKey: "roomsSectionFolded")
+            UserDefaults.standard.set(shot.screen == .roomsFolded || shot.screen.readsGarden, forKey: "privateSectionFolded")
             seedOrder(shot.screen.isReordered, in: store, home: home, firstListed: firstListed)
             home.foldThreads("general", shot.screen == .roomsThreadsFolded)
             UserDefaults.standard.set(true, forKey: "memberOnlineOpen")
             UserDefaults.standard.set(shot.screen != .membersFolded, forKey: "memberOfflineOpen")
             if shot.screen == .limited { await seedWaits(home: home) }
             if shot.screen == .commandFailed { await seedCommandFailure(home: home) }
-            if shot.screen == .roomsReading { _ = try? await home.listUnjoinedRooms() }
+            if shot.screen.readsGarden {
+                _ = try? await home.listUnjoinedRooms()
+                try? await home.open(PreviewFixtures.gardenRoomID)
+            }
             if shot.screen == .connectExternalCode, let fresh = signIn.session(for: PreviewFixtures.freshID), fresh.pendingPage == nil {
                 _ = try? await fresh.signIn(.externalProposal(returnURL: nil))
             }
@@ -573,6 +580,15 @@ enum Renderer {
         case .roomsReading:
             // Back from the garden, read before joining: open under Other Rooms, Rooms and Private folded so it shows.
             AnyView(PhoneShot(store: store, server: home.record.id, returningFrom: PreviewFixtures.gardenRoomID))
+        case .threadPeek:
+            // Seed swap, a thread of the garden, read without joining either, with Join in its header.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.seedSwapThreadID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
+        case .roomsReadingThread:
+            // Back from Seed swap: the garden open under Other Rooms, all its threads under it, Seed swap highlighted.
+            AnyView(PhoneShot(store: store, server: home.record.id, returningFrom: PreviewFixtures.seedSwapThreadID))
+        case .threadsSheetReading:
+            // The garden header's Threads: all four, with no Other Threads heading and no New Thread.
+            AnyView(ThreadsSheet(session: home, roomID: PreviewFixtures.gardenRoomID, open: { _ in }, newThread: {}))
         case .roomsReconnecting:
             // Your own dot as the dashed ring while the connection comes back.
             AnyView(PhoneShot(store: store, server: home.record.id, returningFrom: PreviewFixtures.busyRoomID)

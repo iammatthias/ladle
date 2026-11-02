@@ -39,6 +39,8 @@ struct RoomListView: View {
     @State private var startingPrivate = false
     /// Other Threads is open until folded, and stays as it was left, as the web's.
     @AppStorage("otherThreadsOpen") private var othersOpen = true
+    /// Under a room read before joining it starts open whatever was saved, as the web's (#198).
+    @State private var readingOthersOpen = true
     /// Inactive is folded until opened, as it is there to put quiet threads away, and stays as it
     /// was left (apron-web #185).
     @AppStorage("inactiveThreadsOpen") private var inactiveOpen = false
@@ -310,7 +312,8 @@ struct RoomListView: View {
     /// Other Threads; under another, only its joined threads with news.
     @ViewBuilder
     private func threads(of node: RoomNode) -> some View {
-        let list = session.threadList(of: node, open: selected, othersFolded: !othersOpen, allOthers: allOthersFor == node.roomID,
+        let others = OtherThreadsFold.open(in: node.roomID, of: session, saved: $othersOpen, reading: $readingOthersOpen)
+        let list = session.threadList(of: node, open: selected, othersFolded: !others.wrappedValue, allOthers: allOthersFor == node.roomID,
                                       now: fixedNow ?? .now, inactiveFolded: !inactiveOpen,
                                       openedQuiet: opened.flatMap { $0.id == selected ? $0.quiet : nil },
                                       threadsFolded: session.threadsFolded(node.roomID))
@@ -320,7 +323,8 @@ struct RoomListView: View {
             ForEach(list.inactive, id: \.self) { roomRow($0, isThread: true) }
         }
         if list.othersCount > 0 {
-            FoldHeading(label: "Other Threads", count: list.othersCount, open: $othersOpen)
+            // Bare under a room read before joining: none of its threads are yours to set them apart from.
+            if !list.bare { FoldHeading(label: "Other Threads", count: list.othersCount, open: others) }
             ForEach(list.others, id: \.self) { roomRow($0, isThread: true) }
             if list.moreOthers > 0 {
                 Button { allOthersFor = node.roomID } label: {
@@ -646,6 +650,17 @@ struct RoomRow: View {
         }
         if isThread, let description = session.roomDescription(roomID) { parts.append(EmojiKeys.spoken(description, catalog: session.emojiCatalog)) }
         return parts.joined(separator: ", ")
+    }
+}
+
+/// Whether Other Threads shows under a room: the fold saved on this device, or under a room read
+/// before joining one that starts open whatever was saved, as apron-web's (#198). Folding either
+/// saves it, as the web's does.
+enum OtherThreadsFold {
+    @MainActor
+    static func open(in roomID: String, of session: ServerSession, saved: Binding<Bool>, reading: Binding<Bool>) -> Binding<Bool> {
+        guard !session.joinedRoomIDs.contains(roomID) else { return saved }
+        return Binding(get: { reading.wrappedValue }, set: { reading.wrappedValue = $0; saved.wrappedValue = $0 })
     }
 }
 

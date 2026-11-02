@@ -4,13 +4,16 @@ import SwiftUI
 /// A room's threads on iPhone, from Threads in its header's ⋯ menu, since the rooms list is
 /// out of sight while a room is open: what the iPad sidebar shows under the open room (joined
 /// threads, Inactive, Other Threads with "N more…") from the same `ThreadList`, and New Thread.
-/// In a thread it lists its room's threads. Picking one hands it to `open` once the sheet is gone.
+/// In a thread it lists its room's threads. Under a room read before joining, while none of its
+/// threads are joined, all of them without the Other Threads heading (#198). Picking one hands it
+/// to `open` once the sheet is gone, which reads it without joining.
 struct ThreadsSheet: View {
     let session: ServerSession
     let roomID: String
     let open: (String) -> Void
     let newThread: () -> Void
     @AppStorage("otherThreadsOpen") private var othersOpen = true
+    @State private var readingOthersOpen = true
     @AppStorage("inactiveThreadsOpen") private var inactiveOpen = false
     @State private var allOthers = false
     @Environment(\.fixedNow) private var fixedNow
@@ -57,7 +60,8 @@ struct ThreadsSheet: View {
 
     @ViewBuilder
     private func threads(of node: RoomNode) -> some View {
-        let list = session.threadList(of: node, open: roomID, othersFolded: !othersOpen, allOthers: allOthers,
+        let others = OtherThreadsFold.open(in: node.roomID, of: session, saved: $othersOpen, reading: $readingOthersOpen)
+        let list = session.threadList(of: node, open: roomID, othersFolded: !others.wrappedValue, allOthers: allOthers,
                                       now: fixedNow ?? .now, inactiveFolded: !inactiveOpen)
         ForEach(list.joined, id: \.self, content: row)
         if list.inactiveCount > 0 {
@@ -65,7 +69,7 @@ struct ThreadsSheet: View {
             ForEach(list.inactive, id: \.self, content: row)
         }
         if list.othersCount > 0 {
-            FoldHeading(label: "Other Threads", count: list.othersCount, open: $othersOpen)
+            if !list.bare { FoldHeading(label: "Other Threads", count: list.othersCount, open: others) }
             ForEach(list.others, id: \.self, content: row)
             if list.moreOthers > 0 {
                 Button { allOthers = true } label: {
