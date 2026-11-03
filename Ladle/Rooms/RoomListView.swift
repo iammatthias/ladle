@@ -63,6 +63,7 @@ struct RoomListView: View {
     /// Search Local History, from the rooms search's "Search Messages for".
     @State private var searchingHistory: HistoryQuery?
     @Environment(\.openPreferences) private var openPreferences
+    @Environment(\.messageAlerts) private var messageAlerts
 
     struct HistoryQuery: Identifiable {
         var query: String
@@ -165,7 +166,14 @@ struct RoomListView: View {
             opened = side.map { OpenedThread(id: thread, quiet: $0) }
         }
         .background(Palette.chrome)
-        .safeAreaInset(edge: .bottom, spacing: 0) { profileBar }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            VStack(spacing: 0) {
+                if let alerts = messageAlerts, let offer = alerts.offer, session.you != nil {
+                    NotifyOfferView(alerts: alerts, offer: offer, pointsAtPreferences: true)
+                }
+                profileBar
+            }
+        }
         .navigationTitle(session.serverName)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

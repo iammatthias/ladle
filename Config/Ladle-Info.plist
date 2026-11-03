@@ -50,6 +50,8 @@
 	<false/>
 	<key>LadlePasskeyDomains</key>
 	<string>$(APRON_ASSOCIATED_DOMAINS)</string>
+	<key>LadlePushEnvironment</key>
+	<string>$(LADLE_PUSH)</string>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>

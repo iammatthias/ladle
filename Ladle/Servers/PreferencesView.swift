@@ -1,6 +1,5 @@
 import ApronKit
 import SwiftUI
-import UserNotifications
 
 /// Preferences, as apron-web's (#184): Profile, Notifications, Appearance, Media and History, in
 /// its order, each a screen of its own. It opens at a section when asked (`openPreferences`), as
@@ -76,7 +75,7 @@ extension EnvironmentValues {
 
 /// The servers a per-server section shows: the one asked for, else every server signed in.
 @MainActor
-private func sessions(_ store: SessionStore, _ server: UUID?) -> [ServerSession] {
+func sessions(_ store: SessionStore, _ server: UUID?) -> [ServerSession] {
     store.records.filter { server == nil || $0.id == server }.compactMap { store.session(for: $0.id) }.filter { $0.you != nil }
 }
 
@@ -109,46 +108,6 @@ private struct ProfilePreferences: View {
             .background(Palette.chrome)
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
-        }
-    }
-}
-
-/// Notifications, as apron-web's, as far as Ladle notifies: whether iOS lets Ladle notify (Remind
-/// Me's reminders), and Pause notifications on each server that offers it.
-private struct NotificationsPreferences: View {
-    let store: SessionStore
-    let server: UUID?
-    @State private var authorization: UNAuthorizationStatus?
-    @Environment(\.openURL) private var openURL
-
-    var body: some View {
-        Form {
-            Section {
-                LabeledContent("Notifications", value: words)
-                if authorization == .denied, let settings = URL(string: UIApplication.openSettingsURLString) {
-                    Button("Open Settings") { openURL(settings) }
-                }
-            } footer: {
-                Text("Ladle notifies you of the reminders you set with Remind Me. Alerts for messages and mentions while it is closed need push (§4.9), which Ladle doesn't have yet.").formFooter()
-            }
-            .listRowBackground(Palette.raised)
-            ForEach(sessions(store, server).filter(\.mayMute), id: \.record.id) { session in
-                PauseSection(session: session, header: server == nil ? session.serverName : nil)
-            }
-        }
-        .scrollContentBackground(.hidden)
-        .background(Palette.chrome)
-        .navigationTitle("Notifications")
-        .navigationBarTitleDisplayMode(.inline)
-        .task { authorization = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus }
-    }
-
-    private var words: String {
-        switch authorization {
-        case .authorized, .provisional, .ephemeral: "On"
-        case .denied: "Off in Settings"
-        case .notDetermined: "Asked with your first reminder"
-        default: ""
         }
     }
 }

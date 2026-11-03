@@ -6,3 +6,8 @@
 // https://<domain> for passkeys (aprond: --webauthn.origin).
 // Leave it empty to sign in with a token, email, the server's sign-in page, or as a guest.
 APRON_ASSOCIATED_DOMAINS =
+
+// Push while Ladle is closed (docs/PUSH.md): `development` or `production` adds the aps-environment
+// entitlement (scripts/associated-domains.sh) and registers for APNs. Only once the App ID has the
+// Push Notifications capability and a relay runs; empty, the build has no push.
+LADLE_PUSH =

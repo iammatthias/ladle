@@ -5,7 +5,7 @@ import SwiftUI
 struct LadleApp: App {
     @UIApplicationDelegateAdaptor private var delegate: AppDelegate
     @State private var store = SessionStore(serverStore: try? ServerStore.applicationSupport(), tokens: KeychainStore(),
-                                            notifier: LocalReminderNotifier())
+                                            notifier: LocalReminderNotifier(), messageNotifier: LocalMessageNotifier())
     @State private var loadError: String?
 
     init() {
@@ -19,6 +19,7 @@ struct LadleApp: App {
         WindowGroup {
             RootView(store: store, loadError: loadError)
                 .task {
+                    store.pushInBuild = PushDevice.shared.environment != nil
                     do { try store.load() } catch { loadError = error.localizedDescription }
                 }
         }

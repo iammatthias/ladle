@@ -47,6 +47,7 @@ struct RootView: View {
         .environment(\.openPreferences, OpenPreferencesAction { preferences = $0 })
         .environment(\.requestSignIn, SignInAction { connecting = ConnectRequest(record: $0) })
         .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
+        .environment(\.messageAlerts, store.alerts)
         .onOpenURL { url in
             // An export handed over from Files or another app opens read-only.
             if url.isFileURL { readingExport = OpenedExport(url: url) } else { ApronLink(url).map(open) }
@@ -62,9 +63,17 @@ struct RootView: View {
             // Going to the background, each session tells its server this app is idle (§4.5),
             // so it can push what comes after, and then stops; coming back, they start again,
             // attended, as a new connection starts.
+            store.alerts.appActive = phase == .active
             switch phase {
-            case .background: store.attention.background()
-            case .active: store.attention.input()
+            case .background:
+                store.attention.background()
+                Task { await store.updateBadge() }
+            case .active:
+                store.attention.input()
+                Task {
+                    await store.alerts.refreshPermission()
+                    await store.updateBadge()
+                }
             default: break
             }
             for record in store.records {
@@ -87,6 +96,13 @@ struct RootView: View {
             openReminder()
         }
         .onChange(of: ReminderRoutes.shared.opened) { openReminder() }
+        .onChange(of: ReminderRoutes.shared.pushed) {
+            guard let pushed = ReminderRoutes.shared.pushed else { return }
+            ReminderRoutes.shared.pushed = nil
+            ReminderRoutes.shared.opened = store.alerts.settings.place(ofPush: pushed)
+        }
+        .task(id: PushDevice.shared.token) { await PushDevice.shared.fetchEndpoint(for: store) }
+        .onChange(of: store.alerts.settings.relay) { Task { await PushDevice.shared.fetchEndpoint(for: store) } }
     }
 
     // MARK: iPhone
@@ -116,7 +132,7 @@ struct RootView: View {
         LinkRoute(link, records: store.records, proposal: store.proposals.find(link.state, now: Date())).map(go)
     }
 
-    /// A tapped reminder's message, once its server has loaded: revealed and highlighted, as a link to it.
+    /// A tapped reminder's or message's notification (#203), once its server has loaded: its message revealed and highlighted, as a link to it.
     private func openReminder() {
         guard let key = ReminderRoutes.shared.opened, let route = LinkRoute(key, records: store.records) else { return }
         ReminderRoutes.shared.opened = nil

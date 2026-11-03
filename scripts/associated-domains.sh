@@ -5,6 +5,8 @@
 # the servers this build may use native passkeys on. xcodegen writes the entitlements file from
 # project.yml on every `generate`, so run this right after it. Running it twice changes nothing.
 # The same list reaches the app as the Info.plist key LadlePasskeyDomains.
+# LADLE_PUSH (`development` or `production`) also sets aps-environment, push while closed
+# (docs/PUSH.md); empty or absent, the build has no push entitlement.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 file=Config/Ladle.entitlements
@@ -19,3 +21,12 @@ for domain in ${=domains//,/ }; do
   /usr/libexec/PlistBuddy -c "Add $key: string webcredentials:$domain" $file
   present+=(webcredentials:$domain)
 done
+
+push=$(sed -n 's/^[[:space:]]*LADLE_PUSH[[:space:]]*=[[:space:]]*//p' Config/Domains.xcconfig | tail -1 | tr -d '[:space:]')
+case $push in
+  "") ;;
+  development|production)
+    /usr/libexec/PlistBuddy -c "Delete :aps-environment" $file 2>/dev/null || true
+    /usr/libexec/PlistBuddy -c "Add :aps-environment string $push" $file ;;
+  *) echo "LADLE_PUSH: $push is not development or production" >&2; exit 1 ;;
+esac

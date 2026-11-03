@@ -75,6 +75,7 @@ struct TimelineView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.openRoom) private var openRoom
     @Environment(\.requestSignIn) private var requestSignIn
+    @Environment(\.messageAlerts) private var messageAlerts
     @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
 
@@ -249,6 +250,10 @@ struct TimelineView: View {
                     } else if !session.mayWrite {
                         ReadOnlyPrompt(session: session) { requestSignIn(session.record) }
                     } else {
+                        // On iPhone the rooms list, where the offer sits above the profile bar, is not on screen.
+                        if sizeClass == .compact, let alerts = messageAlerts, let offer = alerts.offer {
+                            NotifyOfferView(alerts: alerts, offer: offer)
+                        }
                         waits
                         ComposerView(session: session, roomID: roomID, draft: draft, staging: drafts.staging, onSend: send,
                                      onHeld: { dismissedWaits = [] }, onProblem: { problem = $0 },
@@ -1245,6 +1250,8 @@ extension EnvironmentValues {
     @Entry var requestSignIn = SignInAction { _ in }
     /// The signed-in session of another saved server, for a link card naming a place on it.
     @Entry var liveSessions = SessionLookup { _ in nil }
+    /// Message notifications, for the offer to turn them on.
+    @Entry var messageAlerts: MessageAlerts?
 }
 
 /// Finds a saved server's signed-in session by its URL; a struct, as `OpenRoomAction`.
