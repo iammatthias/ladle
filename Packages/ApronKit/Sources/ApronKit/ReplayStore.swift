@@ -9,8 +9,9 @@
 public struct ReplayStore: Sendable, Equatable {
     private var rooms: [String: RoomRecord] = [:]
     private var messages: [LogID: MessageSnapshot] = [:]
-    /// `message_id`s currently homed in each room.
-    private var homes: [String: Set<LogID>] = [:]
+    /// `message_id`s currently homed in each room, in numeric order, kept so on every insert: a
+    /// timeline reads a room's messages many times for each one that arrives.
+    private var homes: [String: [LogID]] = [:]
     /// Per message, per `user_id`.
     private var reactions: [LogID: [String: ReactionSet]] = [:]
     private var members: [String: MemberState] = [:]
@@ -103,7 +104,7 @@ public struct ReplayStore: Sendable, Equatable {
             if current.roomID != snapshot.roomID { unhome(snapshot.messageID, from: current.roomID) }
         }
         messages[snapshot.messageID] = snapshot
-        homes[snapshot.roomID, default: []].insert(snapshot.messageID)
+        home(snapshot.messageID, in: snapshot.roomID)
         return true
     }
 
@@ -149,8 +150,9 @@ public struct ReplayStore: Sendable, Equatable {
         for messageID in homes[roomID] ?? [] where messages[messageID]!.logID < floor {
             messages[messageID] = nil
             reactions[messageID] = nil
-            unhome(messageID, from: roomID)
         }
+        homes[roomID]?.removeAll { messages[$0] == nil }
+        if homes[roomID]?.isEmpty == true { homes[roomID] = nil }
     }
 
     public func floor(of roomID: String) -> LogID? { floors[roomID] }
@@ -196,9 +198,18 @@ public struct ReplayStore: Sendable, Equatable {
         return entries.sorted { $0.logID < $1.logID }
     }
 
+    private mutating func home(_ messageID: LogID, in roomID: String) {
+        var ids = homes[roomID] ?? []
+        let at = ids.insertionIndex(of: messageID)
+        if at == ids.endIndex || ids[at] != messageID { ids.insert(messageID, at: at) }
+        homes[roomID] = ids
+    }
+
     private mutating func unhome(_ messageID: LogID, from roomID: String) {
-        homes[roomID]?.remove(messageID)
-        if homes[roomID]?.isEmpty == true { homes[roomID] = nil }
+        guard var ids = homes[roomID] else { return }
+        let at = ids.insertionIndex(of: messageID)
+        if at < ids.endIndex, ids[at] == messageID { ids.remove(at: at) }
+        homes[roomID] = ids.isEmpty ? nil : ids
     }
 
     // MARK: Read
@@ -222,7 +233,7 @@ public struct ReplayStore: Sendable, Equatable {
 
     /// Messages currently homed in the room, in numeric `message_id` order.
     public func messages(in roomID: String) -> [MessageSnapshot] {
-        (homes[roomID] ?? []).sorted().map { messages[$0]! }
+        (homes[roomID] ?? []).map { messages[$0]! }
     }
 
     /// The room's members: the users whose latest membership is a join, each as the list or the
@@ -306,5 +317,17 @@ public struct ReplayStore: Sendable, Equatable {
             })
         }
         return .object(out)
+    }
+}
+
+extension Array where Element: Comparable {
+    /// Where `value` goes to keep the array sorted: the first index whose element is not below it.
+    func insertionIndex(of value: Element) -> Int {
+        var low = startIndex, high = endIndex
+        while low < high {
+            let mid = (low + high) / 2
+            if self[mid] < value { low = mid + 1 } else { high = mid }
+        }
+        return low
     }
 }

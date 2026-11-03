@@ -93,7 +93,10 @@ clone), which is only a worked example.
   - `Records` and `ReplayStore`: the four record stores (room records by `room_id`, message
     snapshots by `message_id`, reaction sets by `(message_id, user_id)`, memberships by
     `(room_id, user_id)`) under the replay rule, member-list seeding as of a position, re-homing
-    on moves, and the README's logical projection. `ext` stays a `JSONValue`. It also logs every
+    on moves, and the README's logical projection. `ext` stays a `JSONValue`. Each room's `message_id`s are kept in numeric order on insert
+    (`homes`, binary insertion), so `messages(in:)` never sorts: a timeline body reads a room
+    about nine times per arriving message, and sorting 20,000 ids cost 6 ms a read
+    (`TimelineBenchmark`). It also logs every
     membership record (`membershipLog(of:)`, dropped below the retention floor) and every logged
     room record (`renames(of:)` reads their titles) it sees, superseded or not, for the
     timeline's lines and for what a kept log writes back.
@@ -455,6 +458,12 @@ clone), which is only a worked example.
     a pure function of `store`, `outbox` and `pendingEdits`; `timeline(_:)` shows a pending edit's
     snapshot in the stored one's place. The handoff order is in `OutboxHandoffTests`, with the
     item ids for the echo before and after the result, a failure, and the edits.
+    `timelineItems` asks the calendar for a day's start once per day, not per message
+    (`startOfDay`, 29 ms of a 20,000-message build before). Row models are not memoized, and
+    nothing here is a cache: the markdown parse is a quarter of a row model's cost (3.7 of
+    14 ms for 40 rows), the rest reads session state (names, chips, cards, reactions) whose
+    every input a key would have to carry, with `pendingEdits` and the handoff changing a row
+    under an unchanged `log_id`. The ordered index is state the store keeps with the record.
     `MessageRowModel` takes the `pending` item: `statusLine` ("Sending…", "Not sent. …") and
     `localFiles`, the file behind each `upload` embed still without a `url` (uploads are in
     request order after the `link` embeds), which the row draws in place of the loading card.
@@ -904,6 +913,12 @@ clone), which is only a worked example.
   on its first run, and `emoji.py`; all read the apron-web clone) and then the `Ladle` scheme's tests on the
   "Ladle iPhone" simulator (create it once with `xcrun simctl create "Ladle iPhone" <iPhone
   device type> <iOS runtime>`). Set `DEST` to override.
+- `TimelineBenchmark` (`Tests/ApronKitTests/TimelineBenchmark.swift`) times what one timeline
+  body costs on a room of 5,000 and 20,000 messages: `store.messages(in:)`, `timeline()`,
+  `timelineItems()`, the unread and mention counts, 40 row models, the calls one `TimelineView`
+  body makes, and one live message appended. It is skipped unless `LADLE_BENCH=1`; run it in a
+  release build, alone (the file's header has the command), and read medians against the
+  spread and the machine's load.
 - The gate is `scripts/sync-fixtures.sh --check && swift test --package-path
   Packages/ApronKit`. It checks the fixture copies against the spec clone, then runs the fixture
   gate below, the unit tests, and the integration tests. It needs no simulator. The integration

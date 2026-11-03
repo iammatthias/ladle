@@ -99,6 +99,15 @@ extension ServerSession {
         var run: [MembershipRecord] = []
         var runDay: Date?
         func date(_ id: LogID) -> Date { Date(timeIntervalSince1970: (Double(id.text) ?? 0) / 1000) }
+        // The calendar is asked once per day, not once per message: a room's messages come in
+        // order, so a date inside the day last asked about starts that day.
+        var within: Range<Date>?
+        func startOfDay(_ date: Date) -> Date {
+            if let within, within.contains(date) { return within.lowerBound }
+            let start = calendar.startOfDay(for: date)
+            within = calendar.date(byAdding: .day, value: 1, to: start).map { start ..< $0 }
+            return start
+        }
         func push(day start: Date) {
             guard start != day else { return }
             closeRun()
@@ -119,7 +128,7 @@ extension ServerSession {
         func pushGap(before: LogID?) {
             while let (position, event) = pending.first, before.map({ position < $0 }) ?? true {
                 pending.removeFirst()
-                let start = calendar.startOfDay(for: date(position))
+                let start = startOfDay(date(position))
                 switch event {
                 case .membership(let record):
                     if !run.isEmpty, runDay != start { closeRun() }
@@ -147,7 +156,7 @@ extension ServerSession {
         for message in timeline(roomID) {
             pushGap(before: message.messageID)
             closeRun()
-            push(day: calendar.startOfDay(for: message.date))
+            push(day: startOfDay(message.date))
             if message.messageID == lineBefore {
                 items.append(.unreadLine)
                 previous = nil
@@ -163,7 +172,7 @@ extension ServerSession {
         for item in queued where item.sentID.map({ store.message($0) == nil }) ?? true {
             guard let sender else { continue }
             let message = item.snapshot(from: sender, commands: commands)
-            push(day: calendar.startOfDay(for: message.date))
+            push(day: startOfDay(message.date))
             items.append(.message(message, continues: continues(message), pending: item))
             previous = message
         }

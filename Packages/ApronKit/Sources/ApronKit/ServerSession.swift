@@ -734,7 +734,7 @@ public final class ServerSession {
 
     // MARK: Frames
 
-    private func handle(_ notification: WireNotification) {
+    func handle(_ notification: WireNotification) {
         let params = notification.params
         switch notification.method {
         case "server":
