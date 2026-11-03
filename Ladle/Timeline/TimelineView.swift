@@ -24,6 +24,8 @@ struct TimelineView: View {
     /// An open edit, which sits beside the kept draft and is never kept, as apron-web's editor.
     @State private var editing: ComposerDraft?
     @State private var problem: String?
+    /// What was asked of the server: "Leaving…" after 600 ms, its error until the next (#69).
+    @State private var feedback = RequestFeedback()
     @State private var reacting: MessageSnapshot?
     @State private var deleting: MessageSnapshot?
     @State private var leaving = false
@@ -217,6 +219,8 @@ struct TimelineView: View {
                 VStack(spacing: Tokens.Space.s2) {
                     if let pill = loading.pill, !session.timeline(roomID).isEmpty {
                         LoadingPill(label: pill, rising: true)
+                    } else if let toast = feedback.current, toast.kind == .pending {
+                        LoadingPill(label: toast.text, rising: true)
                     }
                     if !atBottom, session.unreadCount(in: roomID) > 0 {
                         JumpBar(count: session.unreadCount(in: roomID), mentions: session.mentionCount(in: roomID)) {
@@ -380,7 +384,7 @@ struct TimelineView: View {
         .sheet(item: $reacting) { message in
             ReactionPicker(session: session, caption: session.reactCaption(for: message)) { emoji in
                 reacting = nil
-                perform { try await session.toggleReaction(emoji, on: message.messageID) }
+                perform("Reacting…") { try await session.toggleReaction(emoji, on: message.messageID) }
             }
         }
         .modifier(MembersPresentation(session: session, roomID: roomID, showing: $showingMembers, compact: sizeClass == .compact) { id, name in
@@ -389,12 +393,12 @@ struct TimelineView: View {
         })
         .confirmationDialog("Delete this message?", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                             titleVisibility: .visible, presenting: deleting) { message in
-            Button("Delete Message", role: .destructive) { perform { try await session.delete(message) } }
+            Button("Delete Message", role: .destructive) { perform("Deleting message…") { try await session.delete(message) } }
         } message: { _ in
             Text("It is removed for everyone in the room.")
         }
         .confirmationDialog("Leave \(session.title(of: roomID))?", isPresented: $leaving, titleVisibility: .visible) {
-            Button("Leave", role: .destructive) { perform { try await session.leave(roomID) } }
+            Button("Leave", role: .destructive) { perform("Leaving…") { try await session.leave(roomID) } }
         } message: {
             Text(session.isPrivate(roomID) ? "It is private, so you need an invitation to come back." : "You can join it again from Browse Rooms.")
         }
@@ -566,7 +570,7 @@ struct TimelineView: View {
             // Read without joining: Join stays a button, since it is what such a pane is for (the web's RoomHeader).
             if mayJoin {
                 let noun = session.store.room(roomID)?.parentRoomID == nil ? "room" : "thread"
-                Button("Join") { perform { try await session.join(roomID) } }
+                Button("Join") { perform("Joining…") { try await session.join(roomID) } }
                     .buttonStyle(.borderedProminent)
                     .tint(Palette.accent)
                     .accessibilityLabel("Join \(noun)")
@@ -684,6 +688,12 @@ struct TimelineView: View {
                         .labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
                 }
             }
+            if let toast = feedback.current, toast.kind == .error {
+                ActionBanner(symbol: "exclamationmark.triangle", title: toast.text, tone: Palette.danger) {
+                    Button("Dismiss", systemImage: "xmark") { feedback.dismiss(toast) }
+                        .labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
+                }
+            }
             if let problem {
                 ActionBanner(symbol: "exclamationmark.triangle", title: problem, tone: Palette.danger) {
                     Button("Dismiss", systemImage: "xmark") { self.problem = nil }
@@ -696,7 +706,7 @@ struct TimelineView: View {
             }
         }
         .padding(.horizontal, Tokens.Space.s4)
-        .padding(.top, state == nil && problem == nil && !reminding.notificationsOff && session.unavailableMessage == nil ? 0 : Tokens.Space.s2)
+        .padding(.top, state == nil && problem == nil && feedback.current?.kind != .error && !reminding.notificationsOff && session.unavailableMessage == nil ? 0 : Tokens.Space.s2)
     }
 
     @ViewBuilder
@@ -714,7 +724,7 @@ struct TimelineView: View {
                            pulsing: pulsing.contains(message.messageID),
                            reminderDue: reminding.reminder(on: message)?.due,
                            onClearReminder: { reminding.forget(message) },
-                           onReact: { emoji in perform { try await session.toggleReaction(emoji, on: message.messageID) } },
+                           onReact: { emoji in perform("Reacting…") { try await session.toggleReaction(emoji, on: message.messageID) } },
                            onAddReaction: { reacting = message },
                            onJump: { jumpTarget = $0.text },
                            onProfile: { profile = ProfileRequest(user: message.from, roomID: roomID) },
@@ -778,7 +788,7 @@ struct TimelineView: View {
             if menu.reacts {
                 ControlGroup {
                     ForEach(ReactionPicker.quick.prefix(4), id: \.self) { emoji in
-                        Button(emoji) { perform { try await session.toggleReaction(emoji, on: message.messageID) } }
+                        Button(emoji) { perform("Reacting…") { try await session.toggleReaction(emoji, on: message.messageID) } }
                     }
                     Button("More Reactions", systemImage: "face.smiling") { reacting = message }
                 }
@@ -821,7 +831,7 @@ struct TimelineView: View {
             Button("Edit", systemImage: "pencil") { editing = ComposerDraft(field: DraftField(editing: message, in: session)) }
         }
         if menu.removesReply {
-            Button("Remove Reply Reference", systemImage: "arrowshape.turn.up.left") { perform { try await session.removeReply(from: message) } }
+            Button("Remove Reply Reference", systemImage: "arrowshape.turn.up.left") { perform("Removing reply reference…") { try await session.removeReply(from: message) } }
         }
         if menu.editable {
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
@@ -972,6 +982,11 @@ struct TimelineView: View {
         Task {
             do { try await operation() } catch { problem = errorText(error) }
         }
+    }
+
+    /// A request the toast follows, as apron-web's `feedback.track`.
+    private func perform(_ pending: String, _ operation: @escaping () async throws -> Void) {
+        Task { await feedback.track(pending, operation) }
     }
 }
 

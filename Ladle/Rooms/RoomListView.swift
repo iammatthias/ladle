@@ -52,6 +52,8 @@ struct RoomListView: View {
     @Environment(\.fixedNow) private var fixedNow
     @Environment(\.heldAwayWords) private var heldAwayWords
     @State private var problem: String?
+    /// What was asked of the server: "Leaving…" after 600 ms, its error until the next (#69).
+    @State private var feedback = RequestFeedback()
     /// The protocol version whose warning was dismissed on this launch.
     @State private var versionWarningSeen: Int?
     @State private var leaving: String?
@@ -158,6 +160,11 @@ struct RoomListView: View {
             }
         }
         .listStyle(.plain)
+        .overlay(alignment: .bottom) {
+            if let toast = feedback.current, toast.kind == .pending {
+                LoadingPill(label: toast.text, rising: true).padding(.bottom, Tokens.Space.s2)
+            }
+        }
         .environment(\.editMode, $reordering)
         .onAppear { if startsReordering { reordering = .active } }
         .background { moveKeys }
@@ -222,7 +229,7 @@ struct RoomListView: View {
         }
         .confirmationDialog(leaving.map { "Leave \(session.title(of: $0))?" } ?? "", isPresented: Binding(get: { leaving != nil }, set: { if !$0 { leaving = nil } }),
                             titleVisibility: .visible, presenting: leaving) { roomID in
-            Button("Leave", role: .destructive) { perform { try await session.leave(roomID) } }
+            Button("Leave", role: .destructive) { perform("Leaving…") { try await session.leave(roomID) } }
         } message: { roomID in
             Text(session.isPrivate(roomID) ? "It is private, so you need an invitation to come back." : "You can join it again from Browse Rooms.")
         }
@@ -387,7 +394,7 @@ struct RoomListView: View {
                 Button("Mark as Read", systemImage: "checkmark.message") { Task { await session.markAllRead(roomID) } }.tint(Palette.denim)
             }
             if !session.joinedRoomIDs.contains(roomID), session.server?.has("rooms") == true, session.mayWrite {
-                Button("Join", systemImage: "plus.circle") { perform { try await session.join(roomID) } }.tint(Palette.denim)
+                Button("Join", systemImage: "plus.circle") { perform("Joining…") { try await session.join(roomID) } }.tint(Palette.denim)
             }
         }
         .swipeActions {
@@ -413,7 +420,7 @@ struct RoomListView: View {
     /// A thread leaves at once, as the web's door on its row (#66): it is easy to join again. A
     /// room asks first.
     private func leave(_ roomID: String, isThread: Bool) {
-        if isThread { perform { try await session.leave(roomID) } } else { leaving = roomID }
+        if isThread { perform("Leaving…") { try await session.leave(roomID) } } else { leaving = roomID }
     }
 
     @ViewBuilder
@@ -446,7 +453,7 @@ struct RoomListView: View {
                 Button("Leave", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leave(roomID, isThread: isThread) }
                     .disabled(!session.mayWrite)
             } else {
-                Button("Join", systemImage: "plus.circle") { perform { try await session.join(roomID) } }
+                Button("Join", systemImage: "plus.circle") { perform("Joining…") { try await session.join(roomID) } }
                     .disabled(!session.mayWrite)
             }
         }
@@ -458,6 +465,11 @@ struct RoomListView: View {
         if let problem {
             return AnyView(ActionBanner(symbol: "exclamationmark.triangle", title: problem, tone: Palette.danger) {
                 Button("Dismiss", systemImage: "xmark") { self.problem = nil }.labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
+            })
+        }
+        if let toast = feedback.current, toast.kind == .error {
+            return AnyView(ActionBanner(symbol: "exclamationmark.triangle", title: toast.text, tone: Palette.danger) {
+                Button("Dismiss", systemImage: "xmark") { feedback.dismiss(toast) }.labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
             })
         }
         switch session.status {
@@ -488,8 +500,11 @@ struct RoomListView: View {
             // A short drop's way back says so only in your own dot, as on the web.
             guard !session.reconnectingQuietly, let state = ConnectionState(session.status) else { return nil }
             if state.isProblem {
+                guard !session.problemDismissed else { return nil }
                 return AnyView(ActionBanner(symbol: state.symbol, title: state.title(session.record), detail: state.detail) {
                     if state.canRetry { Button(session.isDisconnected ? "Connect" : "Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
+                    Button("Dismiss", systemImage: "xmark") { session.problemDismissed = true }
+                        .labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
                 })
             }
             return AnyView(Label(state.title(session.record), systemImage: state.symbol)
@@ -500,11 +515,8 @@ struct RoomListView: View {
     /// The web's ProfileBar: you, your status in words (else your `@user_id`), and the gear that
     /// opens Preferences at Profile, for this server.
     @ViewBuilder
-                guard !session.problemDismissed else { return nil }
     private var profileBar: some View {
         if let you = session.you {
-                    Button("Dismiss", systemImage: "xmark") { session.problemDismissed = true }
-                        .labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
             let name = session.displayName(for: you)
             let line = heldAwayWords ?? session.profileLine
             let away = heldAwayWords ?? session.ownPresenceWords
@@ -563,6 +575,11 @@ struct RoomListView: View {
         Task {
             do { try await operation() } catch { problem = errorText(error) }
         }
+    }
+
+    /// A request the toast follows, as apron-web's `feedback.track`.
+    private func perform(_ pending: String, _ operation: @escaping () async throws -> Void) {
+        Task { await feedback.track(pending, operation) }
     }
 }
 
