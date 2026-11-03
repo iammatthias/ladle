@@ -146,9 +146,7 @@ struct TimelineView: View {
                             .id(OlderHistoryPrompt.rowID)
                     }
                     let shown = held ? [] : items
-                    let receipts = session.receipts(in: roomID, shown: shown.compactMap {
-                        if case .message(let message, _) = $0 { message } else { nil }
-                    })
+                    let receipts = session.receipts(in: roomID, shown: shown.compactMap(\.storedMessage))
                     ForEach(shown) { item in
                         row(item, receipts: receipts).id(item.id)
                     }
@@ -216,7 +214,9 @@ struct TimelineView: View {
             }
             .onChange(of: jumpTarget) {
                 guard let jumpTarget else { return }
-                withAnimation(Motion.slide(reduceMotion)) { proxy.scrollTo(jumpTarget, anchor: .center) }
+                // A message you just sent keeps its queued row's id while the room is on screen.
+                let target = items.first { $0.storedMessage?.messageID.text == jumpTarget }?.id ?? jumpTarget
+                withAnimation(Motion.slide(reduceMotion)) { proxy.scrollTo(target, anchor: .center) }
                 self.jumpTarget = nil
             }
             .overlay(alignment: .bottom) {
@@ -729,14 +729,17 @@ struct TimelineView: View {
     @ViewBuilder
     private func row(_ item: TimelineItem, receipts: [LogID: [Reader]]) -> some View {
         switch item {
-        case .message(let message, let continues):
+        case .message(let message, let continues, let pending):
+            // A queued message's row and the logged message's are one view: the same branch, the
+            // same id, with what the menu and select mode offer gated on the server holding it.
+            let stored = item.storedMessage != nil
             HStack(alignment: .top, spacing: 0) {
-                if let picking {
+                if let picking, stored {
                     SelectMark(on: picking.contains(message.messageID))
                         .padding(.leading, Tokens.Space.s2)
                         .padding(.top, continues ? Tokens.Space.s1 : Tokens.Space.s3)
                 }
-                MessageRow(session: session, message: message, continues: continues,
+                MessageRow(session: session, message: message, continues: continues, pending: pending,
                            highlighted: highlighted == message.messageID || picking?.contains(message.messageID) == true,
                            pulsing: pulsing.contains(message.messageID),
                            reminderDue: reminding.reminder(on: message)?.due,
@@ -751,10 +754,10 @@ struct TimelineView: View {
             .padding(.horizontal, Tokens.Space.s2)
             .padding(.top, continues ? 0 : Tokens.Space.s3)
             .contentShape(Rectangle())
-            .onTapGesture { if picking != nil, session.maySelect(message, in: roomID) { toggle(message.messageID) } }
+            .onTapGesture { if picking != nil, stored, session.maySelect(message, in: roomID) { toggle(message.messageID) } }
             .focusable(interactions: .activate)
             .onKeyPress(keys: ["x"]) { press in
-                guard press.modifiers.isDisjoint(with: [.command, .control, .option]), !movingSelection,
+                guard stored, press.modifiers.isDisjoint(with: [.command, .control, .option]), !movingSelection,
                       session.maySelect(message, in: roomID) else { return .ignored }
                 if picking == nil { editing = nil }
                 picking = KeyboardCommands.pressX(on: message.messageID, selection: picking, roomID: roomID,
@@ -762,13 +765,13 @@ struct TimelineView: View {
                 return .handled
             }
             .onKeyPress(keys: [.space, .return]) { _ in
-                guard picking != nil, session.maySelect(message, in: roomID) else { return .ignored }
+                guard picking != nil, stored, session.maySelect(message, in: roomID) else { return .ignored }
                 toggle(message.messageID)
                 return .handled
             }
             .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: Tokens.Radius.md))
-            .contextMenu { if picking == nil { actions(for: message) } }
-            .accessibilityActions { if picking == nil { actions(for: message) } }
+            .contextMenu { if picking == nil { if stored { actions(for: message) } else if let pending { actions(for: pending) } } }
+            .accessibilityActions { if picking == nil { if stored { actions(for: message) } else if let pending { actions(for: pending) } } }
             .accessibilityAddTraits(picking?.contains(message.messageID) == true ? .isSelected : [])
         case .day(let date):
             TimelineDivider(kind: .day, label: DayLabel.text(date, now: fixedNow ?? .now))
@@ -791,10 +794,20 @@ struct TimelineView: View {
         case .renamed(let rename):
             SystemLine(text: MembershipLines.rename(rename.title, thread: session.store.room(roomID)?.parentRoomID != nil),
                        date: Date(timeIntervalSince1970: (Double(rename.logID.text) ?? 0) / 1000))
-        case .pending(let pending):
-            PendingRow(session: session, pending: pending)
-                .padding(.horizontal, Tokens.Space.s4)
-                .padding(.top, Tokens.Space.s3)
+        }
+    }
+
+    /// A queued message's menu (UX spec 3.8): Cancel Sending, or Retry and Delete once it failed.
+    @ViewBuilder
+    private func actions(for pending: ServerSession.PendingMessage) -> some View {
+        switch pending.state {
+        case .sending:
+            Button("Cancel Sending", systemImage: "xmark.circle", role: .destructive) { session.discard(pending.id) }
+        case .failed:
+            Button("Retry", systemImage: "arrow.clockwise") { session.retry(pending.id) }
+            Button("Delete", systemImage: "trash", role: .destructive) { session.discard(pending.id) }
+        case .sent:
+            EmptyView()
         }
     }
 
@@ -1260,41 +1273,6 @@ struct TightLabel: LabelStyle {
             configuration.icon.imageScale(.small)
             configuration.title
         }
-    }
-}
-
-/// A queued message: dimmed with "Sending…", or "Not sent" with Retry and Delete (UX spec 4.2).
-struct PendingRow: View {
-    let session: ServerSession
-    let pending: ServerSession.PendingMessage
-
-    var body: some View {
-        HStack(alignment: .top, spacing: Tokens.Space.s3) {
-            if let you = session.you {
-                Avatar(name: session.displayName(for: you), userID: you.userID, image: session.avatarURL(of: you.userID)).padding(.top, 2)
-            }
-            VStack(alignment: .leading, spacing: Tokens.Space.s1) {
-                if !pending.text.isEmpty {
-                    Text(pending.text).apText(.body).environment(\.textFace, .chat).foregroundStyle(Palette.ink)
-                }
-                ForEach(pending.attachments) { attachment in
-                    Label(attachment.title, systemImage: attachment.isImage ? "photo" : attachment.isVideo ? "film" : attachment.isAudio ? "waveform" : "doc")
-                        .apText(.ui, .semibold).foregroundStyle(Palette.ink).lineLimit(1).truncationMode(.middle)
-                }
-                switch pending.state {
-                case .sending:
-                    Label("Sending…", systemImage: "clock").apText(.sm).foregroundStyle(Palette.inkMuted)
-                case .failed(let reason):
-                    Label("Not sent. \(reason)", systemImage: "exclamationmark.circle").apText(.sm).foregroundStyle(Palette.danger)
-                    HStack(spacing: Tokens.Space.s2) {
-                        Button("Retry") { session.retry(pending.id) }.buttonStyle(GhostButtonStyle(tone: Palette.accent))
-                        Button("Delete", role: .destructive) { session.discard(pending.id) }.buttonStyle(GhostButtonStyle(tone: Palette.danger))
-                    }
-                }
-            }
-        }
-        .opacity(pending.state == .sending ? Tokens.Opacity.dim : 1)
-        .accessibilityElement(children: .contain)
     }
 }
 

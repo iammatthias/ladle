@@ -727,6 +727,8 @@ public final class ServerSession {
         resetMutes()
         limits = [:]
         memberChangesUnsupported = false
+        pendingEdits = [:]
+        dropHandoffs()
         resetKept()
     }
 
@@ -800,6 +802,7 @@ public final class ServerSession {
         let live = notification.method == "message" && status == .signedIn
         let before = live ? Dictionary(records.messages.compactMap { message in store.message(message.messageID).map { (message.messageID, $0) } }) { $1 } : [:]
         install(records)
+        if live { adoptEcho(records.messages) }
         if live, let onArrivals {
             let arrived = arrivals(records.messages, before: before)
             if !arrived.isEmpty { onArrivals(arrived) }
@@ -817,6 +820,7 @@ public final class ServerSession {
         for (room, delivery) in records.rooms {
             if let floor = delivery.floor { raiseFloor(of: room.roomID, to: floor) }
         }
+        if !pendingEdits.isEmpty { settleEdits(records.messages) }
         keptChanged()
     }
 
@@ -868,6 +872,7 @@ public final class ServerSession {
     public func show(_ roomID: String, _ shown: Bool) {
         if shown { onScreen.insert(roomID) } else { onScreen.remove(roomID) }
         if !shown, liveMessage?.roomID == roomID { finishLiveTyping() }
+        if !shown { dropHandoffs(in: roomID) }
     }
 
     /// Loads the newest page of a room once (§4.3.5 step 3, without a checkpoint). A call while
@@ -1217,12 +1222,16 @@ public final class ServerSession {
     // MARK: Outbox
 
     /// A message waiting to be sent (UX spec 4.2). It keeps its request `id` across retries and
-    /// reconnects, so a server that deduplicates logs it once (§1.2).
+    /// reconnects, so a server that deduplicates logs it once (§1.2). Once the server names its
+    /// `message_id` it is `sent`, and stays in the outbox lending its row's identity to the logged
+    /// message until the room leaves the screen (`show`), so the row never remounts.
     public struct PendingMessage: Identifiable, Hashable, Sendable {
         public enum State: Hashable, Sendable {
             case sending
             /// Not sent, with the reason; it waits for Retry or Delete.
             case failed(String)
+            /// Logged under this `message_id`: the result named it, or its echo was recognized.
+            case sent(LogID)
         }
 
         public let id: String
@@ -1237,18 +1246,26 @@ public final class ServerSession {
         public internal(set) var userID: String?
         public let queuedAt: Date
         public var state: State
+
+        /// The `message_id` the server logged it under, once known.
+        public var sentID: LogID? {
+            if case .sent(let id) = state { return id }
+            return nil
+        }
     }
 
     /// Queued messages in send order, across rooms.
     public internal(set) var outbox: [PendingMessage] = []
     private var drainingOutbox = false
+    /// The queued message whose request awaits its result: the one an echo from you can be.
+    @ObservationIgnored var inFlight: String?
 
     /// Queues a message and sends it now if signed in, or on the next sign-in as the same user.
     /// Commands are not queued: they need a connection (UX spec 4.2).
     public func post(_ text: String, in roomID: String, replyTo: LogID? = nil, mentions: [String] = [], links: [Embed] = [],
                      attachments: [Attachment] = []) {
         outbox.append(PendingMessage(id: "q-" + environment.makeRequestID(), roomID: roomID, text: text, replyTo: replyTo,
-                                     mentions: mentions, links: links, attachments: attachments, userID: you?.userID, queuedAt: Date(), state: .sending))
+                                     mentions: mentions, links: links, attachments: attachments, userID: you?.userID, queuedAt: environment.now(), state: .sending))
         Task { await drainOutbox() }
     }
 
@@ -1274,9 +1291,12 @@ public final class ServerSession {
                 continue
             }
             do {
-                try await send(item.text, in: item.roomID, replyTo: item.replyTo, mentions: item.mentions, links: item.links,
-                               attachments: item.attachments, id: item.id)
-                outbox.removeAll { $0.id == item.id }
+                inFlight = item.id
+                defer { inFlight = nil }
+                let logged = try await send(item.text, in: item.roomID, replyTo: item.replyTo, mentions: item.mentions, links: item.links,
+                                            attachments: item.attachments, id: item.id)
+                // The server logged nothing (§3.5.1): there is no message to hand the row to.
+                if let logged { mark(item.id, .sent(logged)) } else { outbox.removeAll { $0.id == item.id } }
             } catch let error as RPCError {
                 if error.retryAfter != nil, error.limitCategory == "upload" {
                     // Only uploads are paused, for as long as a day: the text behind it goes on.
@@ -1298,20 +1318,72 @@ public final class ServerSession {
         if let index = outbox.firstIndex(where: { $0.id == id }) { outbox[index].state = state }
     }
 
+    /// A live creation from you that reads as the request in flight (same room, text and reply)
+    /// is its echo, and names its `message_id` before the result does. The frame carries no
+    /// request id (§3.5.3), so this is a reading, not a fact: the result corrects it if it names
+    /// another id, as when another device of yours posts the same words at the same moment.
+    private func adoptEcho(_ messages: [MessageSnapshot]) {
+        guard let inFlight, let index = outbox.firstIndex(where: { $0.id == inFlight }), outbox[index].state == .sending else { return }
+        let item = outbox[index]
+        let text = Draft(text: item.text, commands: server?.has("command") == true).text
+        for message in messages where message.logID == message.messageID && isYou(message.from.userID)
+            && message.roomID == item.roomID && message.plainText == text && message.replyTo == item.replyTo {
+            outbox[index].state = .sent(message.messageID)
+        }
+    }
+
+    /// Sent messages whose rows handed over to the logged message go once the room leaves the
+    /// screen; the message then shows under its own id.
+    private func dropHandoffs(in roomID: String? = nil) {
+        outbox.removeAll { $0.sentID != nil && (roomID == nil || $0.roomID == roomID) }
+    }
+
+    /// An edit shown before the server echoes it: what the save sent, over the stored snapshot it
+    /// was made from, until a snapshot past `base` arrives or the request fails.
+    public struct PendingEdit: Hashable, Sendable {
+        public var base: LogID
+        public var shown: MessageSnapshot
+    }
+
+    /// Edits sent and not yet echoed, by `message_id`; `timeline` shows them in the stored
+    /// snapshots' place.
+    public internal(set) var pendingEdits: [LogID: PendingEdit] = [:]
+
     /// Saves an edit: the new text and who it mentions, and the embeds and reply it keeps,
     /// sending every other client field again (§4.4). A save replaces `body.mentions`, and the
     /// server notifies only the users it adds (§3.5.5).
     public func edit(_ edit: MessageEdit, text: String, mentions: [String]) async throws {
-        try require("edit")
-        _ = try await request("message", .object(save(edit.saved(text: text, mentions: mentions), in: edit.message.roomID)))
+        try await save(edit.saved(text: text, mentions: mentions), in: edit.message.roomID)
     }
 
     /// Saves your message without its reply reference, as apron-web's Remove reply reference.
     public func removeReply(from message: MessageSnapshot) async throws {
-        try require("edit")
         var snapshot = message
         snapshot.replyTo = nil
-        _ = try await request("message", .object(save(snapshot, in: message.roomID)))
+        try await save(snapshot, in: message.roomID)
+    }
+
+    /// Sends a save that keeps the message in its room, showing it at once (`pendingEdits`) and
+    /// taking it back if the server refuses it or the connection drops first.
+    private func save(_ snapshot: MessageSnapshot, in roomID: String) async throws {
+        try require("edit")
+        let stored = store.message(snapshot.messageID)
+        if let stored { pendingEdits[snapshot.messageID] = PendingEdit(base: stored.logID, shown: snapshot) }
+        do {
+            _ = try await request("message", .object(saveParams(snapshot, in: roomID)))
+        } catch {
+            if pendingEdits[snapshot.messageID]?.shown == snapshot { pendingEdits[snapshot.messageID] = nil }
+            throw error
+        }
+    }
+
+    /// A snapshot newer than the one an edit was made from is its echo, or a later save that
+    /// supersedes it either way.
+    private func settleEdits(_ messages: [MessageSnapshot]) {
+        for message in messages {
+            guard let edit = pendingEdits[message.messageID], let stored = store.message(message.messageID), stored.logID > edit.base else { continue }
+            pendingEdits[message.messageID] = nil
+        }
     }
 
     /// Moves a message to another room (§4.4): a save with the new `room_id` and every other
@@ -1319,12 +1391,12 @@ public final class ServerSession {
     /// else's message.
     public func move(_ message: MessageSnapshot, to roomID: String) async throws {
         try require("edit")
-        _ = try await request("message", .object(save(message, in: roomID)))
+        _ = try await request("message", .object(saveParams(message, in: roomID)))
     }
 
     /// A save of `message` in `roomID` (§4.4 replaces the client fields): its `body`, `reply_to`
     /// and `ext` as stored.
-    private func save(_ message: MessageSnapshot, in roomID: String) -> [String: JSONValue] {
+    private func saveParams(_ message: MessageSnapshot, in roomID: String) -> [String: JSONValue] {
         var params: [String: JSONValue] = ["message_id": message.messageID.json, "room_id": .string(roomID)]
         params["body"] = message.body
         params["reply_to"] = message.replyTo.map { ["message_id": $0.json] }
@@ -1444,9 +1516,14 @@ public final class ServerSession {
 
     // MARK: Reading
 
-    /// The room's messages as the timeline shows them: deleted ones are left out. The store keeps
-    /// their tombstones for the replay rule and the projection.
-    public func timeline(_ roomID: String) -> [MessageSnapshot] { store.messages(in: roomID).filter { !$0.isTombstone } }
+    /// The room's messages as the timeline shows them: deleted ones are left out, and an edit
+    /// sent and not yet echoed shows as sent (`pendingEdits`). The store keeps the tombstones and
+    /// the stored snapshots for the replay rule and the projection.
+    public func timeline(_ roomID: String) -> [MessageSnapshot] {
+        let shown = store.messages(in: roomID).filter { !$0.isTombstone }
+        guard !pendingEdits.isEmpty else { return shown }
+        return shown.map { pendingEdits[$0.messageID]?.shown ?? $0 }
+    }
 
     public func displayName(for user: UserObject) -> String { users.displayName(for: user) }
 

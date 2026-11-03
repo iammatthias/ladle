@@ -13,10 +13,12 @@ struct EmbedView: View {
     let embed: Embed
     /// The embed's place in the media viewer.
     let mediaID: String
+    /// The file this device is writing for a pending upload, shown in place of the loading card.
+    var local: Attachment? = nil
 
     var body: some View {
         if let upload = embed.upload {
-            UploadEmbedView(session: session, embed: embed, upload: upload, mediaID: mediaID)
+            UploadEmbedView(session: session, embed: embed, upload: upload, mediaID: mediaID, local: local)
         } else if embed.kind == "terminal" {
             TerminalEmbedView(session: session, embed: embed)
         } else {
@@ -32,6 +34,7 @@ struct UploadEmbedView: View {
     let embed: Embed
     let upload: Upload
     let mediaID: String
+    var local: Attachment? = nil
     @Environment(\.openMedia) private var openMedia
 
     static let maxWidth: CGFloat = 320
@@ -41,12 +44,12 @@ struct UploadEmbedView: View {
         let name = embed.name ?? "File"
         switch upload {
         case .pending:
-            PendingUploadCard(name: name, progress: embed.embedID.flatMap { session.uploadProgress[$0] })
+            PendingUploadCard(name: name, progress: embed.embedID.flatMap { session.uploadProgress[$0] }, local: local)
         case .image(let media):
             switch gate.decide(media.url) {
             case .load(let url):
                 Button { openMedia(mediaID) } label: {
-                    RemoteImage(url: url)
+                    RemoteImage(url: local?.isImage == true ? local?.fileURL ?? url : url)
                         .aspectRatio(media.aspectRatio ?? 4 / 3, contentMode: .fit)
                         .frame(maxWidth: Self.maxWidth, maxHeight: Tokens.Size.embedMaxH, alignment: .leading)
                         .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.lg))
@@ -88,14 +91,41 @@ struct UploadEmbedView: View {
 struct PendingUploadCard: View {
     let name: String
     let progress: Double?
+    /// The file this device is writing: a picture shows as itself, with the progress along its
+    /// foot, so a photo you just sent never gives way to a loading card.
+    var local: Attachment? = nil
+
+    private var words: String { progress.map { "Uploading… \(Int(($0 * 100).rounded()))%" } ?? "Uploading…" }
 
     var body: some View {
+        if let local, local.isImage {
+            let aspect = local.pixelWidth.flatMap { width in local.pixelHeight.map { CGFloat(width) / CGFloat(max($0, 1)) } } ?? 4 / 3
+            let width = min(UploadEmbedView.maxWidth, Tokens.Size.embedMaxH * aspect)
+            RemoteImage(url: local.fileURL)
+                .frame(width: width, height: width / aspect)
+                .overlay(alignment: .bottom) {
+                    Text(words).apText(.sm).monospacedDigit().foregroundStyle(Palette.ink)
+                        .padding(.horizontal, Tokens.Space.s2).padding(.vertical, Tokens.Space.s1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(Palette.timeline.opacity(0.88))
+                        .overlay(alignment: .bottom) { bar }
+                }
+                .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.lg))
+                .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.lg).strokeBorder(Palette.line))
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel("\(name), \(words)")
+                .accessibilityAddTraits(.isImage)
+        } else {
+            card
+        }
+    }
+
+    private var card: some View {
         HStack(spacing: Tokens.Space.s3) {
             FileGlyph(symbol: "arrow.up.doc", tint: Palette.inkMuted, ground: Palette.hover)
             VStack(alignment: .leading, spacing: 0) {
                 Text(name).apText(.ui, .semibold).foregroundStyle(Palette.ink).lineLimit(1).truncationMode(.middle)
-                Text(progress.map { "Uploading… \(Int(($0 * 100).rounded()))%" } ?? "Uploading…")
-                    .apText(.sm).monospacedDigit().foregroundStyle(Palette.inkMuted)
+                Text(words).apText(.sm).monospacedDigit().foregroundStyle(Palette.inkMuted)
             }
             Spacer(minLength: 0)
         }
@@ -103,21 +133,24 @@ struct PendingUploadCard: View {
         .frame(minWidth: 260, maxWidth: Tokens.Size.embedMaxW, alignment: .leading)
         .fixedSize(horizontal: true, vertical: false)
         .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
-        .overlay(alignment: .bottom) {
-            if let progress {
-                GeometryReader { geometry in
-                    ZStack(alignment: .leading) {
-                        Palette.hover
-                        Palette.accent.frame(width: geometry.size.width * progress)
-                    }
-                }
-                .frame(height: 3)
-            }
-        }
+        .overlay(alignment: .bottom) { bar }
         .clipShape(RoundedRectangle(cornerRadius: Tokens.Radius.md))
         .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.lineStrong, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
         .accessibilityElement(children: .combine)
         .accessibilityValue(progress.map { "\(Int(($0 * 100).rounded())) percent" } ?? "")
+    }
+
+    @ViewBuilder
+    private var bar: some View {
+        if let progress {
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Palette.hover
+                    Palette.accent.frame(width: geometry.size.width * progress)
+                }
+            }
+            .frame(height: 3)
+        }
     }
 }
 

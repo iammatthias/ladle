@@ -153,7 +153,7 @@ final class RoomsIntegrationTests: XCTestCase {
         XCTAssertEqual(lines(carol, in: roomID), ["\(adminName) and \(adaName) joined", "Room renamed to “Incidents”", "\(carolName) joined"],
                        "history replays the add as a join and the rename at their log_ids; Bob nets out of the last run")
         XCTAssertEqual(carol.timelineItems(roomID, lineBefore: nil).compactMap { item -> String? in
-            if case .message(let message, _) = item { message.plainText } else { nil }
+            if case .message(let message, _, _) = item { message.plainText } else { nil }
         }, ["hello"])
     }
 

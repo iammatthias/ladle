@@ -26,8 +26,8 @@ final class TimelinePolishTests: XCTestCase {
 
     func testTheFloatingDayIsTheFirstMessageInViewsUnlessItsPillShowsAboveIt() {
         let monday = message("1793091600000"), tuesday = message("1793178000000")
-        let items: [TimelineItem] = [.day(monday.date), .message(monday, continues: false), .thread(roomID: "t"),
-                                     .day(tuesday.date), .message(tuesday, continues: false)]
+        let items: [TimelineItem] = [.day(monday.date), .message(monday, continues: false, pending: nil), .thread(roomID: "t"),
+                                     .day(tuesday.date), .message(tuesday, continues: false, pending: nil)]
         let ids = items.map(\.id)
         let days = [[ids[1], ids[2]], [ids[0], ids[1]], [ids[2], ids[3], ids[4]], [ids[2], ids[4]], []].map {
             FloatingDay.day(of: items, visible: Set($0))

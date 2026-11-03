@@ -1647,7 +1647,7 @@ final class ServerSessionTests: XCTestCase {
         let sent5 = await frame(third, 2)
         XCTAssertEqual(sent5, resent, "the same id across reconnects")
         await third.deliver(["id": "q-c3", "result": ["message_id": "400"]])
-        await eventually("sent and removed") { session.outbox.isEmpty }
+        await eventually("sent") { session.outbox.first?.state == .sent(LogID("400")!) }
     }
 
     func testYouWithANewUserIDIsTheAccountRenamedAndEverythingKeptFollowsIt() async throws {
@@ -1681,7 +1681,7 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.unreadCount(in: "general"), 0, "the old id's messages are still yours")
 
         await socket.deliver(["id": "q-c3", "result": ["message_id": "300"]])
-        await eventually("sent") { session.outbox.isEmpty }
+        await eventually("sent") { session.outbox.first?.state == .sent(LogID("300")!) }
     }
 
     func testANewWithOldIsAnotherAccountRenamedAndItsRecordsStillShowItsName() async throws {

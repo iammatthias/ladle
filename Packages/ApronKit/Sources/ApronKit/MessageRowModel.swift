@@ -33,14 +33,35 @@ public struct MessageRowModel {
     /// The `link` embed for `unfurl`, which the fetched preview takes the place of. Without one,
     /// the preview goes under the embeds.
     public let unfurledEmbed: Int?
+    /// The outbox item behind the row, while the message sent from this device still has the
+    /// item's row: the row is dimmed while it sends, `statusLine` words its state, and each upload
+    /// the server has not stored yet shows the file this device is sending (`localFiles`).
+    public let pending: ServerSession.PendingMessage?
+    /// Under the text while the message is queued: "Sending…", or "Not sent." with the reason.
+    public let statusLine: String?
+    /// The file behind each `upload` embed of a message sent from this device, by the embed's
+    /// index in the message (uploads are listed in request order, §4.8.3, after the `link`
+    /// embeds), for as long as the row is the queued one's: the picture shows from the file
+    /// while the write lands and when the snapshot first names its `url`, instead of a loading
+    /// card and then a fetch of what this device just sent.
+    public let localFiles: [Int: Attachment]
     private let spokenText: String
     private let replyLine: String?
     private let movedFrom: String?
     private let reactions: String?
 
     @MainActor
-    public init(_ message: MessageSnapshot, in session: ServerSession, sessions: (URL) -> ServerSession? = { _ in nil }) {
+    public init(_ message: MessageSnapshot, in session: ServerSession, sessions: (URL) -> ServerSession? = { _ in nil },
+                pending: ServerSession.PendingMessage? = nil) {
         self.message = message
+        self.pending = pending
+        statusLine = switch pending?.state {
+        case .sending?: "Sending…"
+        case .failed(let reason)?: "Not sent. \(reason)"
+        case .sent?, nil: nil
+        }
+        let uploads = message.embedList.enumerated().filter { $0.element.kind == "upload" }
+        localFiles = Dictionary(uniqueKeysWithValues: zip(uploads, pending?.attachments ?? []).map { ($0.offset, $1) })
         name = session.displayName(for: message.from)
         roles = session.roles(of: message.from)
         mentionsYou = session.you.map { message.mentions($0.userID) && message.from.userID != $0.userID } ?? false
@@ -102,6 +123,7 @@ public struct MessageRowModel {
         if mentionsYou { parts.append("mentions you") }
         if let replyLine { parts.append(replyLine) }
         parts.append(spokenText)
+        if let statusLine { parts.append(statusLine) }
         if let liveLine { parts.append(liveLine) }
         if let movedFrom { parts.append(movedFrom) }
         parts += cards.map(\.spoken)

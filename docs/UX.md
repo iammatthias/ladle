@@ -755,7 +755,7 @@ As built (`Kit/PaneLoading.swift`, `Timeline/PaneLoadingViews.swift`), as apron-
 
 **Outbox rules.**
 
-- **Pending row.** A queued message shows in the timeline at once, dimmed, with `clock` and "Sending…". VoiceOver says "Sending".
+- **Pending row.** A queued message shows in the timeline at once as a message row of yours, dimmed, with `clock` and "Sending…" under it; a photo it carries shows as itself, with "Uploading…" along its foot once the write starts. VoiceOver reads the row with "Sending…" after the text. Its menu offers Cancel Sending (3.8).
 - **Identity.** A queued message sends only when the signed-in `user_id` matches the one that queued it. If you sign in as someone else, the message becomes "Not sent".
 - **Order.** Each room sends its queue in order, one request at a time.
 - **Errors.**
@@ -764,7 +764,8 @@ As built (`Kit/PaneLoading.swift`, `Timeline/PaneLoadingViews.swift`), as apron-
   - On `denied` or `invalid_params`, show "Not sent" with the server's message.
   - A dropped connection leaves the message queued.
 - **App exit.** The outbox is saved with the drafts (2.5). After a relaunch, items do not send by themselves. They show "Not sent" with **Retry**, which reuses the saved `id`, and **Delete**. **Judgment call.** A message written hours ago should not appear in a room without your say.
-- **Never twice.** When the broadcast with your `message_id` arrives, the pending row is replaced in place.
+- **Never twice, never neither.** The result names your `message_id`; the broadcast with it can come before or after. Either way the row stays one row: the logged message takes the pending row's place and identity the moment the device holds it, nothing is drawn twice, and no frame shows neither. The row keeps that identity until you leave the room, so it never remounts under you. Before the result, a message of yours arriving with the same words and reply is read as the echo; the result corrects it if another device of yours posted the same thing at the same moment.
+- **Edits.** An edit shows its new text from the moment Save is tapped, "edited" once the server echoes it. If the server refuses the save, the old text comes back and the reason shows as any failed request's does.
 
 **The risk, stated.** Deduplication is a SHOULD, and how long a server remembers an `id` is implementation-defined (§1.2). A server that does not deduplicate may log a resent message twice if the first attempt landed before the connection dropped. On `edit` servers you can delete the copy. Ladle does not try to detect duplicates by text.
 

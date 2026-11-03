@@ -114,6 +114,10 @@ public actor PreviewServer: FrameTransport {
             message["body"] = .object(body)
             deliver(["method": "message", "params": .object(message)])
             deliver(["id": id, "result": ["message_id": .string(messageID), "embeds": [["embed_id": "embed_live", "kind": "append", "write_url": "https://home.example/write/live"]]]])
+        case "message" where params?["body"]?["text"]?.stringValue == Self.heldText:
+            break
+        case "message" where params?["body"]?["text"]?.stringValue == Self.refusedText:
+            deliver(["id": id, "error": ["code": -32003, "message": "Too large"]])
         case "message" where LimitScope.addsUpload("message", params):
             deliver(["id": id, "error": ["code": -32002, "message": "Daily upload limit reached",
                                          "data": ["retry_after": 7500, "ext": ["limits": "upload"]]]])
@@ -145,6 +149,11 @@ public actor PreviewServer: FrameTransport {
     /// A reaction the server refuses as over its posting limit (45 s, `ext:limits` `write`), so a
     /// preview can show sending paused. Any new upload is refused for two hours (`upload`).
     public static let slowReaction = "⏳"
+
+    /// A message the server never answers, so a preview can show one still sending, and one it
+    /// refuses as too large, for a Not sent row.
+    public static let heldText = "Uploading the whole batch, hold on"
+    public static let refusedText = "This one the server turns down"
 
     /// What apron-server-rust's `/help` lists for an account with no roles.
     static let help = """

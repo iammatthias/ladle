@@ -131,8 +131,9 @@ final class UploadIntegrationTests: XCTestCase {
         let attachment = try AttachmentPreparer.prepare(source, title: "big.bin", contentType: "application/octet-stream", limits: nil, into: directory)
 
         session.post("too big", in: "general", attachments: [attachment])
-        try await waitFor("not sent", timeout: .seconds(20)) { session.outbox.first.map { $0.state != .sending } ?? false }
-        let item = try XCTUnwrap(session.outbox.first)
+        try await waitFor("not sent", timeout: .seconds(20)) { session.outbox.count == 2 }
+        XCTAssertNotNil(session.outbox.first?.sentID, "the message itself went")
+        let item = try XCTUnwrap(session.outbox.last)
         XCTAssertTrue([.failed("The file is larger than this server accepts."), .failed("The upload didn't reach the server.")].contains(item.state),
                       "413, or the server closed before reading the body: \(item.state)")
         XCTAssertEqual(item.attachments.map(\.title), ["big.bin"])

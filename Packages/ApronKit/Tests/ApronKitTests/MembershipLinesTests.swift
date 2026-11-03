@@ -91,7 +91,7 @@ final class MembershipLinesTests: XCTestCase {
         let line = try XCTUnwrap(general.first { $0.id.hasPrefix("members-") })
         XCTAssertEqual(line.id, "members-1793092750000", "keyed by the run's first record")
         let after = try XCTUnwrap(general.firstIndex { $0.id == line.id })
-        guard case .message(let moved, let continues) = general[after + 1] else { return XCTFail("the moved message follows") }
+        guard case .message(let moved, let continues, _) = general[after + 1] else { return XCTFail("the moved message follows") }
         XCTAssertEqual(moved.from.userID, "dev")
         XCTAssertFalse(continues)
 

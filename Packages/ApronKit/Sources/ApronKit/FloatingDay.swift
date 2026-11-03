@@ -26,7 +26,7 @@ public enum FloatingDay {
         for item in items where visible.contains(item.id) {
             switch item {
             case .day: return nil
-            case .message(let message, _): return message.date
+            case .message(let message, _, _): return message.date
             default: continue
             }
         }

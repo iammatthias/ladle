@@ -575,12 +575,14 @@ final class UploadSessionTests: XCTestCase {
             ["embed_id": "e2", "kind": "upload", "write_url": "https://chat.example/write/t2"],
         ]]])
         await eventually("both writes half way") { session.uploadProgress == ["e1": 0.5, "e2": 0.5] }
-        XCTAssertTrue(session.outbox.isEmpty, "the message is sent; the writes follow on their own")
+        XCTAssertEqual(session.outbox.map(\.state), [.sent(LogID("500")!)], "the message is sent; the writes follow on their own")
         XCTAssertEqual(Set(writes.recorded.map(\.url)), ["https://chat.example/write/t1", "https://chat.example/write/t2"])
         XCTAssertEqual(writes.recorded.first { $0.url.hasSuffix("t1") }, Write(url: "https://chat.example/write/t1", title: "before.jpg", contentType: "image/jpeg"))
         XCTAssertEqual(writes.recorded.first { $0.url.hasSuffix("t2") }?.title, "notes.pdf")
         writes.release()
         await eventually("finished") { session.uploadProgress.isEmpty }
+        XCTAssertEqual(session.outbox.map(\.state), [.sent(LogID("500")!)], "the sent message keeps its row until the room leaves the screen")
+        session.show("general", false)
         XCTAssertTrue(session.outbox.isEmpty)
     }
 
@@ -591,8 +593,9 @@ final class UploadSessionTests: XCTestCase {
         await socket.deliver(["id": "q-c3", "result": ["message_id": "500", "embeds": [
             ["embed_id": "e1", "kind": "upload", "write_url": "https://chat.example/write/t1"],
         ]]])
-        await eventually("not sent") { session.outbox.count == 1 && session.outbox[0].state != .sending }
-        let item = session.outbox[0]
+        await eventually("not sent") { session.outbox.count == 2 }
+        XCTAssertEqual(session.outbox[0].state, .sent(LogID("500")!), "the message itself went")
+        let item = session.outbox[1]
         XCTAssertEqual(item.state, .failed("The file is larger than this server accepts."))
         XCTAssertEqual(item.attachments.map(\.title), ["big.mov"])
         XCTAssertEqual(item.text, "")
@@ -607,7 +610,7 @@ final class UploadSessionTests: XCTestCase {
         session.post("hi", in: "general", attachments: [attachment("a.jpg")])
         _ = await sent(2)
         await socket.deliver(["id": "q-c3", "result": ["message_id": "500"]])
-        await eventually("not sent") { session.outbox.first?.state == .failed("The server didn't accept the attachment.") }
+        await eventually("not sent") { session.outbox.last?.state == .failed("The server didn't accept the attachment.") }
         XCTAssertTrue(writes.recorded.isEmpty)
     }
 

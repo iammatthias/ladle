@@ -17,13 +17,12 @@ final class TimelineTests: XCTestCase {
     private func names(_ items: [TimelineItem], in session: ServerSession) -> [String] {
         items.map { item in
             switch item {
-            case .message(let message, let continues): message.from.userID + (continues ? "+" : "")
+            case .message(let message, let continues, let pending): (pending == nil ? "" : "pending ") + message.from.userID + (continues ? "+" : "")
             case .day(let date): "day \(Int(date.timeIntervalSince1970))"
             case .unreadLine: "New"
             case .thread(let roomID): "thread " + session.title(of: roomID)
             case .members(let line): session.words(line).text
             case .renamed(let rename): "renamed " + rename.title
-            case .pending(let pending): "pending " + pending.text
             }
         }
     }

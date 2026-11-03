@@ -10,6 +10,10 @@ struct MessageRow: View {
     let session: ServerSession
     let message: MessageSnapshot
     let continues: Bool
+    /// The outbox item behind a message sent from this device (UX spec 4.2): dimmed with
+    /// "Sending…", or "Not sent" with Retry and Delete, and its own files where the uploads are
+    /// still pending. The same row from Send until the room leaves the screen.
+    var pending: ServerSession.PendingMessage? = nil
     var highlighted = false
     var pulsing = false
     var reminderDue: Date?
@@ -29,7 +33,7 @@ struct MessageRow: View {
     @Environment(\.shotPins) private var shotPins
 
     var body: some View {
-        let row = MessageRowModel(message, in: session, sessions: liveSessions.find)
+        let row = MessageRowModel(message, in: session, sessions: liveSessions.find, pending: pending)
         let name = row.name
         // At accessibility sizes the avatar gutter gives its width back to the text: a small face
         // rides in the name line instead.
@@ -77,6 +81,7 @@ struct MessageRow: View {
         }
         .padding(.vertical, Tokens.Space.s1)
         .padding(.horizontal, Tokens.Space.s2)
+        .opacity(pending?.state == .sending ? Tokens.Opacity.dim : 1)
         .background(highlighted ? Palette.hover : row.mentionsYou ? Palette.accentSoft : .clear, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
         .overlay {
             if reminderDue != nil {
@@ -156,7 +161,7 @@ struct MessageRow: View {
         if !row.embeds.isEmpty {
             VStack(alignment: .leading, spacing: Tokens.Space.s2) {
                 ForEach(row.embeds, id: \.index) { index, embed in
-                    let view = EmbedView(session: session, embed: embed, mediaID: MediaItem.id(message, index))
+                    let view = EmbedView(session: session, embed: embed, mediaID: MediaItem.id(message, index), local: row.localFiles[index])
                     if let unfurl = row.unfurl, index == row.unfurledEmbed {
                         FetchedLinkCard(url: unfurl) { view }
                     } else {
@@ -172,6 +177,18 @@ struct MessageRow: View {
         if let reactions = session.store.reactions(on: message.messageID) {
             ReactionBar(session: session, reactions: reactions, onReact: onReact, onAdd: onAddReaction)
                 .padding(.top, Tokens.Space.s1)
+        }
+        if let line = row.statusLine, let pending {
+            let failed = if case .failed = pending.state { true } else { false }
+            Label(line, systemImage: failed ? "exclamationmark.circle" : "clock")
+                .apText(.sm).foregroundStyle(failed ? Palette.danger : Palette.inkMuted)
+                .padding(.top, Tokens.Space.s1)
+            if failed {
+                HStack(spacing: Tokens.Space.s2) {
+                    Button("Retry") { session.retry(pending.id) }.buttonStyle(GhostButtonStyle(tone: Palette.accent))
+                    Button("Delete", role: .destructive) { session.discard(pending.id) }.buttonStyle(GhostButtonStyle(tone: Palette.danger))
+                }
+            }
         }
     }
 }

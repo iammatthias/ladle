@@ -78,7 +78,7 @@ extension ServerSession {
     private func notSent(_ attachment: Attachment, in roomID: String, _ error: any Error) {
         let reason = (error as? LocalizedError)?.errorDescription ?? "The upload failed."
         outbox.append(PendingMessage(id: "q-" + environment.makeRequestID(), roomID: roomID, text: "", replyTo: nil, mentions: [],
-                                     attachments: [attachment], userID: you?.userID, queuedAt: Date(), state: .failed(reason)))
+                                     attachments: [attachment], userID: you?.userID, queuedAt: environment.now(), state: .failed(reason)))
     }
 
     private func progressReporter(_ embedID: String) -> @Sendable (Double) -> Void {

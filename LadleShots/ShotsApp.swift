@@ -27,7 +27,7 @@ enum Screen: String, CaseIterable {
     case markdown, mediaGate = "media-gate", mediaGateLoaded = "media-gate-loaded", mediaGateBlocked = "media-gate-blocked"
     case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline", serverPane = "server-pane", serverPaneDemo = "server-pane-demo", mentionChip = "mention-chip"
     case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing", rolePicker = "role-picker", roleChip = "role-chip"
-    case muted, paused, notificationsPaused = "notifications-paused", limited
+    case muted, paused, notificationsPaused = "notifications-paused", limited, outbox
     case appearance, appearanceCustom = "appearance-custom", preferences, preferencesMedia = "preferences-media", history
     case search, searchFiltered = "search-filtered", roomsSearch = "rooms-search"
     case select, selectLog = "select-log"
@@ -118,7 +118,7 @@ enum Renderer {
         let firstListed = home.roomTree.map(\.roomID)
 
         var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool, look: Look?)] = []
-        for screen in Screen.allCases where screen != .limited && screen != .privateFull {
+        for screen in Screen.allCases where screen != .limited && screen != .privateFull && screen != .outbox {
             shots.append((screen, .dark, false, Look.seeded(screen)))
             shots.append((screen, .light, false, Look.seeded(screen)))
         }
@@ -140,6 +140,9 @@ enum Renderer {
         // The busy room drawn in Apron and then given Linocut without being made again: what a
         // theme chosen in Preferences does to the screens already open.
         shots.append((.timeline, .dark, false, Look.switched))
+        // Late, since the message its server never answers leaves home's outbox busy.
+        shots.append((.outbox, .dark, false, nil))
+        shots.append((.outbox, .light, false, nil))
         // After the others, since it starts home's fifth private room, which the rooms list would show.
         shots.append((.privateFull, .dark, false, nil))
         shots.append((.privateFull, .light, false, nil))
@@ -171,6 +174,7 @@ enum Renderer {
             UserDefaults.standard.set(shot.screen != .membersFolded, forKey: "memberOfflineOpen")
             if shot.screen == .limited { await seedWaits(home: home) }
             if shot.screen == .commandFailed { await seedCommandFailure(home: home) }
+            await seedOutbox(shot.screen == .outbox, home: home, staged: staged)
             if shot.screen.readsGarden {
                 _ = try? await home.listUnjoinedRooms()
                 try? await home.open(PreviewFixtures.gardenRoomID)
@@ -592,6 +596,11 @@ enum Renderer {
         case .commandFailed:
             // `/kick @dev` in ops, which the server refused: its reason as a notice, and the draft given back.
             AnyView(NavigationStack { TimelineView(session: home, roomID: "ops", reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: commandDrafts) })
+        case .outbox:
+            // Two of yours in the busy room: one the server refused (Not sent, Retry and Delete), and
+            // one with a photo still sending, the photo its own tile, dimmed with "Sending…".
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
+                .environment(\.shotPins, ShotPins(scrollTo: "bottom")))
         case .floatingDay:
             // Scrolled back to Eun-ji's mention: the day of the rows at the top floats there.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
@@ -706,6 +715,22 @@ enum Renderer {
     static let commandDrafts = Drafts()
 
     /// Runs `/kick @dev` in ops once, as the composer does: the preview server refuses it.
+    /// The outbox shot's two messages in the busy room: one the preview server refuses as too
+    /// large, then one with a photo it never answers, which stays sending. Any other shot finds
+    /// them gone, since the rows would stay in every later busy-room shot.
+    static func seedOutbox(_ shown: Bool, home: ServerSession, staged: [StagedFile]) async {
+        guard shown else {
+            for item in home.outbox { home.discard(item.id) }
+            return
+        }
+        guard home.outbox.isEmpty, let photo = staged.compactMap(\.attachment).first else { return }
+        home.post(PreviewServer.refusedText, in: PreviewFixtures.busyRoomID)
+        home.post(PreviewServer.heldText, in: PreviewFixtures.busyRoomID, attachments: [photo])
+        for _ in 0..<100 where home.outbox.first?.state == .sending {
+            try? await Task.sleep(for: .milliseconds(20))
+        }
+    }
+
     static func seedCommandFailure(home: ServerSession) async {
         let key = DraftKey(server: home.record.id, roomID: "ops")
         guard commandDrafts[key].isEmpty else { return }

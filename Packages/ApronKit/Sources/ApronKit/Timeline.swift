@@ -4,25 +4,55 @@ import Foundation
 /// the point the thread was created, join and leave lines, rename lines, and queued messages last.
 public enum TimelineItem: Identifiable, Sendable {
     /// `continues` is true when the previous row is the same author within five minutes.
-    case message(MessageSnapshot, continues: Bool)
+    /// `pending` is the outbox item behind the row: a message still sending or not sent, whose
+    /// snapshot is then the device's own reading of it (`PendingMessage.snapshot`), or a sent one
+    /// whose row the logged message took over. Either way the row's id is the outbox item's, so
+    /// the row stays one view from Send until the room leaves the screen.
+    case message(MessageSnapshot, continues: Bool, pending: ServerSession.PendingMessage?)
     case day(Date)
     case unreadLine
     case thread(roomID: String)
     /// Consecutive membership records netted out (`MembershipLines`).
     case members(MembershipLine)
     case renamed(RoomRename)
-    case pending(ServerSession.PendingMessage)
 
     public var id: String {
         switch self {
-        case .message(let message, _): message.messageID.text
+        case .message(let message, _, let pending): pending.map { "pending-" + $0.id } ?? message.messageID.text
         case .day(let date): "day-\(date.timeIntervalSince1970)"
         case .unreadLine: "unread"
         case .thread(let roomID): "thread-" + roomID
         case .members(let line): "members-" + line.firstLogID.text
         case .renamed(let rename): "renamed-" + rename.logID.text
-        case .pending(let pending): "pending-" + pending.id
         }
+    }
+
+    /// The message the row shows when the server holds it: nil for a row that is still this
+    /// device's own reading of a queued message, which has nothing to react to, reply to or copy a
+    /// link for.
+    public var storedMessage: MessageSnapshot? {
+        guard case .message(let message, _, let pending) = self else { return nil }
+        if let pending, pending.sentID != message.messageID { return nil }
+        return message
+    }
+}
+
+extension ServerSession.PendingMessage {
+    /// Stands in for the `message_id` while the row is this device's own reading of the message:
+    /// the time it was queued, in milliseconds, as a `message_id` would be (§2.2).
+    var localID: LogID { LogID(String(Int(queuedAt.timeIntervalSince1970 * 1000))) ?? LogID("0")! }
+
+    /// The message as its row shows it before the server's snapshot arrives: from `you`, at the
+    /// time it was queued, its body as `send` builds it (`//` loses a slash where the server has
+    /// commands), each upload an `upload` embed without a `url` (pending), which is how the
+    /// server's snapshot shows it until the write lands.
+    @MainActor
+    func snapshot(from: UserObject, commands: Bool) -> MessageSnapshot {
+        var body: [String: JSONValue] = ["text": .string(ServerSession.Draft(text: text, commands: commands).text), "format": "markdown"]
+        if !mentions.isEmpty { body["mentions"] = .array(mentions.map(JSONValue.string)) }
+        let embeds = links.map(\.json) + attachments.map { ServerSession.uploadEmbed($0) }
+        if !embeds.isEmpty { body["embeds"] = .array(embeds) }
+        return MessageSnapshot(messageID: localID, logID: localID, roomID: roomID, from: from, body: .object(body), replyTo: replyTo)
     }
 }
 
@@ -108,6 +138,12 @@ extension ServerSession {
                 }
             }
         }
+        let queued = outbox.filter { $0.roomID == roomID }
+        // A sent message's row is the outbox item's, keyed by its `message_id`, until the room leaves the screen.
+        let handoffs = Dictionary(queued.compactMap { item in item.sentID.map { ($0, item) } }, uniquingKeysWith: { first, _ in first })
+        func continues(_ message: MessageSnapshot) -> Bool {
+            previous.map { $0.from.userID == message.from.userID && message.date.timeIntervalSince($0.date) < 300 } ?? false
+        }
         for message in timeline(roomID) {
             pushGap(before: message.messageID)
             closeRun()
@@ -116,15 +152,21 @@ extension ServerSession {
                 items.append(.unreadLine)
                 previous = nil
             }
-            let continues = previous.map {
-                $0.from.userID == message.from.userID && message.date.timeIntervalSince($0.date) < 300
-            } ?? false
-            items.append(.message(message, continues: continues))
+            items.append(.message(message, continues: continues(message), pending: handoffs[message.messageID]))
             previous = message
         }
         pushGap(before: nil)
         closeRun()
-        items += outbox.filter { $0.roomID == roomID }.map(TimelineItem.pending)
+        // Queued messages the server has not shown yet, as this device reads them, last.
+        let sender = you ?? UserObject(["user_id": .string(queued.first?.userID ?? "you")])
+        let commands = server?.has("command") == true
+        for item in queued where item.sentID.map({ store.message($0) == nil }) ?? true {
+            guard let sender else { continue }
+            let message = item.snapshot(from: sender, commands: commands)
+            push(day: calendar.startOfDay(for: message.date))
+            items.append(.message(message, continues: continues(message), pending: item))
+            previous = message
+        }
         return items
     }
 
