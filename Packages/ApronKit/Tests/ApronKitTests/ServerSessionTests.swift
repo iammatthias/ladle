@@ -1084,6 +1084,29 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(positions.positions(server: record.id, user: "ada"), ["general": LogID("201")!], "kept for the next launch")
     }
 
+    func testTheAccountsOwnReadCursorAppliedBeforeTheSignInResultResumesIsItsOwn() async throws {
+        session.start()
+        let socket = await transport(0)
+        await eventually("signed out") { session.status == .signedOut }
+        let signIn = Task { try await session.signIn(.guest(name: nil)) }
+        _ = await frames(socket, count: 2)
+        // A server sends the account's own cursors behind the `auth` and `room_list` results (§3.2.2, §4.6),
+        // and they can be applied before the result resumes the sign-in; sent first, they always are.
+        await socket.deliver(["method": "activity", "params": ["room_id": "general", "from": ["user_id": "ada"], "read_message_id": "150"]])
+        await socket.deliver(["method": "activity", "params": ["room_id": "general", "from": ["user_id": "bob", "name": "Bob"], "typing": 10]])
+        await eventually("the cursors are applied") { session.typingNames(in: "general") == ["Bob"] }
+        await socket.deliver(["id": "c1", "result": ["you": ["user_id": "ada", "name": "Ada"], "token": "t1"]])
+        await socket.deliver(["id": "c2", "result": ["joined": [["room_id": "general", "log_id": "100", "title": "General", "latest_log_id": "100", "history_log_id": "100"]]]])
+        _ = try await signIn.value
+        await socket.deliver(["method": "message", "params": message("149", "x")])
+        await socket.deliver(["method": "message", "params": message("151", "y")])
+        await eventually("messages applied") { session.timeline("general").count == 2 }
+        XCTAssertEqual(session.readCursors, ["general": LogID("150")!])
+        XCTAssertEqual(session.readers, [:], "yours is no reader's")
+        XCTAssertEqual(session.unreadCount(in: "general"), 1, "151 is after the cursor")
+        XCTAssertEqual(positions.positions(server: record.id, user: "ada"), ["general": LogID("150")!])
+    }
+
     func testMarkReadSendsTheCursorOnlyForward() async throws {
         let socket = queueTransport(capabilities: ["history", "rooms", "activity"])
         session.start()

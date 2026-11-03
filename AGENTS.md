@@ -231,7 +231,10 @@ clone), which is only a worked example.
       tests wait for store state rather than assume it on return.
     - Reading, as apron-web's `readAction`, `markRead` and `readPositions`: `readCursors` keeps
       this user's own `read_message_id` per room, from `activity` (§4.6) or this device's own
-      mark, forward only.
+      mark, forward only. A server sends the account's cursors behind the `auth` result, and a
+      notification can be applied before that result resumes the sign-in and sets `you`: a
+      cursor always lands under its sender (`readers` while `you` is unknown), and `adoptSignIn`
+      takes the account's own from there.
       `readPositions` is how far this user read each room on this device, from a
       `ReadPositionStore` (`read-positions.json` beside `servers.json`, by server, account and
       room; in memory for tests and previews). `readThrough(_:)` is the furthest of the two and

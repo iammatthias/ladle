@@ -175,7 +175,8 @@ public final class ServerSession {
     @ObservationIgnored private var onScreen: Set<String> = []
     /// This user's read cursor per room (§4.6): the server's, or the one this device sent.
     public private(set) var readCursors: [String: LogID] = [:]
-    /// The other members' read cursors in each room, by `user_id` (§4.6), for read receipts.
+    /// The other members' read cursors in each room, by `user_id` (§4.6), for read receipts; before
+    /// `you` is known, the account's own too, until the sign-in takes them (`takeReadCursors`).
     public private(set) var readers: [String: [String: LogID]] = [:]
     /// Read Receipts on this device, shared with every other server's session.
     public let receiptSettings: ReceiptSettings
@@ -620,6 +621,9 @@ public final class ServerSession {
     /// account under a new `user_id` as a rename, keeping its rooms.
     func adoptSignIn(_ identity: UserObject, result: JSONValue, method: String, presented: String?, registered: Bool,
                      rooms: Connection.Reply?, on connection: Connection, keepsState: Bool = false, added: [String] = []) async throws {
+        // The account's cursors applied before it was `you`: taken before a reset here, and again
+        // after the last point `you` could still be someone else or nil.
+        var earlyCursors = takeReadCursors(of: identity.userID)
         if let previous = you, previous.userID != identity.userID {
             if keepsState { followRename(from: previous.userID, to: identity.userID) } else { resetChatState() }
         }
@@ -640,6 +644,8 @@ public final class ServerSession {
             you = identity
             users.replace(with: identity)
         }
+        earlyCursors.merge(takeReadCursors(of: identity.userID)) { max($0, $1) }
+        for (roomID, read) in earlyCursors.sorted(by: { codePointLess($0.key, $1.key) }) { advanceCursor(roomID, to: read) }
         pendingEmail = nil
         pendingPage = nil
         pendingProposalState = nil
@@ -780,13 +786,10 @@ public final class ServerSession {
                 if current.userID == you?.userID, let kept = users.user(current.userID) { you = UserObject(kept) }
             }
         case "activity":
-            if you != nil, let sender = params?["from"]?["user_id"]?.stringValue,
+            if let sender = params?["from"]?["user_id"]?.stringValue,
                let roomID = OpaqueID.validated(params?["room_id"]), let read = LogID(params?["read_message_id"]) {
                 if isYou(sender) {
-                    if readCursors[roomID].map({ $0 < read }) ?? true {
-                        readCursors[roomID] = read
-                        advancePosition(roomID, to: read)
-                    }
+                    advanceCursor(roomID, to: read)
                 } else if readers[roomID]?[sender].map({ $0 < read }) ?? true {
                     readers[roomID, default: [:]][sender] = read
                     if let from = UserObject(params?["from"]), from.json["name"]?.stringValue != nil { users.merge(from) }
@@ -1576,6 +1579,27 @@ public final class ServerSession {
     /// When each room's cursor last went, and the rooms whose next one waits for the interval.
     @ObservationIgnored private var cursorSentAt: [String: ContinuousClock.Instant] = [:]
     @ObservationIgnored private var cursorsWaiting: Set<String> = []
+
+    /// This user's cursor in `roomID` moved to `read`, on the server or on another device.
+    private func advanceCursor(_ roomID: String, to read: LogID) {
+        guard readCursors[roomID].map({ $0 < read }) ?? true else { return }
+        readCursors[roomID] = read
+        advancePosition(roomID, to: read)
+    }
+
+    /// The cursors `userID` sent before it was `you`: a server sends the account's own behind the
+    /// `auth` result (§3.2.2, §4.6), and a notification can be applied before the result resumes
+    /// the sign-in, so they were kept under their sender. Taken out of `readers`.
+    private func takeReadCursors(of userID: String) -> [String: LogID] {
+        var early: [String: LogID] = [:]
+        for (roomID, cursors) in readers {
+            guard let read = cursors[userID] else { continue }
+            early[roomID] = read
+            readers[roomID]?[userID] = nil
+            if readers[roomID]?.isEmpty == true { readers[roomID] = nil }
+        }
+        return early
+    }
 
     private func advancePosition(_ roomID: String, to messageID: LogID) {
         guard let you, readPositions[roomID].map({ $0 < messageID }) ?? true else { return }
