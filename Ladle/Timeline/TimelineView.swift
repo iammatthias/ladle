@@ -542,14 +542,25 @@ struct TimelineView: View {
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            HStack(spacing: Tokens.Space.s1) {
-                // An untitled private room says who it is with before its name, as the web's RoomHeader.
-                if session.isNamedForMembers(roomID) { Faces(session: session, people: session.faces(of: roomID)) }
-                if session.isPrivate(roomID) { Lock(tint: Palette.private) }
-                Text(session.title(of: roomID)).font(.headline).foregroundStyle(Palette.ink).lineLimit(1)
+            VStack(spacing: 0) {
+                // A thread's room above its title, a crumb back to it, as the web's `Parent › Thread`.
+                if let parent = session.store.room(roomID)?.parentRoomID {
+                    Button { openRoom(parent) } label: {
+                        Text("\(TextDirection.isolated(session.title(of: parent))) ›")
+                            .apText(.xs, .semibold).foregroundStyle(Palette.denim).lineLimit(1)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Back to \(session.title(of: parent))")
+                }
+                HStack(spacing: Tokens.Space.s1) {
+                    // An untitled private room says who it is with before its name, as the web's RoomHeader.
+                    if session.isNamedForMembers(roomID) { Faces(session: session, people: session.faces(of: roomID)) }
+                    if session.isPrivate(roomID) { Lock(tint: Palette.private) }
+                    Text(session.title(of: roomID)).font(.headline).foregroundStyle(Palette.ink).lineLimit(1)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isHeader)
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
         }
         ToolbarItemGroup(placement: .primaryAction) {
             // Read without joining: Join stays a button, since it is what such a pane is for (the web's RoomHeader).

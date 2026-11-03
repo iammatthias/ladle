@@ -156,7 +156,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Thread opens at its latest reply, pages older on scroll | #91, shazow/apron#33 | has | `Kit/ServerSession.swift` (`loadOlder`) | |
 | "N+ replies" on threads with older replies | bh | has | `Kit/Threads.swift` (`replyWords`), `Timeline/TimelineView.swift` (`banner`) | The open thread's subtitle line under the bar; typing takes its place on iPhone. |
 | A thread without a title is "Untitled" | bh | has | `Kit/Threads.swift` (`isUntitled`), `Kit/ServerSession.swift` (`title`) | A top-level room without one stays its `room_id`. |
-| Thread header: crumb back to its room | bh | partial | `Timeline/TimelineView.swift` toolbar | Back pops the stack. No crumb with the room name. |
+| Thread header: crumb back to its room | bh | has | `Timeline/TimelineView.swift` toolbar | The room's title and "›" in denim over the thread's title, as the web's `Parent › Thread`; a tap opens the room. Back still pops the stack. |
 | Private room's thread must come back private | bh | has | `Kit/ServerSession.swift` (`createRoom`), `Kit/PrivateRooms.swift` (`PrivateRoomError.threadNotPrivate`) | Refused with the web's words and not opened. |
 
 ## 8. Room header and description
