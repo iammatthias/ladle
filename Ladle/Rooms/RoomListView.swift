@@ -392,7 +392,7 @@ struct RoomListView: View {
         }
         .swipeActions {
             if session.joinedRoomIDs.contains(roomID), session.server?.has("rooms") == true {
-                Button("Leave", systemImage: "rectangle.portrait.and.arrow.right") { leaving = roomID }.tint(Palette.danger)
+                Button("Leave", systemImage: "rectangle.portrait.and.arrow.right") { leave(roomID, isThread: isThread) }.tint(Palette.danger)
             }
             if session.mayMute {
                 if let mute = session.mute(of: roomID) {
@@ -408,6 +408,12 @@ struct RoomListView: View {
         }
         .contextMenu { roomActions(roomID, isThread: isThread) }
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    /// A thread leaves at once, as the web's door on its row (#66): it is easy to join again. A
+    /// room asks first.
+    private func leave(_ roomID: String, isThread: Bool) {
+        if isThread { perform { try await session.leave(roomID) } } else { leaving = roomID }
     }
 
     @ViewBuilder
@@ -437,7 +443,7 @@ struct RoomListView: View {
                         if !session.mayWrite { Text(ReadOnlyPrompt.reason(session)) }
                     }
                 }
-                Button("Leave", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leaving = roomID }
+                Button("Leave", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leave(roomID, isThread: isThread) }
                     .disabled(!session.mayWrite)
             } else {
                 Button("Join", systemImage: "plus.circle") { perform { try await session.join(roomID) } }

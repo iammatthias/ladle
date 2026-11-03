@@ -147,7 +147,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Quiet threads step back (muted title) | #76 | partial | `Rooms/RoomListView.swift` | Weight changes with unread. Not verified in code: the muted look for quiet threads. |
 | Other Threads heading, last active, "N more…" | #66, #74, #79 | has | `Kit/Threads.swift` (`ThreadList`, `LastActive`), `Rooms/RoomListView.swift` (`FoldHeading`) | "Other Threads · 4" folds them (kept on the device, open by default), three show, then "1 more…"; each says when it was last active ("4d", "9w", "2y"), and Join is a leading swipe or its menu. |
 | Join a thread from its row | #74 | has | `Rooms/RoomListView.swift` (context menu) | |
-| Leave a thread from its row without asking | #66 | partial | `Rooms/RoomListView.swift` | Leave asks first. |
+| Leave a thread from its row without asking | #66 | has | `Rooms/RoomListView.swift` (`leave`) | A thread's swipe action and menu Leave leave at once, as the web's door on the row; a room still asks. |
 | Read a thread without joining it | #102 | has | `Kit/ServerSession.swift` (`open`) | |
 | Thread card in the room feed, with description and latest message | #87, #103 | has | `Timeline/TimelineView.swift` (`ThreadCard`) | |
 | Thread card shows unread and private | #103 | has | `Timeline/TimelineView.swift` (`ThreadCard`) | |
