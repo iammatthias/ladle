@@ -586,13 +586,15 @@ struct RoomRow: View {
         let strong = isSelected || (unread > 0 && !muted)
         // A private room's row leads with who it is with; the Private heading says it is private.
         let faced = !isThread && session.isPrivateRoom(roomID)
+        // A joined thread with nothing new steps back: its title muted, its lines dimmed (#76).
+        let quiet = isThread && joined && !isSelected && unread == 0 && mentions == 0
         HStack(alignment: isThread ? .top : .center, spacing: Tokens.Space.s2) {
             if faced { Faces(session: session, people: session.faces(of: roomID)) }
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: Tokens.Space.s1) {
                     Text(session.title(of: roomID))
-                        .apText(.body, strong ? .semibold : (isThread ? .medium : .regular))
-                        .foregroundStyle(strong || isThread ? Palette.ink : Palette.inkMuted)
+                        .apText(.body, strong ? .semibold : (isThread && !quiet ? .medium : .regular))
+                        .foregroundStyle(strong || (isThread && !quiet) ? Palette.ink : Palette.inkMuted)
                         .lineLimit(1)
                     if session.isPrivate(roomID), !faced { Lock() }
                 }
@@ -601,6 +603,7 @@ struct RoomRow: View {
                         .apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
                 }
                 if isThread {
+                    Group {
                     if let description = session.roomDescription(roomID) {
                         line(icon: "text.alignleft") {
                             EmojiText(text: descriptionText(description, session.emojiCatalog), catalog: session.emojiCatalog, role: .sm)
@@ -613,6 +616,8 @@ struct RoomRow: View {
                             Text("\(sender) \(text)")
                         }
                     }
+                }
+                .opacity(quiet ? Tokens.Opacity.dim : 1)
                 }
             }
             Spacer(minLength: Tokens.Space.s2)
