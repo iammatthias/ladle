@@ -267,9 +267,10 @@ extension View {
         ), titleVisibility: .visible, presenting: removing.wrappedValue) { record in
             Button("Remove Server", role: .destructive) { Task { await store.remove(record.id) } }
         } message: { record in
+            let what = store.accounts(on: record.url).count > 1 ? "this account here and its sign-in; the other account on this server stays" : "this server and its sign-in"
             Text(["guest", "token"].contains(record.account?.scheme ?? "token")
-                 ? "Ladle forgets this server and its sign-in. If you signed in with a token or as a guest, you may not get back into this account."
-                 : "Ladle forgets this server and its sign-in. You can add it again and sign in with your email.")
+                 ? "Ladle forgets \(what). If you signed in with a token or as a guest, you may not get back into this account."
+                 : "Ladle forgets \(what). You can add it again and sign in with your email.")
         }
     }
 }
