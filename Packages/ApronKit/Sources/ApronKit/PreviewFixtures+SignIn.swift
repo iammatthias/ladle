@@ -90,3 +90,31 @@ private struct SilentTransport: FrameTransport {
     func receive() async throws -> String { throw FrameTransportError.closed }
     func close() async {}
 }
+
+extension PreviewFixtures {
+    /// Notifications on, with push through a relay on home, for Preferences > Notifications:
+    /// Notify Me About with "Only while open" beside the scopes home doesn't push.
+    @MainActor
+    public static func makeNotifyStore() async -> SessionStore {
+        let store = await makeStore(push: true, messageNotifier: RecordingMessageNotifier(permission: .authorized))
+        store.pushInBuild = true
+        await store.alerts.turnOn()
+        if let account = store.session(for: homeID)?.notifyAccount { store.alerts.settings.set(.joined, true, for: account) }
+        store.alerts.settings.setRelay(URL(string: "https://relay.example"))
+        store.alerts.settings.setEndpoint(RelayEndpoint(url: URL(string: "https://relay.example/p/preview")!, token: "preview"))
+        await store.syncPush()
+        return store
+    }
+
+    /// The offer to turn notifications on, as the first mention you'd hear makes it: Eun-ji in #general.
+    @MainActor
+    public static func makeNotifyOfferStore() async -> SessionStore {
+        let store = await makeStore()
+        if let home = store.session(for: homeID), let account = home.notifyAccount {
+            await store.alerts.arrived([Arrival(server: homeID, account: account, roomID: busyRoomID, messageID: LogID("1")!,
+                                                sender: "Eun-ji", room: home.title(of: busyRoomID), body: "",
+                                                facts: ArrivalFacts(mentioned: true, inJoined: true))])
+        }
+        return store
+    }
+}

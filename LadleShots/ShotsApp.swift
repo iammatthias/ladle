@@ -49,6 +49,7 @@ enum Screen: String, CaseIterable {
     case readReceipts = "read-receipts", profileReceipts = "profile-receipts"
     case roomsNewerServer = "rooms-newer-server", serverPaneNewer = "server-pane-newer"
     case roomsStarting = "rooms-starting", roomStarting = "room-starting", timelineFirstPage = "timeline-first-page"
+    case notifications, notifyOffer = "notify-offer", notifyOfferTimeline = "notify-offer-timeline"
     // Last of the phone shots: Browse Rooms lists the garden and the book club into home's store,
     // which the `#` list would then offer.
     case roomsOrdered = "rooms-ordered", roomsFolded = "rooms-folded", roomsThreadsFolded = "rooms-threads-folded", roomsReorder = "rooms-reorder"
@@ -112,6 +113,8 @@ enum Renderer {
         signIn = await PreviewFixtures.makeSignInStore()
         newer = await PreviewFixtures.makeNewerServerStore()
         starting = PreviewFixtures.makeStartingStore()
+        notify = await PreviewFixtures.makeNotifyStore()
+        notifyOffer = await PreviewFixtures.makeNotifyOfferStore()
         let firstListed = home.roomTree.map(\.roomID)
 
         var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool, look: Look?)] = []
@@ -205,6 +208,10 @@ enum Renderer {
     static var newer = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
     /// A server that never answers (`PreviewFixtures.makeStartingStore`).
     static var starting = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
+    /// Notifications on with push on home (`PreviewFixtures.makeNotifyStore`).
+    static var notify = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
+    /// The offer to turn notifications on, after a mention (`PreviewFixtures.makeNotifyOfferStore`).
+    static var notifyOffer = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
 
     static func view(_ screen: Screen, store: SessionStore, home: ServerSession, staged: [StagedFile]) -> AnyView {
         let owner = signIn.session(for: PreviewFixtures.ownerID)
@@ -240,6 +247,19 @@ enum Renderer {
             })
         case .serverPaneNewer:
             AnyView(newer.session(for: PreviewFixtures.newerID).map { ServerPaneView(session: $0) })
+        case .notifications:
+            AnyView(PreferencesView(store: notify, request: PreferencesRequest(section: .notifications, server: PreviewFixtures.homeID)))
+        case .notifyOffer:
+            // Above the profile bar, saying Preferences is where to change it.
+            AnyView(PhoneShot(store: notifyOffer, server: PreviewFixtures.homeID).environment(\.messageAlerts, notifyOffer.alerts))
+        case .notifyOfferTimeline:
+            // On iPhone, above the composer of the room being read.
+            AnyView(notifyOffer.session(for: PreviewFixtures.homeID).map { session in
+                NavigationStack {
+                    TimelineView(session: session, roomID: PreviewFixtures.linkRoomID, reminders: notifyOffer.reminders, hidden: notifyOffer.hiddenDescriptions, drafts: Drafts())
+                }
+                .environment(\.messageAlerts, notifyOffer.alerts)
+            })
         default:
             screens(screen, store: store, home: home, staged: staged)
         }
@@ -553,7 +573,7 @@ enum Renderer {
             // Eun-ji's mention of Sam as it arrives, its ring a third of the way out.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
                 .environment(\.shotPins, ShotPins(pulse: 0.35, scrollTo: "1793092500000")))
-        case .connectPasskey, .connectPasskeyCreate, .connectPasskeyUnavailable, .connectExternalCode, .youSignIn, .youAddEmail, .roomsHeld, .roomsNudge, .roomsNewerServer, .serverPaneNewer, .roomsStarting, .roomStarting, .timelineFirstPage:
+        case .connectPasskey, .connectPasskeyCreate, .connectPasskeyUnavailable, .connectExternalCode, .youSignIn, .youAddEmail, .roomsHeld, .roomsNudge, .roomsNewerServer, .serverPaneNewer, .roomsStarting, .roomStarting, .timelineFirstPage, .notifications, .notifyOffer, .notifyOfferTimeline:
             // Drawn by `view` from the sign-in store.
             AnyView(EmptyView())
         case .welcome:

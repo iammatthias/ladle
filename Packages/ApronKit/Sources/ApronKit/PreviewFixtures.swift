@@ -20,12 +20,19 @@ public enum PreviewFixtures {
     static func message(_ minute: Int) -> String { String(start + Int64(minute) * 60_000) }
 
     /// Signs both servers in and opens every joined room. Returns once the stores hold it all.
+    /// `push` has home offer push kind `relay`, waking for mentions and replies (§4.9).
     @MainActor
-    public static func makeStore() async -> SessionStore {
+    public static func makeStore(push: Bool = false, messageNotifier: (any MessageNotifier)? = nil) async -> SessionStore {
         let tokens = InMemoryTokenStore()
-        let scripts = [homeID: home, demoID: demo]
+        var homeScript = home
+        if push, case .object(var greeting) = homeScript.greeting {
+            greeting["push"] = ["relay": [:], "wake": ["mentions", "replies", "badge"]]
+            homeScript.greeting = .object(greeting)
+        }
+        let scripts = [homeID: homeScript, demoID: demo]
+        let fallback = homeScript
         let environment = ServerSession.Environment(
-            makeTransport: { record in PreviewServer(script: scripts[record.id] ?? home) },
+            makeTransport: { record in PreviewServer(script: scripts[record.id] ?? fallback) },
             sleep: { _ in try await Task.sleep(for: .seconds(3600)) },
             jitter: { 1 },
             fetchEmojiCatalog: { _ in emojiCatalog.serializedData() },
@@ -40,7 +47,8 @@ public enum PreviewFixtures {
         // History kept in memory, with an account signed out of home before (#199), for History's Clear buttons.
         let historyFiles = InMemoryHistoryFiles()
         try? historyFiles.write(Data(repeating: 32, count: 3 * 1024 * 1024), for: KeptAccount(server: homeID, userID: "sam_before"))
-        let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment, historyFiles: historyFiles)
+        let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment, messageNotifier: messageNotifier,
+                                 historyFiles: historyFiles)
         try? tokens.setToken("preview", for: homeID)
         for (id, url, label) in [(homeID, "wss://home.example/ws", "Home"), (demoID, "wss://demo.apron.example/ws", nil)] {
             store.add(ServerRecord(id: id, url: URL(string: url)!, label: label))

@@ -178,6 +178,8 @@ struct RoomListView: View {
             VStack(spacing: 0) {
                 if let alerts = messageAlerts, let offer = alerts.offer, session.you != nil {
                     NotifyOfferView(alerts: alerts, offer: offer, pointsAtPreferences: true)
+                        .background(Palette.chrome)
+                        .overlay(alignment: .top) { Rectangle().fill(Palette.line).frame(height: 1) }
                 }
                 profileBar
             }
