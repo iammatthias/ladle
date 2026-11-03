@@ -589,6 +589,35 @@ clone), which is only a worked example.
     message, setting and removing one, Custom…'s first time, and that notice. A tapped notification's `userInfo` reads back as its key, and
     `RootView` opens it as a link to the message (reveal and highlight). Local notifications
     need no Info.plist key.
+  - Notifications (`Notifications.swift`, `MessageAlerts.swift`, `ServerSession+Notify.swift`),
+    as apron-web's `notify-scopes.ts`, `alerts.ts` and `notifications.ts`: `NotifyScope` is
+    Notify Me About, kept per account (`NotificationSettings.account`: server and `user_id`, one
+    `~guest` per server) in `notifications.json` with the device's one switch (`enabled`, nil
+    until chosen), each account's random 16-character `push_id`, the push relay and its
+    endpoint. A live `message` frame hands `onArrivals` each new message from someone else, or
+    an edit that newly mentions you, as an `Arrival` with `ArrivalFacts` (mentioned, a reply to
+    your loaded message, private, joined, muted with its room, `silenced` by a pause or `dnd`,
+    on screen); history pages and catch-ups never do. `MessageAlerts` (owned by `SessionStore`
+    as `alerts`) offers notifications at the first mention you'd hear, and while on (`isOn`:
+    the switch and iOS's permission) posts each room's newest mention, else newest message,
+    that the scopes select, never under one it posted newer, and not for a room on screen while
+    the app is active (`appActive`, set from the scene phase). `onRead` (from `advancePosition`,
+    so your cursor from another device too) closes a room's notifications up to there;
+    `SessionStore.updateBadge` sets `unreadTotal` as the badge. `MessageNotifier` is the seam:
+    `LocalMessageNotifier` in the app (UserNotifications; identifier `apron:<push_id>:<message_id>`,
+    thread `<push_id>:<room_id>`, as a push's would be; it leaves a push of the same message
+    showing), `RecordingMessageNotifier` in tests and shots. `MessageAlert.userInfo` is a
+    `ReminderKey`'s plus `push_id`, so a tap opens the message as a reminder's does (#203).
+  - Push (`ServerSession+Push.swift`, docs/PUSH.md): kind `relay` only. `registerPush` sends
+    `push_register {kind, url, token, push_id, wake}` (`wake` the checked scopes
+    `server.push.wake` lists, left out when it lists none) and keeps the answer in `push`;
+    `unregisterPush` runs before `signOut`. `SessionStore.syncPush` registers after each
+    sign-in (`onSignedIn`) and when the switch, a scope or the endpoint changes, where
+    `pushBlocker` finds nothing in the way: `pushInBuild` (the app's `LadlePushEnvironment`),
+    `relay` in `server.push`, an account rather than a guest, a relay, and the relay's
+    `RelayEndpoint` for this device's APNs token (`PushDevice` in the app). No `keys`: the
+    server posts JSON. `NotificationSettings.place(ofPush:)` reads a tapped push's `apron`
+    payload text. `PushIntegrationTests` proves it against aprond with `LoopbackRelay`.
   - `Profile` (`Profile.swift`): your own profile and status, as apron-web's Preferences >
     Profile. `updateProfile` sends `me` (§3.3.2) and `adopt`s the complete `you` it returns
     (kept object replaced, account name saved, a changed `user_id` followed as a rename).
@@ -736,7 +765,12 @@ clone), which is only a worked example.
   context menu and the room's ⋯ menu; `MutedBell`), a muted row's bell-off and quiet count, the
   header's bell-off button, the profile bar's paused line, and Preferences > Notifications' Pause
   (`Profile/PauseSection.swift`);
-  `Servers/` (the server list and iPad rail, `PreferencesView`: apron-web's Preferences (#184), its five sections (`PreferencesSection`) in a navigation stack, opened from the list's toolbar, the rail's foot and the profile bar (Profile, for that server) through `openPreferences`, which `RootView` presents, at a section when asked: Profile (`YouView`, not `standalone`), Notifications (Remind Me's permission and each server's `PauseSection`), Appearance, Media (the media policy, and Trusted Sites and Blocked Sites, each a `SiteListSection`: hosts with swipe to Delete and a field that adds), History (`HistoryPreferences`: Retention, how much is kept, why keeping stopped, Export Chats with Include Private Rooms through `ShareSheet`, and Open an Export…); `Archive/ArchiveViewer.swift` (`OpenedExport`, `ArchiveViewer`: an export read-only, after "Load its images?", from History or a `.jsonl` handed to the app, which `RootView`'s `onOpenURL` opens); `AppearanceView`: the mode, the themes with swatches, `ThemeCSSView` (the custom CSS) and `BaseColorsView` (the color pickers); `ConnectView`: add a server and sign in in one
+  `App/MessageNotifications.swift` (`LocalMessageNotifier`), `App/NotifyOfferView.swift` (the
+  offer to turn notifications on, above the profile bar, and above the composer on iPhone,
+  through the `messageAlerts` environment value) and `App/PushDevice.swift` (the APNs token and
+  the relay's endpoint, in a build with `LADLE_PUSH`); `AppDelegate` shows nothing for a push
+  while Ladle is in front, and opens a tapped message's or push's message;
+  `Servers/` (the server list and iPad rail, `PreferencesView`: apron-web's Preferences (#184), its five sections (`PreferencesSection`) in a navigation stack, opened from the list's toolbar, the rail's foot and the profile bar (Profile, for that server) through `openPreferences`, which `RootView` presents, at a section when asked: Profile (`YouView`, not `standalone`), Notifications (`NotificationsPreferences.swift`: the switch with its note, Send a Test Notification, each server's Notify Me About with "Only while open" and why it can't alert while closed, its `PauseSection`, and Push Relay in a build with push), Appearance, Media (the media policy, and Trusted Sites and Blocked Sites, each a `SiteListSection`: hosts with swipe to Delete and a field that adds), History (`HistoryPreferences`: Retention, how much is kept, why keeping stopped, Export Chats with Include Private Rooms through `ShareSheet`, and Open an Export…); `Archive/ArchiveViewer.swift` (`OpenedExport`, `ArchiveViewer`: an export read-only, after "Load its images?", from History or a `.jsonl` handed to the app, which `RootView`'s `onOpenURL` opens); `AppearanceView`: the mode, the themes with swatches, `ThemeCSSView` (the custom CSS) and `BaseColorsView` (the color pickers); `ConnectView`: add a server and sign in in one
   sheet, `QRScannerView`: the VisionKit sign-in scanner), `Rooms/` (`RoomSearchField`: Search Rooms in the iPad sidebar, whose navigation bar is hidden), `Timeline/` (messages, select mode's check circles and `SelectionBar` (Copy, Move, New Thread) in the composer's place, `SearchView`: Search Local History, from the magnifying glass beside a room's title, ⌘F, or Search Rooms' Search Messages, `RateLimitNotice` and Send's countdown over the composer while a wait holds it back, composer with the
   mention list, the `:` emoji list (`EmojiSuggestions`), the `#` room list and the command list (`CommandSuggestions`: usage and
   summary, scrolling past five rows; picking fills `/name ` and keeps the keyboard up), reaction picker (custom emoji by category first), `LinkPreviewTray` (in `ComposerView.swift`: the draft's link previews above the box as the cards they will be, each with its (x), side by side; looked up 800 ms after typing pauses, a paste too, since a SwiftUI field reports no paste),
@@ -950,7 +984,7 @@ pinned commit. Run it before `swift test` (the gate line above does), and `./bui
   Security, SwiftUI, Observation, Network (`NWPathMonitor` reconnects when the network
   returns), VisionKit (the sign-in QR scanner, not on Mac Catalyst), and for attachments PhotosUI, AVFoundation, AVKit, QuickLook, ImageIO,
   UniformTypeIdentifiers and CryptoKit (cache file names), CoreImage (`CIQRCodeGenerator` draws a sign-in link's QR code; not a required-reason API), and UserNotifications (Remind Me's
-  local notifications; no usage string, no required-reason API). PhotosPicker and the document
+  and messages' local notifications and the badge; no usage string, no required-reason API). PhotosPicker and the document
   picker run out of process and need no usage string; the camera and the microphone (voice
   notes) have theirs in `project.yml`; the camera's names scanning too. Nothing in them is a required-reason API: files go only to the server the user sends them to.
   LinkPresentation fetches link previews; it is not a required-reason API either, and a
@@ -1084,7 +1118,10 @@ Also email with a typed code (§4.11), passkeys and the server's own sign-in pag
     `https://<rpID>` (the forum reply above); that the association is picked up from the
     owner's server (Apple's CDN caches the file); `ASWebAuthenticationSession`'s `.https`
     callback with a `webcredentials` domain; and the cross-device (QR) passkey path.
-- Native push needs a §4.9.2 `relay` with APNs, which is out of scope for v1.
+- Push while closed is built and off: `LADLE_PUSH` in `Config/Domains.xcconfig` (`development` or
+  `production`) adds `aps-environment` through `scripts/associated-domains.sh` and the Info.plist
+  key `LadlePushEnvironment`. Leave it empty until the App ID has Push Notifications and a relay
+  runs (docs/PUSH.md); with it set and no capability, automatic signing fails.
 
 ## Parity with apron-web
 
