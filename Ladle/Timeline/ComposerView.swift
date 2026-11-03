@@ -326,7 +326,11 @@ struct ComposerView: View {
                     Task { await recorder.start(maxBytes: audioLimit) }
                 }
                 .disabled(!takesVoiceNotes)
-                if UIPasteboard.general.hasImages {
+                let pasted = pastedFiles
+                if !pasted.isEmpty {
+                    // Files copied in Files or another app, of a kind the server takes (#49).
+                    Button(pasted.count == 1 ? "Paste File" : "Paste \(pasted.count) Files", systemImage: "doc.on.clipboard") { paste(pasted) }
+                } else if UIPasteboard.general.hasImages {
                     Button("Paste Image", systemImage: "doc.on.clipboard") { pasteImages() }
                         .disabled(!offer.images)
                 }
@@ -402,6 +406,42 @@ struct ComposerView: View {
 
     private func rename(_ id: UUID, to name: String) {
         if let index = draft.files.firstIndex(where: { $0.id == id }) { draft.files[index].name = name }
+    }
+
+    /// What the pasteboard holds as files: an item with a name of its own (copied in Files or
+    /// another app), with a type the server takes, and the type to read it as. Copied text and
+    /// links go into the field, as they always do.
+    private var pastedFiles: [(provider: NSItemProvider, type: UTType)] {
+        UIPasteboard.general.itemProviders.compactMap { provider in
+            guard provider.suggestedName != nil else { return nil }
+            let type = provider.registeredContentTypes.first { type in
+                type.conforms(to: .data) && offer.contentTypes.contains { type.conforms(to: $0) }
+            }
+            return type.map { (provider, $0) }
+        }
+    }
+
+    /// Stages each pasted file under its own name, as Choose File does.
+    private func paste(_ files: [(provider: NSItemProvider, type: UTType)]) {
+        for (provider, type) in files {
+            attach(contentType: nil) {
+                try await withCheckedThrowingContinuation { (done: CheckedContinuation<URL, any Error>) in
+                    _ = provider.loadFileRepresentation(for: type, openInPlace: false) { url, _, error in
+                        guard let url else { return done.resume(throwing: error ?? CocoaError(.fileReadUnknown)) }
+                        do {
+                            var name = provider.suggestedName ?? url.lastPathComponent
+                            if (name as NSString).pathExtension.isEmpty, let ext = type.preferredFilenameExtension { name += ".\(ext)" }
+                            let copy = try AttachmentStaging.importFolder().appending(path: name)
+                            try? FileManager.default.removeItem(at: copy)
+                            try FileManager.default.copyItem(at: url, to: copy)
+                            done.resume(returning: copy)
+                        } catch {
+                            done.resume(throwing: error)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// Pasted images, as PNG; the preparer turns a large one into JPEG.

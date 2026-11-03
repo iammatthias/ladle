@@ -336,7 +336,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 |---|---|---|---|---|
 | Attach with a file picker | #49 | has | `Timeline/Attachments.swift` (Choose File) | Plus photos and camera. |
 | Drop files on the conversation | #49 | has | `Timeline/TimelineView.swift` (`dropDestination`) | |
-| Paste files | #49 | partial | `Timeline/ComposerView.swift` (Paste Image) | Images only. |
+| Paste files | #49 | has | `Timeline/ComposerView.swift` (`pastedFiles`, `paste`) | The attach menu offers Paste File (Paste N Files) for files copied in Files or another app, of a kind the server takes, staged under their own names as Choose File does; Paste Image stays for a copied image without a file. Copied text and links paste into the field. iOS has no drop of a file onto the field's paste, so it is the menu. Not yet tried on a device. |
 | Voice clips | #96 | has | `Timeline/VoiceRecorder.swift` | |
 | Staged files with thumbnails, players, file cards, × | #49 | has | `Timeline/Attachments.swift` | |
 | "Preparing…" while an image shrinks, then its new size | #35 | has | `Timeline/Attachments.swift:151` | |
