@@ -30,6 +30,7 @@ enum Screen: String, CaseIterable {
     case muted, paused, notificationsPaused = "notifications-paused", limited, outbox
     case appearance, appearanceCustom = "appearance-custom", preferences, preferencesMedia = "preferences-media", history
     case search, searchFiltered = "search-filtered", roomsSearch = "rooms-search"
+    case roomsUnseenReactions = "rooms-unseen-reactions", unseenReactionJump = "unseen-reaction-jump"
     case select, selectLog = "select-log"
     case archiveAsk = "archive-ask", archiveRooms = "archive-rooms", archiveTimeline = "archive-timeline"
     case threadRenamed = "thread-renamed", startThread = "start-thread", roomsInactive = "rooms-inactive", editRoom = "edit-room", descriptionPutAway = "description-put-away"
@@ -115,6 +116,7 @@ enum Renderer {
         starting = PreviewFixtures.makeStartingStore()
         notify = await PreviewFixtures.makeNotifyStore()
         notifyOffer = await PreviewFixtures.makeNotifyOfferStore()
+        reactionNews = await PreviewFixtures.makeStore(reactionNews: true)
         let firstListed = home.roomTree.map(\.roomID)
 
         var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool, look: Look?)] = []
@@ -125,6 +127,7 @@ enum Renderer {
         shots.append((.timeline, .dark, true, nil))
         shots.append((.liveTyping, .dark, true, nil))
         shots.append((.guestHistoryEnd, .dark, true, nil))
+        shots.append((.unseenReactionJump, .dark, true, nil))
         // The busy room in each premade theme but Apron, which every other shot is in, and in the
         // custom CSS of the custom Appearance shot.
         for look in PremadeTheme.all.dropFirst().map(Look.premade) + [Look.custom] {
@@ -217,6 +220,8 @@ enum Renderer {
     static var notify = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
     /// The offer to turn notifications on, after a mention (`PreviewFixtures.makeNotifyOfferStore`).
     static var notifyOffer = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
+    /// New reactions to Sam's messages in #general (`PreviewFixtures.newReactions`).
+    static var reactionNews = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
 
     static func view(_ screen: Screen, store: SessionStore, home: ServerSession, staged: [StagedFile]) -> AnyView {
         let owner = signIn.session(for: PreviewFixtures.ownerID)
@@ -274,6 +279,17 @@ enum Renderer {
         case .notifyOffer:
             // Above the profile bar, saying Preferences is where to change it.
             AnyView(PhoneShot(store: notifyOffer, server: PreviewFixtures.homeID).environment(\.sessionStore, notifyOffer))
+        case .roomsUnseenReactions:
+            // #general's row with its unread count and, beside it, the new reactions to your messages.
+            AnyView(PhoneShot(store: reactionNews, server: PreviewFixtures.homeID, returningFrom: PreviewFixtures.busyRoomID))
+        case .unseenReactionJump:
+            // The busy room with "3 new reactions" over the timeline, the way to the oldest.
+            AnyView(reactionNews.session(for: PreviewFixtures.homeID).map { session in
+                NavigationStack {
+                    TimelineView(session: session, roomID: PreviewFixtures.busyRoomID, reminders: reactionNews.reminders,
+                                 hidden: reactionNews.hiddenDescriptions, drafts: Drafts())
+                }
+            })
         case .notifyOfferTimeline:
             // On iPhone, above the composer of the room being read.
             AnyView(notifyOffer.session(for: PreviewFixtures.homeID).map { session in
@@ -609,7 +625,7 @@ enum Renderer {
             // Eun-ji's mention of Sam as it arrives, its ring a third of the way out.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
                 .environment(\.shotPins, ShotPins(pulse: 0.35, scrollTo: "1793092500000")))
-        case .connectPasskey, .connectPasskeyCreate, .connectPasskeyUnavailable, .connectExternalCode, .youSignIn, .youAddEmail, .roomsHeld, .roomsNudge, .roomsNewerServer, .serverPaneNewer, .roomsStarting, .roomStarting, .timelineFirstPage, .roleOverflow, .notifications, .notifyOffer, .notifyOfferTimeline:
+        case .connectPasskey, .connectPasskeyCreate, .connectPasskeyUnavailable, .connectExternalCode, .youSignIn, .youAddEmail, .roomsHeld, .roomsNudge, .roomsNewerServer, .serverPaneNewer, .roomsStarting, .roomStarting, .timelineFirstPage, .roleOverflow, .notifications, .notifyOffer, .notifyOfferTimeline, .roomsUnseenReactions, .unseenReactionJump:
             // Drawn by `view` from the sign-in store.
             AnyView(EmptyView())
         case .welcome:

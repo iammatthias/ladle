@@ -47,6 +47,8 @@ struct TimelineView: View {
     @State private var visit = Visit.opening
     @State private var visible = false
     @State private var jumpTarget: String?
+    /// The rows at least half in view, whose new reactions are then seen.
+    @State private var rowsInView: Set<String> = []
     /// The New line, scrolled to once when the visit opens at it.
     @State private var landingTarget: String?
     /// The reader dragged the timeline, which keeps it where they put it rather than landing.
@@ -188,6 +190,12 @@ struct TimelineView: View {
                 let day = FloatingDay.day(of: items, visible: Set(ids))
                 if day != floatingDay { floatingDay = day }
             }
+            .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.5) { ids in rowsInView = Set(ids) }
+            .accessibilityRotor("New Reactions") {
+                ForEach(session.unseenReactions(in: roomID), id: \.messageID) { unseen in
+                    AccessibilityRotorEntry(Text(UnseenReactions.spoken(unseen.count)), id: unseen.messageID.text)
+                }
+            }
             .onScrollPhaseChange { _, phase in
                 scrolling = phase.isScrolling
                 if phase == .interacting { scrolledByHand = true }
@@ -225,6 +233,12 @@ struct TimelineView: View {
                         LoadingPill(label: pill, rising: true)
                     } else if let toast = feedback.current, toast.kind == .pending {
                         LoadingPill(label: toast.text, rising: true)
+                    }
+                    let reactions = session.unseenReactionCount(in: roomID)
+                    if reactions > 0 {
+                        ReactionJumpPill(count: reactions) { jumpToNewReactions() }
+                            .padding(.horizontal, Tokens.Space.s4)
+                            .transition(.opacity)
                     }
                     if !atBottom, session.unreadCount(in: roomID) > 0 {
                         JumpBar(count: session.unreadCount(in: roomID), mentions: session.mentionCount(in: roomID)) {
@@ -432,6 +446,10 @@ struct TimelineView: View {
             guard mark.reading, let through = mark.through else { return }
             Task { await session.markRead(roomID, through: through) }
         }
+        // A message with new reactions half in view in the active app: they are seen, as reading marks read.
+        .onChange(of: seenInView, initial: true) { _, seen in
+            if !seen.isEmpty { session.markReactionsSeen(seen) }
+        }
         .task(id: roomID) {
             let watch = PaneLoadingWatch(session: session, roomID: roomID)
             loadingWatch = watch
@@ -505,11 +523,30 @@ struct TimelineView: View {
             problem = "That message isn't in this room."
             return
         }
+        await flash(message)
+    }
+
+    /// Scrolls to a message and highlights it for two seconds, as a link's place does.
+    private func flash(_ message: LogID) async {
         highlighted = message
         try? await Task.sleep(for: .milliseconds(100))
         jumpTarget = message.text
         try? await Task.sleep(for: .seconds(2))
-        withAnimation(Motion.medium(reduceMotion)) { highlighted = nil }
+        if highlighted == message { withAnimation(Motion.medium(reduceMotion)) { highlighted = nil } }
+    }
+
+    /// The jump to new reactions: the oldest message with any, which is then seen.
+    private func jumpToNewReactions() {
+        guard let next = session.nextUnseenReaction(in: roomID) else { return }
+        session.markReactionsSeen([next])
+        Task { await flash(next) }
+    }
+
+    /// The messages with new reactions that are seen now: half in view while the pane is on
+    /// screen in the active app, the visit landed.
+    private var seenInView: [LogID] {
+        guard visible, scenePhase == .active, visit.isLanded else { return [] }
+        return session.unseenReactions(in: roomID).map(\.messageID).filter { rowsInView.contains($0.text) }
     }
 
     /// A mention chip's link (`ApronLink.relative(user:)`): a user and nothing else.
@@ -1138,6 +1175,34 @@ struct JumpBar: View {
         }
         .buttonStyle(.plain)
         .accessibilityHint("Scrolls to the newest messages")
+    }
+}
+
+/// New reactions to your messages, Ladle's own, over the timeline beside the web's JumpBar: a
+/// tap (or ⌘⇧R) goes to the oldest message with any and highlights it.
+struct ReactionJumpPill: View {
+    let count: Int
+    let jump: () -> Void
+
+    var body: some View {
+        Button(action: jump) {
+            HStack(spacing: Tokens.Space.s2) {
+                Image(systemName: "face.smiling").foregroundStyle(Palette.denim)
+                Text(UnseenReactions.shown(count)).foregroundStyle(Palette.inkMuted)
+                Text("Show").fontWeight(.semibold).foregroundStyle(Palette.denim)
+            }
+            .apText(.ui)
+            .padding(.horizontal, Tokens.Space.s3)
+            .frame(minHeight: Tokens.Control.md + Tokens.Space.s2)
+            .background(Palette.raised, in: Capsule())
+            .overlay(Capsule().strokeBorder(Palette.denim.opacity(0.5)))
+            .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+            .touchTarget()
+        }
+        .buttonStyle(.plain)
+        .keyboardShortcut("r", modifiers: [.command, .shift])
+        .accessibilityLabel(UnseenReactions.spoken(count))
+        .accessibilityHint("Shows the oldest message with new reactions")
     }
 }
 

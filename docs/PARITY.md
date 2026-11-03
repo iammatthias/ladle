@@ -546,6 +546,7 @@ These have no apron-web counterpart. They stay.
 - Close codes acted on: stop on revoked credentials, wait on 1013 (`Kit/ServerSession.swift`).
 - New Room offered only where the server permits it (`Kit/ServerSession.swift`, `mayCreateRooms`).
 - ⇧⌘M toggles Members, and ⌘Return always sends (`Timeline/TimelineView.swift`, `Timeline/ComposerView.swift`).
+- New reactions to your own messages: a badge on room and thread rows, and in the room a "3 new reactions · Show" pill (⇧⌘R, a VoiceOver rotor) that goes to the oldest such message, highlights it and marks it seen; a message's reactions are also seen once its row is half in view in the active app. Kept per account in `reactions-seen.json`, counting what came while away, never what was there before a room was first seen (`Kit/SeenReactions.swift`, `Kit/ServerSession+ReactionNews.swift`, `ReactionNewsBadge` in `Design/Components.swift`, `ReactionJumpPill` in `Timeline/TimelineView.swift`).
 
 ## Gaps, most user-visible first
 

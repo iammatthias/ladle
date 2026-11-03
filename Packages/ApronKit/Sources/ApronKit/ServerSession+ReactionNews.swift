@@ -5,6 +5,16 @@ import Foundation
 public struct UnseenReactions: Hashable, Sendable {
     public var messageID: LogID
     public var count: Int
+
+    /// What VoiceOver reads for a count: "2 new reactions to your messages".
+    public static func spoken(_ count: Int) -> String {
+        count == 1 ? "1 new reaction to your messages" : "\(count) new reactions to your messages"
+    }
+
+    /// The jump pill's words: "2 new reactions".
+    public static func shown(_ count: Int) -> String {
+        count == 1 ? "1 new reaction" : "\(count) new reactions"
+    }
 }
 
 /// New reactions to your own messages (`SeenReactions`), Ladle's own. A reaction set counts when

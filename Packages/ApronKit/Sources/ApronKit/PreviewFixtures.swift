@@ -20,11 +20,13 @@ public enum PreviewFixtures {
     static func message(_ minute: Int) -> String { String(start + Int64(minute) * 60_000) }
 
     /// Signs both servers in and opens every joined room. Returns once the stores hold it all.
-    /// `push` has home offer push kind `relay`, waking for mentions and replies (§4.9).
+    /// `push` has home offer push kind `relay`, waking for mentions and replies (§4.9);
+    /// `reactionNews` adds `newReactions` after the room list, for the new reactions shots.
     @MainActor
-    public static func makeStore(push: Bool = false, messageNotifier: (any MessageNotifier)? = nil) async -> SessionStore {
+    public static func makeStore(push: Bool = false, reactionNews: Bool = false, messageNotifier: (any MessageNotifier)? = nil) async -> SessionStore {
         let tokens = InMemoryTokenStore()
         var homeScript = home
+        if reactionNews { homeScript.reactions = newReactions }
         if push, case .object(var greeting) = homeScript.greeting {
             greeting["push"] = ["relay": [:], "wake": ["mentions", "replies", "badge"]]
             homeScript.greeting = .object(greeting)
@@ -418,6 +420,22 @@ public enum PreviewFixtures {
         line(20, "dev", "Load test plan for Friday", embeds: [["kind": "poll", "url": "https://poll.example/p/7"]],
              movedFrom: "ops"),
     ]
+
+    /// Reactions to Sam's messages in #general logged after its history's newest, so after the
+    /// room was first seen: Eun-ji on "Yes. The backoff…", Bram and Chiara on "I'll cut the build
+    /// after lunch.", and Sam's own on his, which is not news.
+    static let newReactions: [JSONValue] = [
+        reactions(at: 40, on: 2, from: "eunji", ["🙌"]),
+        reactions(at: 41, on: 14, from: "bram", ["❤️"]),
+        reactions(at: 42, on: 14, from: "chiara", ["😂", "👍"]),
+        reactions(at: 43, on: 14, from: "sam", ["🎉"]),
+    ]
+
+    /// A `reactions` broadcast in #general, `second` seconds past its minute 20.
+    private static func reactions(at second: Int, on minute: Int, from user: String, _ emojis: [String]) -> JSONValue {
+        ["log_id": .string(String(start + 20 * 60_000 + Int64(second) * 1000)), "message_id": .string(message(minute)), "room_id": "general",
+         "reactions": [["from": people[user] ?? ["user_id": .string(user)], "emojis": .array(emojis.map(JSONValue.string))]]]
+    }
 
     private static let home = PreviewServer.Script(
         greeting: greeting,

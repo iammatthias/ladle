@@ -1,3 +1,4 @@
+import ApronKit
 import SwiftUI
 
 /// The web's UnreadCount: a 20 pt bubble. New messages in accent; mentions of you as `@ n` in
@@ -27,6 +28,29 @@ struct UnreadCount: View {
             .frame(minWidth: 20, minHeight: 20)
             .background(ground, in: Capsule())
             .accessibilityLabel(mentions ? "\(count) \(count == 1 ? "mention" : "mentions")" : "\(count) new")
+    }
+}
+
+/// New reactions to your messages (`UnseenReactions`), Ladle's own: the reaction glyph and a
+/// count in denim on denim-soft, an outline where `UnreadCount` is a solid count, so it never
+/// reads as unread.
+struct ReactionNewsBadge: View {
+    let count: Int
+    var quiet = false
+
+    var body: some View {
+        HStack(spacing: 2) {
+            Image(systemName: "face.smiling").imageScale(.small)
+            Text(count > 99 ? "99+" : "\(count)").monospacedDigit()
+        }
+        .apText(.sm, .semibold)
+        .foregroundStyle(quiet ? Palette.inkMuted : Palette.denim)
+        .padding(.horizontal, Tokens.Space.s1_5)
+        .frame(minHeight: 20)
+        .background(quiet ? Color.clear : Palette.denimSoft, in: Capsule())
+        .overlay(Capsule().strokeBorder(quiet ? Palette.line : Palette.denim.opacity(0.35)))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(UnseenReactions.spoken(count))
     }
 }
 

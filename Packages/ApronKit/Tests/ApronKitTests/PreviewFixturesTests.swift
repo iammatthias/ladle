@@ -149,6 +149,25 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(fromRelease.mentions, 1, "general's mention of you")
     }
 
+    func testTheNewReactionsShotsSeeThreeOnSamsMessagesAndTheOthersNone() async throws {
+        let plain = await PreviewFixtures.makeStore()
+        let quiet = try XCTUnwrap(plain.session(for: PreviewFixtures.homeID))
+        XCTAssertEqual(quiet.roomTree.flatMap { [$0.roomID] + $0.threadIDs }.map(quiet.unseenReactionCount(in:)).reduce(0, +), 0,
+                       "the history's reactions were there before the rooms were first seen")
+
+        let store = await PreviewFixtures.makeStore(reactionNews: true)
+        let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
+        XCTAssertEqual(home.unseenReactions(in: PreviewFixtures.busyRoomID), [
+            UnseenReactions(messageID: LogID(PreviewFixtures.message(2))!, count: 1),
+            UnseenReactions(messageID: LogID(PreviewFixtures.message(14))!, count: 2),
+        ], "Eun-ji on the backoff; Bram and Chiara on the build, not Sam's own")
+        XCTAssertEqual(home.unseenReactionCount(in: PreviewFixtures.busyRoomID), 3)
+        XCTAssertEqual(UnseenReactions.spoken(3), "3 new reactions to your messages")
+        XCTAssertEqual(UnseenReactions.spoken(1), "1 new reaction to your messages")
+        XCTAssertEqual(UnseenReactions.shown(3), "3 new reactions")
+        XCTAssertEqual(home.unreadCount(in: PreviewFixtures.busyRoomID), 3, "the unread count is its own")
+    }
+
     func testTheReactionPickerNamesTheMessageItReactsTo() async throws {
         let store = await PreviewFixtures.makeStore()
         let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))

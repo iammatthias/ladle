@@ -24,6 +24,8 @@ public actor PreviewServer: FrameTransport {
         public var notices: [JSONValue] = []
         /// Others' `activity` (§4.6), such as typing, sent after the notices.
         public var activities: [JSONValue] = []
+        /// `reactions` broadcasts (§4.7) sent after the activities.
+        public var reactions: [JSONValue] = []
         /// `status` params (§4.5 `mute`) in effect, sent after the `auth` result.
         public var statuses: [JSONValue] = []
         /// `room_list {parent_room_id, filter: not_joined}` results' `not_joined`, by parent.
@@ -85,6 +87,7 @@ public actor PreviewServer: FrameTransport {
             }
             for notice in script.notices { deliver(["method": "message", "params": notice]) }
             for activity in script.activities { deliver(["method": "activity", "params": activity]) }
+            for reactions in script.reactions { deliver(["method": "reactions", "params": reactions]) }
         case "history" where params?["before"] != nil && params?["after"] == nil
             && script.olderNeedsSignIn.contains(params?["room_id"]?.stringValue ?? ""):
             deliver(["id": id, "error": ["code": -32001, "message": "Sign in to load older history"]])

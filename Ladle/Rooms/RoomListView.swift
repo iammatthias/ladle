@@ -600,6 +600,7 @@ struct RoomRow: View {
     var body: some View {
         let unread = session.unreadCount(in: roomID)
         let mentions = session.mentionCount(in: roomID)
+        let reactions = session.unseenReactionCount(in: roomID)
         let joined = session.joinedRoomIDs.contains(roomID)
         let muted = session.mute(of: roomID) != nil
         // A muted room's news stays quiet: no bold name, a quiet count (the web's RoomItem).
@@ -642,6 +643,7 @@ struct RoomRow: View {
             }
             Spacer(minLength: Tokens.Space.s2)
             if muted { MutedBell() }
+            if reactions > 0 { ReactionNewsBadge(count: reactions, quiet: muted) }
             if mentions > 0 {
                 UnreadCount(count: mentions, mentions: true, quiet: muted)
             } else if unread > 0 {
@@ -671,7 +673,7 @@ struct RoomRow: View {
         }
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(accessibilityText(unread: unread, mentions: mentions, joined: joined, muted: muted))
+        .accessibilityLabel(accessibilityText(unread: unread, mentions: mentions, reactions: reactions, joined: joined, muted: muted))
         .task(id: session.server?.emojiCatalogURL) { await session.loadEmojiCatalog(for: session.roomDescription(roomID)) }
     }
 
@@ -684,7 +686,7 @@ struct RoomRow: View {
         .foregroundStyle(Palette.inkMuted)
     }
 
-    private func accessibilityText(unread: Int, mentions: Int, joined: Bool, muted: Bool) -> String {
+    private func accessibilityText(unread: Int, mentions: Int, reactions: Int, joined: Bool, muted: Bool) -> String {
         var parts = [session.title(of: roomID)]
         if isThread {
             parts.append("thread in \(session.store.room(roomID)?.parentRoomID.map(session.title(of:)) ?? "a room")")
@@ -693,6 +695,7 @@ struct RoomRow: View {
         if muted { parts.append("muted") }
         if mentions > 0 { parts.append("\(mentions) \(mentions == 1 ? "mention" : "mentions") of you") }
         if unread > 0 { parts.append("\(unread) new") }
+        if reactions > 0 { parts.append(UnseenReactions.spoken(reactions)) }
         if !joined { parts.append("not joined") }
         if !joined, isThread, let active = session.lastActive(of: roomID) {
             parts.append("last active \(active.formatted(.relative(presentation: .named)))")
