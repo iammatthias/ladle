@@ -16,8 +16,9 @@ final class TimelineBenchmark: ScriptedSessionCase {
     private var socket: FakeTransport!
 
     override func setUp() async throws {
-        try XCTSkipUnless(ProcessInfo.processInfo.environment["LADLE_BENCH"] != nil, "set LADLE_BENCH=1 to run the timeline benchmark")
+        // The session first: XCTest runs tearDown after a skip, and that stops the session.
         try await super.setUp()
+        try XCTSkipUnless(ProcessInfo.processInfo.environment["LADLE_BENCH"] != nil, "set LADLE_BENCH=1 to run the timeline benchmark")
     }
 
     private func fill(_ count: Int) async throws {
