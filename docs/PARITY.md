@@ -2,7 +2,7 @@
 
 This is the backlog of record for parity with apron-web. The rule is that every apron-web feature exists in Ladle. The iOS form may differ. Ladle may do more. Nothing is left out.
 
-The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`. It carries upstream through #178 and #179, role mentions (#181), themes (#174), Preferences sections (#184), #186, the Inactive threads section (#185), protocol v10 live text (#162), read receipts (#187), append edits (#189), the jump-to-latest fix (#190), blocked origins (#193), at 0811a18 for the design tokens, plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. Upstream #191 (live typing, and the live text waiting state) is not yet in `homelab-3`; Ladle follows upstream in both. Upstream main's #199 (history kept per account), #200 (catch-up after a reconnect) and #202 (the unread bubble) are followed likewise. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
+The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`: upstream `main` through #206, plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. The design tokens are at 9e38a22. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
 
 Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections 3.10 to 3.12 describe the profile card, You and the server pane as built.
 
@@ -206,7 +206,8 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | `@user_id` beside a name only when another user shares it | #82 | has | `Kit/UserDirectory.swift` | |
 | One entry per user after a `user_id` change, aliases | #81, #83 | has | `Kit/UserDirectory.swift` (`rename`) | |
 | Initials on a hue hashed from `user_id` | bh | has | `Design/People.swift` (`Avatar`) | |
-| Profile card: avatar, name, `@user_id` with copy, roles, "(you)", same-name warning, bio, in-room | #47, #115, #116 | has | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` | A sheet. "Not among the recently active members of lobby" when the listing is truncated. |
+| Profile card: avatar, name, `@user_id` with copy, roles, "(you)", same-name warning, bio, in-room | #47, #115, #116, #206 | has | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift`, `Design/People.swift` (`Avatar.Size.card`) | A sheet. "Not among the recently active members of lobby" when the listing is truncated. The face leads it at 80 pt (26 pt initials, a 16 pt dot), with 20 pt padding (#206); `lg` stays 56 elsewhere. |
+| A second press on a member's row closes their card | #205 | N/A-iOS | `Timeline/MemberList.swift` | The card is a sheet: a tap on the row behind it can't reach the row, and the sheet closes by its drag or a tap outside. |
 | Profile card: Message, Mention, Add to room | #123 | has | `Profile/ProfileCardView.swift`, `Kit/UserProfile.swift` (`addMember`, `mayMessage`), `Kit/DraftField.swift` (`mention`) | |
 | Tap a mention chip, name, avatar, or member to open the profile | #149, #153, #161 | has | `Timeline/MessageRow.swift`, `Timeline/MemberList.swift`, `Timeline/TimelineView.swift`, `Kit/MessageText.swift` | A chip links `apron:?user=`; a link's `user` opens the card too. |
 | Member row menu: Profile, Direct message, Remove from room | #152, #161 | has | `Timeline/MemberList.swift`, `Kit/Members.swift` (`memberMenu`) | A tap opens the card; a long press, or a secondary click on iPad, opens the menu. Your own row has none. |
@@ -378,6 +379,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Media gate: everything else waits for a click (Load) | #163 | has | `Kit/MediaGate.swift`, `Media/MediaAskTile.swift` | |
 | Always load adds the site to Trusted origins | #163 | has | `Media/MediaAskTile.swift` | |
 | The Load tile shows the media's full URL; Always load names its host | #186 | has | `Media/MediaAskTile.swift` | Two lines, cut in the middle; VoiceOver reads the whole URL. |
+| An icon of the media's kind on its prompt | #195 | has | `Media/MediaAskTile.swift` (`symbol`) | Above the label rather than before it, as the tile is a centered column: `photo`, `play.rectangle` or `waveform`. |
 | Preferences, Media: Server and trusted sites, or Any site; Trusted origins field | #137, #163 | has | `Servers/PreferencesView.swift` (`MediaPreferences`) | |
 | Blocked origins: never load nor ask, by host whatever the scheme, port, case or trailing dot, over trusted origins, the server's, Any site and Load | #193 | has | `Kit/MediaGate.swift` (`blockedHosts`), `Kit/MediaSettings.swift` (`blocked`, `parseBlockedOrigins`) | Avatars and custom emoji too. Kept in `media-settings.json`. The web's literal cases ported (`UploadTests`, `CustomEmojiTests`). |
 | Blocked origins block every host under them, not look-alikes or parents; one entry parser for trusted and blocked (scheme and `//` as written, else also a bare host); a blocked single label but `localhost` is dropped | #194 | has | `Kit/MediaGate.swift` (`isBlocked`), `Kit/MediaSettings.swift` (`entryURL`, `parseEntries`) | Timeline, avatars, custom emoji and exports, through `decide`. Foundation reads `http:/host` without a host, so `entryURL` writes it `http://host` as the web's URL does. The web's literal cases ported (`MediaGateTests` in `UploadTests.swift`). Preferences' Blocked Sites footer says so. |
@@ -523,6 +525,8 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
 | Installable PWA with a service worker | #8 | N/A-iOS | | Ladle is the native app. |
+| A push opens in an app already open whose address only changes | #204 | N/A-iOS | `App/ReminderNotifications.swift` (`AppDelegate`) | The service worker's fragment hand-off has no iOS counterpart: a tapped notification reaches the running app through UserNotifications' delegate. |
+| Faster startup: less drawn and loaded before the first messages | #201 | N/A-iOS | | The web's code splitting, IndexedDB reads and deferred panels. Ladle's own startup shows placeholders (#173) and reads kept history off the main actor. |
 | Add to Home Screen offer with per-browser steps | #167 | N/A-iOS | | |
 | Install app in Preferences | bh | N/A-iOS | | |
 | `/__preview` in-memory server | bh | has | `Kit/PreviewServer.swift`, `Kit/PreviewFixtures.swift` | Development only, for the LadleShots renderer. |

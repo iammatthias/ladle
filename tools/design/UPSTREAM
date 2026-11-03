@@ -1,7 +1,7 @@
 # The apron-web commit that Ladle/Design/Tokens.swift is generated from. tools/design/tokens.py
 # reads tokens.css and rail.css at this commit; --check says when the clone has moved past it.
 # Move it after reviewing apron-web's design changes in between, then regenerate.
-apron-web 0811a18a97ff004f4667d29eea8a840762d4e40e
+apron-web 9e38a22f30afc0c30720646fdd271c11b9320fcf
 
 # The @emoji-mart/data that Packages/ApronKit/Sources/ApronKit/StandardEmojiData.swift is generated
 # from by tools/design/emoji.py: the version in the apron-web clone's node_modules and the SHA-256

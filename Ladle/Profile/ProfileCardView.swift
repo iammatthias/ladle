@@ -49,7 +49,7 @@ struct ProfileCardView: View {
                         .accessibilityAddTraits(.updatesFrequently)
                 }
             }
-            .padding(Tokens.Space.s4)
+            .padding(Tokens.Space.s4 + Tokens.Space.s1)
         }
         .background(Palette.chrome)
         .presentationDetents([.medium, .large])
@@ -61,7 +61,7 @@ struct ProfileCardView: View {
 
     private func who(_ card: UserProfile) -> some View {
         HStack(alignment: .top, spacing: Tokens.Space.s3) {
-            Avatar(name: card.name, userID: card.userID, presence: card.presence, size: .lg, image: session.avatarURL(of: card.userID))
+            Avatar(name: card.name, userID: card.userID, presence: card.presence, size: .card, image: session.avatarURL(of: card.userID))
             VStack(alignment: .leading, spacing: 2) {
                 HStack(alignment: .firstTextBaseline, spacing: Tokens.Space.s1) {
                     Text(card.name).apText(.title, .semibold).foregroundStyle(Palette.ink).lineLimit(2)

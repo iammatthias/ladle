@@ -53,7 +53,8 @@ struct StatusDot: View {
 /// color here and in the web client. With a presence, its dot sits in a cut at the corner.
 struct Avatar: View {
     enum Size {
-        case xs, sm, md, lg
+        /// `card` is the profile card's face alone (apron-web #206), larger than `lg` elsewhere.
+        case xs, sm, md, lg, card
 
         var diameter: CGFloat {
             switch self {
@@ -61,16 +62,18 @@ struct Avatar: View {
             case .sm: Tokens.AvatarSize.sm
             case .md: Tokens.AvatarSize.md
             case .lg: Tokens.AvatarSize.lg
+            case .card: 80
             }
         }
 
-        /// The web's initials sizes: 7, 9, 12 and 18 px.
+        /// The web's initials sizes: 7, 9, 12, 18 and 26 px.
         var initials: CGFloat {
             switch self {
             case .xs: 7
             case .sm: 9
             case .md: 12
             case .lg: 18
+            case .card: 26
             }
         }
 
@@ -79,10 +82,18 @@ struct Avatar: View {
             case .xs, .sm: 7
             case .md: 8
             case .lg: 12
+            case .card: 16
             }
         }
 
-        var gap: CGFloat { self == .lg ? 3 : self == .md ? 2 : 1.5 }
+        var gap: CGFloat {
+            switch self {
+            case .xs, .sm: 1.5
+            case .md: 2
+            case .lg: 3
+            case .card: 4
+            }
+        }
     }
 
     let name: String
