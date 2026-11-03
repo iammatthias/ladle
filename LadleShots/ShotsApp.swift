@@ -48,6 +48,7 @@ enum Screen: String, CaseIterable {
     case liveTextFinished = "live-text-finished", liveText = "live-text", liveTextWaiting = "live-text-waiting", terminalViewer = "terminal-viewer"
     case readReceipts = "read-receipts", profileReceipts = "profile-receipts"
     case roomsNewerServer = "rooms-newer-server", serverPaneNewer = "server-pane-newer"
+    case roomsStarting = "rooms-starting", roomStarting = "room-starting", timelineFirstPage = "timeline-first-page"
     // Last of the phone shots: Browse Rooms lists the garden and the book club into home's store,
     // which the `#` list would then offer.
     case roomsOrdered = "rooms-ordered", roomsFolded = "rooms-folded", roomsThreadsFolded = "rooms-threads-folded", roomsReorder = "rooms-reorder"
@@ -110,6 +111,7 @@ enum Renderer {
         guard let home = store.session(for: PreviewFixtures.homeID) else { exit(1) }
         signIn = await PreviewFixtures.makeSignInStore()
         newer = await PreviewFixtures.makeNewerServerStore()
+        starting = PreviewFixtures.makeStartingStore()
         let firstListed = home.roomTree.map(\.roomID)
 
         var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool, look: Look?)] = []
@@ -201,6 +203,8 @@ enum Renderer {
     static var signIn = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
     /// A server on a newer protocol version (`PreviewFixtures.makeNewerServerStore`).
     static var newer = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
+    /// A server that never answers (`PreviewFixtures.makeStartingStore`).
+    static var starting = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
 
     static func view(_ screen: Screen, store: SessionStore, home: ServerSession, staged: [StagedFile]) -> AnyView {
         let owner = signIn.session(for: PreviewFixtures.ownerID)
@@ -223,6 +227,17 @@ enum Renderer {
             AnyView(owner.map { owner in NavigationStack { RoomListView(session: owner, open: { _ in }) } })
         case .roomsNewerServer:
             AnyView(newer.session(for: PreviewFixtures.newerID).map { next in NavigationStack { RoomListView(session: next, open: { _ in }) } })
+        case .roomsStarting:
+            // A first visit still connecting: placeholder rooms, not an empty list.
+            AnyView(starting.session(for: PreviewFixtures.startingID).map { slow in NavigationStack { RoomListView(session: slow, open: { _ in }) } })
+        case .roomStarting:
+            // The iPad detail while that first visit connects: placeholder messages and "Connecting…".
+            AnyView(starting.session(for: PreviewFixtures.startingID).map { slow in RoomLoading(label: slow.startingWords).background(Palette.timeline) })
+        case .timelineFirstPage:
+            // A room whose first page has not come: placeholder rows and "Loading messages…".
+            AnyView(starting.session(for: PreviewFixtures.startingID).map { slow in
+                NavigationStack { TimelineView(session: slow, roomID: "general", reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
+            })
         case .serverPaneNewer:
             AnyView(newer.session(for: PreviewFixtures.newerID).map { ServerPaneView(session: $0) })
         default:
@@ -538,7 +553,7 @@ enum Renderer {
             // Eun-ji's mention of Sam as it arrives, its ring a third of the way out.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
                 .environment(\.shotPins, ShotPins(pulse: 0.35, scrollTo: "1793092500000")))
-        case .connectPasskey, .connectPasskeyCreate, .connectPasskeyUnavailable, .connectExternalCode, .youSignIn, .youAddEmail, .roomsHeld, .roomsNudge, .roomsNewerServer, .serverPaneNewer:
+        case .connectPasskey, .connectPasskeyCreate, .connectPasskeyUnavailable, .connectExternalCode, .youSignIn, .youAddEmail, .roomsHeld, .roomsNudge, .roomsNewerServer, .serverPaneNewer, .roomsStarting, .roomStarting, .timelineFirstPage:
             // Drawn by `view` from the sign-in store.
             AnyView(EmptyView())
         case .welcome:

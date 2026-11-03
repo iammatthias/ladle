@@ -628,6 +628,7 @@ public final class ServerSession {
         syncIdle()
         onSignedIn?()
         if let rooms, let listing = try? await rooms.value { applyRoomList(listing) }
+        roomsListed = true
         await catchUp(on: connection)
         Task { await drainOutbox() }
     }
@@ -681,6 +682,7 @@ public final class ServerSession {
     }
 
     private func resetChatState() {
+        roomsListed = false
         store = ReplayStore()
         users = UserDirectory()
         joinedRoomIDs = []
@@ -971,6 +973,21 @@ public final class ServerSession {
             await listThreads(of: roomID, on: connection)
         }
     }
+
+    /// Whether a sign-in has listed this account's rooms, or tried to, since the session began.
+    public private(set) var roomsListed = false
+
+    /// Coming up with nothing to show yet, as apron-web's `starting`: connecting or signing in, or
+    /// signed in before the joined listing is in, while no problem has shown. Lists and the
+    /// timeline show placeholders in place of "No room open".
+    public var isStarting: Bool {
+        guard !roomsListed else { return false }
+        if status == .signedIn { return true }
+        return ConnectionState(status).map { !$0.isProblem } ?? false
+    }
+
+    /// What a placeholder says while the session comes up (apron-web's NoRoom).
+    public var startingWords: String { status == .signedIn ? "Loading messages…" : "Connecting…" }
 
     /// The server answered a `history` without `room_id` with `unsupported`: rooms catch up one by
     /// one on it from then on.

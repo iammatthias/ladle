@@ -296,6 +296,9 @@ struct SplitLayout: View {
                         .resolvingLinks(from: session)
                         .id(roomID)
                         .environment(\.openRoom, OpenRoomAction { self.roomID = $0 })
+                } else if let session, session.isStarting {
+                    // Coming up: placeholders where the room will be, not "No room open" (apron-web's NoRoom).
+                    RoomLoading(label: session.startingWords).background(Palette.timeline)
                 } else {
                     EmptyState(title: "No room open", detail: "Pick a room from the list.") { EmptyView() }
                         .background(Palette.timeline)

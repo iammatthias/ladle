@@ -208,3 +208,93 @@ struct TimelineDivider: View {
         }
     }
 }
+
+/// The web's placeholders (`ap-skel`): grey shapes where messages, rooms or members will be while
+/// the app comes up or a room loads its first page, pulsing (still under Reduce Motion). Hidden
+/// from VoiceOver; the words beside them say what is happening.
+struct SkeletonPulse: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var dim = false
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(dim ? 0.55 : 1)
+            .onAppear {
+                guard !reduceMotion else { return }
+                withAnimation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true)) { dim = true }
+            }
+            .accessibilityHidden(true)
+    }
+}
+
+private struct SkeletonBar: View {
+    let fraction: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: Tokens.Radius.sm)
+            .fill(Palette.hover)
+            .frame(height: height)
+            .containerRelativeFrame(.horizontal) { width, _ in width * fraction }
+    }
+}
+
+/// Placeholder message rows (apron-web's TimelineLoading `rows`): an avatar and two lines each, in
+/// widths that vary like real messages and stay the same on every render.
+struct SkeletonRows: View {
+    let count: Int
+    private static let widths: [(name: CGFloat, text: CGFloat)] = [(0.30, 0.78), (0.22, 0.64), (0.26, 0.88), (0.18, 0.52), (0.28, 0.70), (0.24, 0.60)]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.s1) {
+            ForEach(0 ..< count, id: \.self) { index in
+                let widths = Self.widths[index % Self.widths.count]
+                HStack(spacing: Tokens.Space.s3) {
+                    Circle().fill(Palette.hover).frame(width: Tokens.AvatarSize.md, height: Tokens.AvatarSize.md)
+                    VStack(alignment: .leading, spacing: Tokens.Space.s2) {
+                        SkeletonBar(fraction: widths.name * 0.8, height: 11)
+                        SkeletonBar(fraction: widths.text * 0.8, height: 10)
+                    }
+                }
+                .padding(.vertical, Tokens.Space.s2)
+                .padding(.horizontal, Tokens.Space.s4)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(SkeletonPulse())
+    }
+}
+
+/// Placeholder lines (the web's `ap-sect-skel` and `ap-memberlist-placeholder`): a rooms or members
+/// list still coming up.
+struct SkeletonLines: View {
+    let fractions: [CGFloat]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Tokens.Space.s3) {
+            ForEach(Array(fractions.enumerated()), id: \.offset) { _, fraction in
+                SkeletonBar(fraction: fraction * 0.8, height: 12)
+            }
+        }
+        .padding(.vertical, Tokens.Space.s2)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .modifier(SkeletonPulse())
+    }
+}
+
+/// apron-web's NoRoom while the app comes up (and TimelineLoading with rows): placeholder rows
+/// standing where the newest messages will, and a pill saying what is happening under them.
+struct RoomLoading: View {
+    let label: String
+    var rows = 6
+
+    var body: some View {
+        VStack(spacing: Tokens.Space.s3) {
+            Spacer(minLength: 0)
+            SkeletonRows(count: rows)
+            LoadingPill(label: label, rising: true)
+                .padding(.bottom, Tokens.Space.s3)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}

@@ -145,6 +145,20 @@ final class ServerSessionTests: XCTestCase {
         _ = try await signIn.value
     }
 
+    func testComingUpShowsPlaceholdersUntilTheRoomsAreListedOrSignInIsNeeded() async throws {
+        let socket = FakeTransport()
+        transports.queued.withLock { $0 = [socket] }
+        session.start()
+        XCTAssertTrue(session.isStarting)
+        XCTAssertEqual(session.startingWords, "Connecting…")
+        await socket.deliver(Self.greeting)
+        await eventually("signed out") { session.status == .signedOut }
+        XCTAssertFalse(session.isStarting, "signed out: the sign-in prompt, not placeholders")
+        try await signInAsGuest(on: socket)
+        XCTAssertFalse(session.isStarting)
+        XCTAssertTrue(session.roomsListed)
+    }
+
     // MARK: Sign-in
 
     func testResumePipelinesRoomListBehindTheTokenAndSavesTheRotatedOne() async throws {

@@ -101,7 +101,15 @@ struct RoomListView: View {
                 roomsFound
             } else {
             Section {
-                rooms(session.publicRoomTree, folded: roomsFolded)
+                if session.publicRoomTree.isEmpty, session.privateRoomTree.isEmpty, session.isStarting {
+                    // Coming up with nothing kept: placeholder rooms, as apron-web's Rooms section (#173).
+                    SkeletonLines(fractions: [0.70, 0.52, 0.61])
+                        .listRowBackground(Palette.chrome)
+                        .accessibilityElement()
+                        .accessibilityLabel(session.startingWords)
+                } else {
+                    rooms(session.publicRoomTree, folded: roomsFolded)
+                }
             } header: {
                 SectionFoldHead(title: "Rooms", folded: $roomsFolded, canFold: !isReordering) {
                     if isReordering {

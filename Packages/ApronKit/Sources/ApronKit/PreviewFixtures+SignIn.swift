@@ -65,4 +65,28 @@ extension PreviewFixtures {
         if let session = store.session(for: newerID) { await until { session.status == .signedIn } }
         return store
     }
+
+    public static let startingID = UUID(uuidString: "6C61646C-0000-4000-8000-000000000015")!
+
+    /// A server that never answers, so its session stays connecting with nothing kept: the
+    /// placeholders a first visit shows (apron-web #173).
+    @MainActor
+    public static func makeStartingStore() -> SessionStore {
+        let environment = ServerSession.Environment(
+            makeTransport: { _ in SilentTransport() },
+            sleep: { _ in try await Task.sleep(for: .seconds(3600)) },
+            jitter: { 1 }
+        )
+        let store = SessionStore(serverStore: nil, tokens: InMemoryTokenStore(), environment: environment)
+        store.add(ServerRecord(id: startingID, url: URL(string: "wss://slow.example/ws")!, label: "Slow"))
+        return store
+    }
+}
+
+/// A transport whose connection never opens.
+private struct SilentTransport: FrameTransport {
+    func connect() async throws { try await Task.sleep(for: .seconds(3600)) }
+    func send(_ text: String) async throws {}
+    func receive() async throws -> String { throw FrameTransportError.closed }
+    func close() async {}
 }

@@ -120,11 +120,18 @@ struct TimelineView: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                let held = session.held.contains(roomID)
+                // Its first page (and thread listing) on the way, nothing shown yet: placeholder rows
+                // where the newest messages will be, as apron-web's TimelineLoading (#173).
+                let held = session.held.contains(roomID) || (session.histories[roomID] == nil && session.timeline(roomID).isEmpty)
                 LazyVStack(alignment: .leading, spacing: 0) {
                     if let intro = session.privateIntro(roomID) { PrivateIntroCard(session: session, intro: intro) }
                     if held {
-                        ProgressView().frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget * 2)
+                        let thread = session.store.room(roomID)?.parentRoomID != nil
+                        VStack(spacing: Tokens.Space.s3) {
+                            SkeletonRows(count: thread ? 3 : 6)
+                            LoadingPill(label: thread ? "Loading replies…" : "Loading messages…", rising: true)
+                        }
+                        .padding(.top, Tokens.Space.s4)
                     } else if session.canLoadOlder(roomID) {
                         Color.clear
                             .frame(maxWidth: .infinity, minHeight: Tokens.Size.touchTarget)
