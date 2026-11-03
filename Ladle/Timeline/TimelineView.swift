@@ -1,5 +1,6 @@
 import ApronKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// A room's messages, oldest first, paging back as the top comes into view. The web's timeline:
 /// day pills, the New line in denim, thread cards where each thread began, room notices as
@@ -846,11 +847,12 @@ struct TimelineView: View {
         picking = selection.toggle(id, order: session.timeline(roomID).map(\.messageID)) ? selection : nil
     }
 
-    /// Copy, as apron-web's `copySelectionLog`: the picked messages as a Markdown log, then
-    /// select mode ends.
+    /// Copy, as apron-web's `copySelectionLog`: the picked messages as a Markdown log, and as
+    /// HTML for rich editors (`messageLogHtml`), then select mode ends.
     private func copySelection() {
         guard let picking else { return }
-        UIPasteboard.general.string = session.markdownLog(of: picking.ids, in: roomID)
+        let log = session.markdownLog(of: picking.ids, in: roomID)
+        UIPasteboard.general.setItems([[UTType.utf8PlainText.identifier: log, UTType.html.identifier: MessageLog.html(log)]])
         self.picking = nil
     }
 
