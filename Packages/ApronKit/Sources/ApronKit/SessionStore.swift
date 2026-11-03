@@ -50,6 +50,7 @@ public final class SessionStore {
         self.tokens = tokens
         historySettings = HistorySettings(directory: serverStore?.directory)
         self.historyFiles = historyFiles ?? serverStore.map { FileHistoryFiles(directory: $0.directory) }
+        historySettings.keptBytes = self.historyFiles?.sizes() ?? [:]
         positions = serverStore.map { FileReadPositionStore(directory: $0.directory) } ?? InMemoryReadPositionStore()
         reminders = Reminders(store: serverStore.map { FileReminderStore(directory: $0.directory) } ?? InMemoryReminderStore(),
                               notifier: notifier)
@@ -93,6 +94,14 @@ public final class SessionStore {
 
     /// Keeps history this long from now on: what each server keeps is written again at once,
     /// within it, as apron-web's `setRetention` prunes.
+    /// History's Clear All Users: deletes every account's kept history on every server; each
+    /// signed-in session keeps what it has loaded again as it goes.
+    public func clearAllKept() {
+        for session in sessions.values { session.forgetKept(of: nil) }
+        historyFiles?.remove(server: nil, userID: nil)
+        historySettings.keptBytes = [:]
+    }
+
     public func setRetention(_ retention: HistoryRetention) async {
         historySettings.update(retention)
         for session in sessions.values { await session.flushKept() }
@@ -119,9 +128,10 @@ public final class SessionStore {
     public func remove(_ id: UUID) async {
         if let session = sessions.removeValue(forKey: id) {
             await session.stop()
-            session.forgetKept()
+            session.forgetKept(of: nil)
         }
-        historyFiles?.remove(id)
+        historyFiles?.remove(server: id, userID: nil)
+        historySettings.keptBytes = historySettings.keptBytes.filter { $0.key.server != id }
         await reminders.removeAll(server: id)
         drafts.removeAll(server: id)
         hiddenDescriptions.removeAll(server: id)

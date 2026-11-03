@@ -47,15 +47,16 @@ public enum HistoryRetention: String, CaseIterable, Sendable {
 
 /// The retention chosen on this device, for every server, as apron-web's `HistorySettings`: kept
 /// in `history-settings.json` beside `servers.json`, a file that cannot be read giving the
-/// default. Also why keeping stopped, and how much each server's kept history takes.
+/// default. Also why keeping stopped, and how much each account's kept history takes.
 @MainActor
 @Observable
 public final class HistorySettings {
     public private(set) var retention: HistoryRetention = .default
     /// Why history stopped being kept on this launch, such as a full disk.
     public internal(set) var failure: String?
-    /// The size of each server's kept history as last written, in bytes.
-    public internal(set) var keptBytes: [UUID: Int] = [:]
+    /// The size of each account's kept history, in bytes: read from the files at launch, then as
+    /// each is written or deleted.
+    public internal(set) var keptBytes: [KeptAccount: Int] = [:]
 
     @ObservationIgnored private let fileURL: URL?
 
@@ -74,7 +75,17 @@ public final class HistorySettings {
         try? JSONValue.object(["retention": .string(retention.rawValue)]).serializedData().write(to: fileURL, options: .atomic)
     }
 
-    /// About how much history this device keeps, every server's together, in words ("12 MB"), as
+    /// History's Clear buttons, as apron-web's `clearLabels` (#199): the signed-in account's, and
+    /// every account's (how many). Where the signed-in account is the only one kept, one button,
+    /// with the space it takes.
+    public nonisolated static func clearLabels(accounts: Int, current: Bool, used: String?) -> (current: String?, all: String?) {
+        if current, accounts <= 1 { return (used.map { "Clear Current User (\($0))" } ?? "Clear Current User", nil) }
+        let all = accounts == 0 ? nil
+            : "Clear All Users (\(accounts) \(accounts == 1 ? "account" : "accounts")\(used.map { " using \($0)" } ?? ""))"
+        return (current ? "Clear Current User" : nil, all)
+    }
+
+    /// About how much history this device keeps, every account's together, in words ("12 MB"), as
     /// apron-web's `storageUsed`; nil before anything is written.
     public var used: String? {
         guard !keptBytes.isEmpty else { return nil }
@@ -89,15 +100,33 @@ public final class HistorySettings {
     }
 }
 
-/// Where each server's kept history is: one file per server, for the one account signed in there.
-public protocol HistoryFiles: Sendable {
-    func read(_ server: UUID) -> Data?
-    func write(_ data: Data, for server: UUID) throws
-    func remove(_ server: UUID)
+/// Whose history is kept: an account on a server. Each account's is kept apart, and stays as
+/// accounts sign out and in (#199).
+public struct KeptAccount: Hashable, Sendable {
+    public var server: UUID
+    public var userID: String
+
+    public init(server: UUID, userID: String) {
+        self.server = server
+        self.userID = userID
+    }
 }
 
-/// Kept history in `History/<server id>.jsonl` beside `servers.json`. The folder is excluded from
-/// backup: the server holds what it holds, and a backup would keep a signed-out account's chats.
+/// Where kept history is: one file per account per server.
+public protocol HistoryFiles: Sendable {
+    func read(_ account: KeptAccount) -> Data?
+    func write(_ data: Data, for account: KeptAccount) throws
+    /// Deletes what is kept, as apron-web's `forget(server?, userId?)`: `userID`'s on `server`,
+    /// every account's on `server`, or with neither every account's everywhere.
+    func remove(server: UUID?, userID: String?)
+    /// Every account whose history is kept, with its size in bytes.
+    func sizes() -> [KeptAccount: Int]
+}
+
+/// Kept history in `History/<server id>/<user id>.jsonl` beside `servers.json`, the user id
+/// percent-encoded. The folder is excluded from backup: the server holds what it holds.
+/// Before #199 a server's one account was kept in `History/<server id>.jsonl`: a read falls back
+/// to it (`KeptRestore` refuses another account's) and the account's first write replaces it.
 public struct FileHistoryFiles: HistoryFiles {
     public let directory: URL
 
@@ -105,32 +134,78 @@ public struct FileHistoryFiles: HistoryFiles {
         self.directory = directory.appending(path: "History", directoryHint: .isDirectory)
     }
 
-    private func file(_ server: UUID) -> URL { directory.appending(path: "\(server.uuidString).jsonl") }
+    private static let fileSafe = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
 
-    public func read(_ server: UUID) -> Data? { try? Data(contentsOf: file(server)) }
+    private func folder(_ server: UUID) -> URL { directory.appending(path: server.uuidString, directoryHint: .isDirectory) }
 
-    public func write(_ data: Data, for server: UUID) throws {
-        var folder = directory
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        var values = URLResourceValues()
-        values.isExcludedFromBackup = true
-        try? folder.setResourceValues(values)
-        try data.write(to: file(server), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+    private func file(_ account: KeptAccount) -> URL {
+        let name = account.userID.addingPercentEncoding(withAllowedCharacters: Self.fileSafe) ?? account.userID
+        return folder(account.server).appending(path: "\(name).jsonl")
     }
 
-    public func remove(_ server: UUID) { try? FileManager.default.removeItem(at: file(server)) }
+    private func legacy(_ server: UUID) -> URL { directory.appending(path: "\(server.uuidString).jsonl") }
+
+    public func read(_ account: KeptAccount) -> Data? {
+        (try? Data(contentsOf: file(account))) ?? (try? Data(contentsOf: legacy(account.server)))
+    }
+
+    public func write(_ data: Data, for account: KeptAccount) throws {
+        var top = directory
+        try FileManager.default.createDirectory(at: folder(account.server), withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? top.setResourceValues(values)
+        try data.write(to: file(account), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        try? FileManager.default.removeItem(at: legacy(account.server))
+    }
+
+    public func remove(server: UUID?, userID: String?) {
+        guard let server else {
+            try? FileManager.default.removeItem(at: directory)
+            return
+        }
+        try? FileManager.default.removeItem(at: legacy(server))
+        if let userID {
+            try? FileManager.default.removeItem(at: file(KeptAccount(server: server, userID: userID)))
+        } else {
+            try? FileManager.default.removeItem(at: folder(server))
+        }
+    }
+
+    public func sizes() -> [KeptAccount: Int] {
+        let manager = FileManager.default
+        var sizes: [KeptAccount: Int] = [:]
+        for folder in (try? manager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? [] {
+            guard let server = UUID(uuidString: folder.lastPathComponent) else { continue }
+            for file in (try? manager.contentsOfDirectory(at: folder, includingPropertiesForKeys: [.fileSizeKey])) ?? []
+            where file.pathExtension == "jsonl" {
+                guard let userID = file.deletingPathExtension().lastPathComponent.removingPercentEncoding else { continue }
+                sizes[KeptAccount(server: server, userID: userID)] = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            }
+        }
+        return sizes
+    }
 }
 
 /// Kept history in memory, for tests and previews.
 public final class InMemoryHistoryFiles: HistoryFiles, @unchecked Sendable {
     private let lock = NSLock()
-    private var files: [UUID: Data] = [:]
+    private var files: [KeptAccount: Data] = [:]
 
     public init() {}
 
-    public func read(_ server: UUID) -> Data? { lock.withLock { files[server] } }
-    public func write(_ data: Data, for server: UUID) throws { lock.withLock { files[server] = data } }
-    public func remove(_ server: UUID) { _ = lock.withLock { files.removeValue(forKey: server) } }
+    public func read(_ account: KeptAccount) -> Data? { lock.withLock { files[account] } }
+    public func write(_ data: Data, for account: KeptAccount) throws { lock.withLock { files[account] = data } }
+
+    public func remove(server: UUID?, userID: String?) {
+        lock.withLock {
+            files = files.filter { account, _ in
+                !((server == nil || account.server == server) && (userID == nil || account.userID == userID))
+            }
+        }
+    }
+
+    public func sizes() -> [KeptAccount: Int] { lock.withLock { files.mapValues(\.count) } }
 }
 
 /// How a kept room goes on: from its checkpoint, with its kept log reaching down to `start`

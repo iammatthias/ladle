@@ -285,13 +285,12 @@ private struct HistoryPreferences: View {
                 }
                 if let failure = settings.failure {
                     Text(failure).apText(.sm).foregroundStyle(Palette.danger)
-                } else if settings.retention != .off, let used = settings.used {
-                    Text("Using about \(used).").apText(.sm).foregroundStyle(Palette.inkMuted)
                 }
+                if settings.retention != .off { clearButtons(settings) }
             } footer: {
                 Text(settings.retention == .off
-                     ? "Signing out deletes stored history. Ladle still keeps the last day of each room, up to 150 messages, so it opens at once."
-                     : "Signing out deletes stored history.").formFooter()
+                     ? "How long this device keeps messages it has loaded. Ladle still keeps the last day of each room, up to 150 messages, so it opens at once."
+                     : "How long this device keeps messages it has loaded. Each account’s stays when you sign out.").formFooter()
             }
             .listRowBackground(Palette.raised)
             Section {
@@ -318,12 +317,47 @@ private struct HistoryPreferences: View {
         .background(Palette.chrome)
         .navigationTitle("History")
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(clearing == .all ? "Delete the history this device keeps for every account?" : "Delete the history this device keeps for this account?",
+                            isPresented: Binding(get: { clearing != nil }, set: { if !$0 { clearing = nil } }), titleVisibility: .visible,
+                            presenting: clearing) { which in
+            Button("Delete", role: .destructive) {
+                switch which {
+                case .current(let server): store.session(for: server)?.clearKept()
+                case .all: store.clearAllKept()
+                }
+            }
+        } message: { _ in
+            Text("This cannot be undone.")
+        }
         .sheet(item: $sharing) { ShareSheet(items: [$0.url]) }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.jsonLines, .json, .plainText, .data]) { result in
             if case .success(let url) = result { reading = OpenedExport(url: url) }
         }
         .fullScreenCover(item: $reading) { ArchiveViewer(opened: $0, mediaSettings: store.mediaSettings) }
     }
+
+    /// History's Clear buttons, as apron-web's (#199): the signed-in account's (one per server
+    /// when several are signed in), and every account's.
+    @ViewBuilder private func clearButtons(_ settings: HistorySettings) -> some View {
+        let current = signedIn.filter { session in session.keptAccount.map { settings.keptBytes[$0] != nil } ?? false }
+        let labels = HistorySettings.clearLabels(accounts: settings.keptBytes.count, current: !current.isEmpty, used: settings.used)
+        if let label = labels.current {
+            ForEach(current, id: \.record.id) { session in
+                Button(current.count == 1 ? label : "Clear \(session.serverName)") { clearing = .current(server: session.record.id) }
+                    .foregroundStyle(Palette.danger)
+            }
+        }
+        if let label = labels.all {
+            Button(label) { clearing = .all }.foregroundStyle(Palette.danger)
+        }
+    }
+
+    private enum Clearing: Hashable {
+        case current(server: UUID)
+        case all
+    }
+
+    @State private var clearing: Clearing?
 
     /// apron-web's "Include private rooms", off until asked (#171), for this visit to History.
     @State private var includePrivate = false

@@ -22,6 +22,8 @@ struct YouView: View {
     @State private var avatarBusy: String?
     @State private var avatarError: String?
     @State private var signingOut = false
+    /// Sign Out's Keep Local History (#199): on each time, so deleting is always chosen.
+    @State private var keepHistory = true
     @FocusState private var focused: Bool
     @Environment(\.dismiss) private var dismiss
 
@@ -72,7 +74,7 @@ struct YouView: View {
                     }
                 }
             }
-            .signOutDialog(session: session, isPresented: $signingOut) { dismiss() }
+            .signOutDialog(session: session, isPresented: $signingOut, keepingHistory: keepHistory) { dismiss() }
             .photosPicker(isPresented: $pickingAvatar, selection: $avatarItem, matching: .images, preferredItemEncoding: .compatible)
             .onChange(of: avatarItem) {
                 guard let item = avatarItem else { return }
@@ -223,6 +225,9 @@ struct YouView: View {
                 AddSignInRows(session: session, adding: adding)
             }
             if session.you != nil {
+                if session.offersKeepingHistory {
+                    Toggle("Keep Local History", isOn: $keepHistory)
+                }
                 Button("Sign Out", role: .destructive) { signingOut = true }
             }
         } header: {
@@ -304,17 +309,21 @@ struct StatusIcon: View {
 
 extension View {
     /// Confirms signing out of a server, saying what it costs: a token-only or guest account may
-    /// not be signed back in to.
-    func signOutDialog(session: ServerSession, isPresented: Binding<Bool>, then done: @escaping () -> Void = {}) -> some View {
-        confirmationDialog("Sign out of \(session.serverName)?", isPresented: isPresented, titleVisibility: .visible) {
+    /// not be signed back in to, and without `keepingHistory` this account's local history goes
+    /// (apron-web's "Signing out deletes local history. Continue?").
+    func signOutDialog(session: ServerSession, isPresented: Binding<Bool>, keepingHistory: Bool = true,
+                       then done: @escaping () -> Void = {}) -> some View {
+        let deletes = !keepingHistory && session.offersKeepingHistory
+        return confirmationDialog("Sign out of \(session.serverName)?", isPresented: isPresented, titleVisibility: .visible) {
             Button("Sign Out", role: .destructive) {
                 done()
-                Task { await session.signOut() }
+                Task { await session.signOut(keepingHistory: !deletes) }
             }
         } message: {
-            Text(session.record.account?.scheme == "guest" || session.record.account?.scheme == "token"
-                 ? "This account signs in only with its token, which is deleted. You may not get back into it."
-                 : "You can sign in again with the same method.")
+            let method = session.record.account?.scheme == "guest" || session.record.account?.scheme == "token"
+                ? "This account signs in only with its token, which is deleted. You may not get back into it."
+                : "You can sign in again with the same method."
+            Text(deletes ? "Signing out deletes local history. \(method)" : method)
         }
     }
 }

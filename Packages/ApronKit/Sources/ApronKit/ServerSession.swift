@@ -245,6 +245,8 @@ public final class ServerSession {
     @ObservationIgnored var caughtUp: [String: Date] = [:]
     @ObservationIgnored var restoring: Task<Void, Never>?
     @ObservationIgnored var keptSave: Task<Void, Never>?
+    /// Moves on each delete of kept history, so a write that was under way goes with it.
+    @ObservationIgnored var keptGeneration = 0
 
     /// What to call this server: the name the user gave it, else the server's `title` (§3.1),
     /// else its host. Shown with the host where the user picks a server, so a server can't pass
@@ -351,14 +353,19 @@ public final class ServerSession {
         start()
     }
 
-    /// Forgets the token and the account, and reconnects without an identity.
-    public func signOut() async {
+    /// Forgets the token and the account, and reconnects without an identity. The history kept
+    /// here stays for when the account signs back in, unless `keepingHistory` is false (#199):
+    /// then it goes once signing out is done, only this account's.
+    public func signOut(keepingHistory: Bool = true) async {
+        let forget = keepingHistory ? nil : you?.userID
+        if forget == nil { await flushKept() }
         try? tokens.setToken(nil, for: record.id)
         resumable = false
         heldAccount = nil
         setAccount(nil)
         await stop()
         resetChatState()
+        if let forget { forgetKept(of: forget) }
         you = nil
         chosenStatus = nil
         start()
@@ -436,7 +443,7 @@ public final class ServerSession {
                     resumable = false
                     if record.account != nil { heldAccount = record.account }
                     setAccount(nil)
-                    forgetKept()
+                    resetKept()
                     signInNeeded = reason
                     status = .stopped(.signedOut)
                 }
@@ -508,7 +515,7 @@ public final class ServerSession {
             resumable = false
             if record.account != nil { heldAccount = record.account }
             setAccount(nil)
-            forgetKept()
+            resetKept()
             signInNeeded = error.message
             status = .signedOut
         } catch {
@@ -592,6 +599,7 @@ public final class ServerSession {
         if rooms != nil { arrivals.listed = false }
         readPositions = positions.positions(server: record.id, user: identity.userID)
         let bearer = result["token"]?.stringValue ?? presented
+        if bearer != nil, store == ReplayStore() { await restoreKeptOnSignIn(identity) }
         try tokens.setToken(bearer, for: record.id)
         resumable = bearer != nil
         you = identity
@@ -681,7 +689,7 @@ public final class ServerSession {
         resetMutes()
         limits = [:]
         memberChangesUnsupported = false
-        forgetKept()
+        resetKept()
     }
 
     // MARK: Frames
@@ -960,8 +968,8 @@ public final class ServerSession {
     /// newest entries, and its checkpoint, so the sign-in's catch-up goes on from there. False,
     /// changing nothing, once the session holds anything of its own.
     @discardableResult
-    func adopt(_ restore: KeptRestore) -> Bool {
-        guard you == nil, histories.isEmpty, store == ReplayStore(), record.account?.userID == restore.you.userID else { return false }
+    func adopt(_ restore: KeptRestore, as account: String? = nil) -> Bool {
+        guard you == nil, histories.isEmpty, store == ReplayStore(), (account ?? record.account?.userID) == restore.you.userID else { return false }
         you = restore.you
         for user in restore.users { users.merge(user) }
         joinedRoomIDs = restore.joined

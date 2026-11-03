@@ -136,12 +136,52 @@ final class HistoryRetentionTests: XCTestCase {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: directory) }
         let files = FileHistoryFiles(directory: directory)
-        let server = UUID()
-        try files.write(Data("x".utf8), for: server)
-        XCTAssertEqual(files.read(server), Data("x".utf8))
+        let ada = KeptAccount(server: UUID(), userID: "ada")
+        try files.write(Data("x".utf8), for: ada)
+        XCTAssertEqual(files.read(ada), Data("x".utf8))
         XCTAssertEqual(try files.directory.resourceValues(forKeys: [.isExcludedFromBackupKey]).isExcludedFromBackup, true)
-        files.remove(server)
-        XCTAssertNil(files.read(server))
+        files.remove(server: ada.server, userID: "ada")
+        XCTAssertNil(files.read(ada))
+    }
+
+    func testEachAccountIsKeptApartAndGoesOnlyWhenAsked() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let files = FileHistoryFiles(directory: directory)
+        let home = UUID(), demo = UUID()
+        let ada = KeptAccount(server: home, userID: "ada"), zed = KeptAccount(server: home, userID: "../zed/ü")
+        let guest = KeptAccount(server: demo, userID: "ada")
+        try files.write(Data("ada".utf8), for: ada)
+        try files.write(Data("zed!".utf8), for: zed)
+        try files.write(Data("g".utf8), for: guest)
+        XCTAssertEqual(files.sizes(), [ada: 3, zed: 4, guest: 1], "a user id that is no file name round-trips")
+        files.remove(server: home, userID: "../zed/ü")
+        XCTAssertEqual(files.sizes(), [ada: 3, guest: 1])
+        files.remove(server: home, userID: nil)
+        XCTAssertEqual(files.sizes(), [guest: 1])
+        files.remove(server: nil, userID: nil)
+        XCTAssertEqual(files.sizes(), [:])
+    }
+
+    func testAServersFileFromBeforeAccountsWereKeptApartIsReadThenReplaced() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let files = FileHistoryFiles(directory: directory)
+        let ada = KeptAccount(server: UUID(), userID: "ada")
+        let legacy = files.directory.appending(path: "\(ada.server.uuidString).jsonl")
+        try FileManager.default.createDirectory(at: files.directory, withIntermediateDirectories: true)
+        try Data("old".utf8).write(to: legacy)
+        XCTAssertEqual(files.read(ada), Data("old".utf8))
+        try files.write(Data("new".utf8), for: ada)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.path()))
+        XCTAssertEqual(files.read(ada), Data("new".utf8))
+    }
+
+    func testClearLabelsAreApronWebs() {
+        XCTAssertTrue(HistorySettings.clearLabels(accounts: 1, current: true, used: "18 MB") == ("Clear Current User (18 MB)", nil))
+        XCTAssertTrue(HistorySettings.clearLabels(accounts: 3, current: true, used: "18 MB") == ("Clear Current User", "Clear All Users (3 accounts using 18 MB)"))
+        XCTAssertTrue(HistorySettings.clearLabels(accounts: 1, current: false, used: nil) == (nil, "Clear All Users (1 account)"))
+        XCTAssertTrue(HistorySettings.clearLabels(accounts: 0, current: false, used: "2 MB") == (nil, nil))
     }
 }
 
@@ -206,6 +246,7 @@ final class KeptHistorySessionTests: XCTestCase {
     let record = ServerRecord(id: UUID(uuidString: "00000000-0000-0000-0000-000000000009")!, url: URL(string: "wss://chat.example/ws")!)
     let tokens = InMemoryTokenStore()
     let files = InMemoryHistoryFiles()
+    lazy var ada = KeptAccount(server: record.id, userID: "ada")
     let transports = Transports()
     var sessions: [ServerSession] = []
 
@@ -259,7 +300,7 @@ final class KeptHistorySessionTests: XCTestCase {
 
     func testARelaunchShowsWhatWasKeptAtOnceThenCatchesUpFromItsCheckpoint() async throws {
         let first = try await keptSession()
-        let text = try XCTUnwrap(files.read(record.id).flatMap { String(data: $0, encoding: .utf8) })
+        let text = try XCTUnwrap(files.read(ada).flatMap { String(data: $0, encoding: .utf8) })
         XCTAssertTrue(text.hasPrefix(#"{"apron_archive":1,"#))
         await first.stop()
 
@@ -343,17 +384,61 @@ final class KeptHistorySessionTests: XCTestCase {
         XCTAssertEqual(ServerSession.searchStart(in: nil), "")
     }
 
-    func testSigningOutDeletesWhatIsKept() async throws {
+    func testSigningOutKeepsWhatIsKeptAndSigningBackInShowsIt() async throws {
         let first = try await keptSession()
-        XCTAssertNotNil(files.read(record.id))
+        XCTAssertEqual(first.keptAccount, ada)
+        XCTAssertTrue(first.offersKeepingHistory)
+        let socket = FakeTransport()
+        transports.queued.withLock { $0 = [socket] }
+        await socket.deliver(Self.greeting)
         await first.signOut()
-        XCTAssertNil(files.read(record.id))
+        XCTAssertNotNil(files.read(ada), "kept for when Ada signs back in")
+        XCTAssertNil(first.keptAccount)
+        await eventually("signed out") { first.status == .signedOut }
+        let signIn = Task { try await first.signIn(.token("t1")) }
+        _ = await frame(socket, 0)
+        await socket.deliver(["id": "c5", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await socket.deliver(["id": "c6", "result": ["joined": [["room_id": "general", "log_id": "900", "latest_log_id": "1060"]]]])
+        let catchUp = await frame(socket, 2)
+        XCTAssertEqual(catchUp, #"{"id":"c7","method":"history","params":{"after":"1061","limit":200,"room_id":"general"}}"#,
+                       "goes on from the kept checkpoint")
+        await socket.deliver(["id": "c7", "result": ["messages": [], "more": false, "latest_log_id": "1060", "history_log_id": "950"]])
+        _ = await frame(socket, 3)
+        await socket.deliver(["id": "c8", "result": ["not_joined": []]])
+        _ = try await signIn.value
+        XCTAssertEqual(first.timeline("general").count, 50, "the newest 50 kept, as a launch shows them")
+        while first.timeline("general").first?.messageID != LogID("1001") { try await first.loadOlder("general") }
+        let sent = await socket.sentLog.count
+        XCTAssertEqual(sent, 4, "the kept pages came from the device")
+        await first.flushKept()
+        let kept = try XCTUnwrap(files.read(ada).flatMap { String(data: $0, encoding: .utf8) })
+        XCTAssertEqual(try Archive(text: kept).records.messages.count, 60, "writing again kept all 60")
+    }
+
+    func testSignOutWithoutKeepingDeletesOnlyThisAccountsHistory() async throws {
+        let zed = KeptAccount(server: record.id, userID: "zed")
+        try files.write(Data("zed".utf8), for: zed)
+        let first = try await keptSession()
+        XCTAssertEqual(first.keeping?.settings.used, "under 1 MB")
+        await first.signOut(keepingHistory: false)
+        XCTAssertNil(files.read(ada))
+        XCTAssertEqual(files.read(zed), Data("zed".utf8))
+        XCTAssertNil(first.keeping?.settings.keptBytes[ada])
+    }
+
+    func testClearCurrentUserDeletesWhatIsKeptAndKeepsWhatIsLoadedAgain() async throws {
+        let first = try await keptSession()
+        first.clearKept()
+        XCTAssertNil(files.read(ada))
+        await first.flushKept()
+        let kept = try XCTUnwrap(files.read(ada).flatMap { String(data: $0, encoding: .utf8) })
+        XCTAssertEqual(try Archive(text: kept).records.messages.count, 60)
     }
 
     func testDontKeepKeepsTheNewest150OfTheLastDay() async throws {
         let first = try await keptSession()
         let settings = try XCTUnwrap(first.keeping?.settings)
-        XCTAssertNotNil(settings.keptBytes[record.id])
+        XCTAssertNotNil(settings.keptBytes[ada])
         XCTAssertEqual(settings.used, "under 1 MB")
         settings.update(.off)
         let source = try XCTUnwrap(first.keptSource(now: Date()))

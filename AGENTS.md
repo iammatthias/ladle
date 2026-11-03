@@ -527,8 +527,9 @@ clone), which is only a worked example.
     for tests.
   - Kept history (`KeptHistory.swift`, `ServerSession+History.swift`, `Archive.swift`,
     `LogEntry.swift`), as apron-web's `history-keeper.ts` and `session-cache.ts` (#56, #137) in
-    one file: `History/<server id>.jsonl` beside `servers.json` (`FileHistoryFiles`, excluded
-    from backup), only while `resumable`, one account per server. The file is an archive
+    one file per account: `History/<server id>/<user id>.jsonl` beside `servers.json`
+    (`FileHistoryFiles`, the user id percent-encoded, excluded from backup; a pre-#199
+    `History/<server id>.jsonl` is read once and replaced), only while `resumable`. The file is an archive
     (`Archive`, apron-web's ARCHIVE.md: header, listing, one record per line in `log_id` order;
     keys in code point order, where the web writes them as received) whose header carries
     `ladle_kept.rooms`, each opened room's `KeptSync` (checkpoint, where its kept run starts,
@@ -542,8 +543,15 @@ clone), which is only a worked example.
     cutoff starts over, a kept run starts no lower than the cutoff (by `log_id` where positions
     are times, `LogID.isTimeLike`), and the newest 50 entries show (`KeptRestore.window`).
     `start` reads it off the main actor and `adopt`s it before `run` resumes the token, so the
-    sign-in's catch-up goes on from each kept checkpoint. `forgetKept` deletes it on sign-out,
-    a refused token, another account (`resetChatState`) and server removal.
+    sign-in's catch-up goes on from each kept checkpoint. Each account's stays across
+    sign-outs (#199): a sign-out, a refused token and another account (`resetChatState`) only
+    `resetKept`; the account's next sign-in on an empty session shows it again
+    (`restoreKeptOnSignIn`), so the whole-file write keeps what was below. `forgetKept(of:)`
+    deletes it, only when asked: `signOut(keepingHistory: false)` (Profile's Keep Local
+    History off), History's Clear Current User (`clearKept`) and Clear All Users
+    (`SessionStore.clearAllKept`), and server removal; `keptGeneration` makes a write under way
+    go with it. `HistorySettings.keptBytes` is by `KeptAccount`, read from the files at launch;
+    `clearLabels` is apron-web's.
     `ReplayStore.logEntries(of:)` is a room's log as `LogEntry`s, and `LogEntry.slice` is
     apron-web's `sliceLog`.
   - Export and archive (`Archive.swift`, `ArchiveServer.swift`, `ServerSession+Archive.swift`), as

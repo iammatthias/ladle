@@ -15,9 +15,10 @@ public struct HistoryKeeping {
 
 /// Keeping history on the device, as apron-web's `HistoryKeeper` and `ViewKeeper` (#56, #137):
 /// only for an account this device signs back in to (`resumable`), never a passing guest's; one
-/// account per server, in ARCHIVE.md's form (`Archive`) with each room's catch-up under the
+/// file per account, in ARCHIVE.md's form (`Archive`) with each room's catch-up under the
 /// header's `ladle_kept`. It is written two seconds after a change, and at once as the app goes
-/// to the background; a sign-out, a sign-in as someone else, or removing the server deletes it.
+/// to the background. Each account's stays as accounts sign out and in, and is shown again when
+/// that account signs back in (#199); it goes only when asked (`forgetKept`), or with the server.
 extension ServerSession {
     /// The longest a change waits to be written (apron-web's `FLUSH_MS`).
     static let keptSaveDelay: Duration = .seconds(2)
@@ -25,13 +26,28 @@ extension ServerSession {
     /// Reads what was kept for this server's saved account, off the main actor, and shows it before
     /// the connection signs in (`run` waits for it).
     func restoreKept() {
-        guard let keeping, restoring == nil, let account = record.account?.userID, hasSavedToken else { return }
-        let files = keeping.files, server = record.id, retention = keeping.settings.retention, now = environment.now()
+        guard restoring == nil, let account = record.account?.userID, hasSavedToken else { return }
         restoring = Task {
-            let plan = await Task.detached { files.read(server).flatMap { KeptRestore(data: $0, account: account, retention: retention, now: now) } }.value
-            if let plan, !Task.isCancelled { adopt(plan) }
+            if let plan = await keptPlan(of: account), !Task.isCancelled { adopt(plan) }
         }
     }
+
+    /// What is kept of `account`'s history here, read off the main actor; nil if nothing is.
+    func keptPlan(of account: String) async -> KeptRestore? {
+        guard let keeping else { return nil }
+        let files = keeping.files, kept = KeptAccount(server: record.id, userID: account)
+        let retention = keeping.settings.retention, now = environment.now()
+        return await Task.detached { files.read(kept).flatMap { KeptRestore(data: $0, account: account, retention: retention, now: now) } }.value
+    }
+
+    /// Whose history this session keeps: the signed-in account, while it is kept.
+    public var keptAccount: KeptAccount? {
+        guard keepsHistory, let you else { return nil }
+        return KeptAccount(server: record.id, userID: you.userID)
+    }
+
+    /// Whether Sign Out offers Keep Local History: this account's history is kept here.
+    public var offersKeepingHistory: Bool { keptAccount != nil && keeping?.settings.retention != .off }
 
     /// Whether this session's history is kept: an account this device signs back in to, on a
     /// server that pages history, while keeping has not failed on this launch.
@@ -59,20 +75,20 @@ extension ServerSession {
     }
 
     private func saveKept() async {
-        guard keepsHistory, let keeping, let source = keptSource(now: environment.now()) else { return }
-        let files = keeping.files, server = record.id, now = environment.now()
+        guard let keeping, let account = keptAccount, let source = keptSource(now: environment.now()) else { return }
+        let files = keeping.files, now = environment.now(), generation = keptGeneration
         let result: Result<Int, any Error> = await Task.detached {
             let data = Data(Archive.text(of: source, exportedAt: now).utf8)
-            return Result { try files.write(data, for: server); return data.count }
+            return Result { try files.write(data, for: account); return data.count }
         }.value
-        // Signed out, or another account, while it was written: what was written goes.
-        guard keepsHistory, you?.userID == source.you?.userID else {
-            keeping.files.remove(record.id)
+        // Deleted while it was written: what was written goes too. Signed out meanwhile, it stays.
+        guard generation == keptGeneration else {
+            keeping.files.remove(server: account.server, userID: account.userID)
             return
         }
         switch result {
         case .success(let bytes):
-            keeping.settings.keptBytes[record.id] = bytes
+            keeping.settings.keptBytes[account] = bytes
         case .failure(let error as CocoaError) where error.code == .fileWriteOutOfSpace:
             keeping.settings.failure = "There isn’t enough space on this device to keep more history."
         case .failure:
@@ -80,16 +96,39 @@ extension ServerSession {
         }
     }
 
-    /// Deletes what is kept for this server, and keeps only what the session holds from now on.
-    func forgetKept() {
+    /// Lets go of what the session holds of the kept history, leaving the files: a sign-out, a
+    /// sign-in as someone else, a refused token.
+    func resetKept() {
         keptSave?.cancel()
         keptSave = nil
         restoring?.cancel()
+        restoring = nil
         kept = store
         keptCoverage = [:]
         caughtUp = [:]
-        keeping?.files.remove(record.id)
-        keeping?.settings.keptBytes[record.id] = nil
+    }
+
+    /// Deletes what is kept of `userID`'s history here (every account's with nil), and keeps
+    /// only what the session holds from now on: what is loaded is kept again as it goes, as
+    /// apron-web's Clear current user.
+    func forgetKept(of userID: String?) {
+        resetKept()
+        keptGeneration += 1
+        keeping?.files.remove(server: record.id, userID: userID)
+        keeping?.settings.keptBytes = keeping?.settings.keptBytes.filter { $0.key.server != record.id || (userID != nil && $0.key.userID != userID) } ?? [:]
+    }
+
+    /// Preferences' Clear Current User: deletes this account's kept history.
+    public func clearKept() {
+        guard let you else { return }
+        forgetKept(of: you.userID)
+    }
+
+    /// The account just signed in on a session that holds nothing yet, such as after a sign-out:
+    /// shows what this device kept of it, as a launch would, so its next write keeps it.
+    func restoreKeptOnSignIn(_ identity: UserObject) async {
+        guard you == nil, keeping != nil, let plan = await keptPlan(of: identity.userID) else { return }
+        adopt(plan, as: identity.userID)
     }
 
     /// What is written: every room with a record, each opened one with its stretch of records

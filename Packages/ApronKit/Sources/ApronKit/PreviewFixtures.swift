@@ -37,7 +37,10 @@ public enum PreviewFixtures {
             readLiveText: readLiveText,
             writeLiveText: writeLiveText
         )
-        let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment)
+        // History kept in memory, with an account signed out of home before (#199), for History's Clear buttons.
+        let historyFiles = InMemoryHistoryFiles()
+        try? historyFiles.write(Data(repeating: 32, count: 3 * 1024 * 1024), for: KeptAccount(server: homeID, userID: "sam_before"))
+        let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment, historyFiles: historyFiles)
         try? tokens.setToken("preview", for: homeID)
         for (id, url, label) in [(homeID, "wss://home.example/ws", "Home"), (demoID, "wss://demo.apron.example/ws", nil)] {
             store.add(ServerRecord(id: id, url: URL(string: url)!, label: label))
@@ -53,6 +56,7 @@ public enum PreviewFixtures {
                 try? await session.open(roomID)
             }
             await session.loadEmojiCatalog()
+            await session.flushKept()
         }
         return store
     }

@@ -41,7 +41,8 @@ final class HistoryIntegrationTests: XCTestCase {
         try await waitFor("sent") { self.texts(ada).suffix(3) == ["one", "two", "three"] }
         let shown = texts(ada)
         await ada.suspend()
-        let kept = try XCTUnwrap(files.read(ada.record.id).flatMap { String(data: $0, encoding: .utf8) })
+        let account = try XCTUnwrap(ada.keptAccount)
+        let kept = try XCTUnwrap(files.read(account).flatMap { String(data: $0, encoding: .utf8) })
         let archive = try Archive(text: kept)
         XCTAssertEqual(archive.you?.userID, ada.you?.userID)
         XCTAssertEqual(archive.skipped, 0)
@@ -59,6 +60,16 @@ final class HistoryIntegrationTests: XCTestCase {
         XCTAssertEqual(again.you?.userID, ada.you?.userID)
 
         await again.signOut()
-        XCTAssertNil(files.read(ada.record.id), "signing out deletes what was kept")
+        XCTAssertNotNil(files.read(account), "signing out keeps what was kept")
+        _ = try await again.signIn(.emailProposal(address: "eve@example.com"))
+        _ = try await again.signIn(.emailCode(try await server.emailCode(for: "eve@example.com")))
+        try await waitFor("signed in as Eve") { again.status == .signedIn && again.you?.userID != account.userID }
+        try await again.open("general")
+        await again.flushKept()
+        let eve = try XCTUnwrap(again.keptAccount)
+        XCTAssertNotNil(files.read(eve))
+        await again.signOut(keepingHistory: false)
+        XCTAssertNil(files.read(eve), "Keep Local History off deletes Eve's")
+        XCTAssertNotNil(files.read(account), "and leaves Ada's")
     }
 }
