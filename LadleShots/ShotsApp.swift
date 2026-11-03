@@ -20,7 +20,7 @@ struct ShotsApp: App {
 enum Screen: String, CaseIterable {
     case firstRun = "first-run", servers, connect, connectScanned = "connect-scanned", rooms, timeline, mention, members, reaction, attachments, media, links, viewer, ipad
     case roomsFresh = "rooms-fresh", threadsSheet = "threads-sheet", threadsSheetThread = "threads-sheet-thread"
-    case textLimit = "text-limit", guestComposer = "guest-composer"
+    case textLimit = "text-limit", guestComposer = "guest-composer", guestHistoryEnd = "guest-history-end"
     case emoji, emojiPicker = "emoji-picker", emojiShortcode = "emoji-shortcode", commands
     case linkCards = "link-cards", composerLinkPreviews = "composer-link-previews", sentLinkPreview = "sent-link-preview", roomMention = "room-mention", selectText = "select-text"
     case reminder, reminderCustom = "reminder-custom"
@@ -124,6 +124,7 @@ enum Renderer {
         }
         shots.append((.timeline, .dark, true, nil))
         shots.append((.liveTyping, .dark, true, nil))
+        shots.append((.guestHistoryEnd, .dark, true, nil))
         // The busy room in each premade theme but Apron, which every other shot is in, and in the
         // custom CSS of the custom Appearance shot.
         for look in PremadeTheme.all.dropFirst().map(Look.premade) + [Look.custom] {
@@ -350,6 +351,14 @@ enum Renderer {
             AnyView(NavigationStack {
                 if let demo = store.session(for: PreviewFixtures.demoID) { TimelineView(session: demo, roomID: "lobby", reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
             })
+        case .guestHistoryEnd:
+            // The demo's news, paged back until the server asks the guest to sign in.
+            AnyView(NavigationStack {
+                if let demo = store.session(for: PreviewFixtures.demoID) {
+                    TimelineView(session: demo, roomID: PreviewFixtures.guestHistoryRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts())
+                }
+            }
+            .environment(\.shotPins, ShotPins(scrollTo: OlderHistoryPrompt.rowID)))
         case .emoji:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .emojiPicker:

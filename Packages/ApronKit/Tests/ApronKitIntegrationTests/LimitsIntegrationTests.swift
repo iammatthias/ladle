@@ -3,8 +3,9 @@ import Foundation
 import Synchronization
 import XCTest
 
-/// The request layer's waits against the real Rust server: a history page refused for a few
-/// seconds is waited out and sent again, so paging back never shows the refusal.
+/// Limits against the real Rust server: a history page refused for a few seconds is waited out
+/// and sent again, so paging back never shows the refusal; a guest paging back past
+/// `--limit.guest-history-depth` reaches the end of what loads, signed out, not an error.
 @MainActor
 final class LimitsIntegrationTests: XCTestCase {
     private var servers: [Aprond] = []
@@ -59,5 +60,35 @@ final class LimitsIntegrationTests: XCTestCase {
         let waits = sleeps.delays.withLock { $0 }.filter { $0 >= .seconds(1) && $0 <= ShortWait.longest }
         XCTAssertFalse(waits.isEmpty, "a refusal was waited out: \(sleeps.delays.withLock { $0 })")
         XCTAssertNil(reader.wait(.history))
+    }
+
+    func testAGuestPagesBackToTheDepthAndAnAccountGoesOnToTheStart() async throws {
+        let server = try await Aprond.start(["--limit.guest-history-depth", "3"])
+        servers.append(server)
+        let writer = session(server)
+        try await waitFor("writer connected") { writer.status == .signedOut }
+        try await writer.signIn(.guest(name: nil))
+        try await writer.open("general")
+        let texts = (1...6).map { "line \($0)" }
+        for text in texts { _ = try await writer.send(text, in: "general") }
+        try await waitFor("sent") { writer.timeline("general").compactMap { $0.body?["text"]?.stringValue }.suffix(6) == texts }
+
+        let guest = session(server, pageSize: 2)
+        try await waitFor("guest connected") { guest.status == .signedOut }
+        try await guest.signIn(.guest(name: nil))
+        try await guest.open("general")
+        while guest.canLoadOlder("general") { try await guest.loadOlder("general") }
+        XCTAssertEqual(guest.historyEnd(of: "general"), .signInForOlder)
+        XCTAssertEqual(guest.timeline("general").compactMap { $0.body?["text"]?.stringValue }, ["line 4", "line 5", "line 6"],
+                       "the newest page (line 6 and the guest's join) and one more; the next, four records back, is refused")
+
+        let ada = session(server, pageSize: 2)
+        try await waitFor("ada connected") { ada.status == .signedOut }
+        _ = try await ada.signIn(.emailProposal(address: "ada@example.com"))
+        _ = try await ada.signIn(.emailCode(try await server.emailCode(for: "ada@example.com")))
+        try await ada.open("general")
+        while ada.canLoadOlder("general") { try await ada.loadOlder("general") }
+        XCTAssertEqual(ada.historyEnd(of: "general"), .reachedStart)
+        XCTAssertEqual(Array(ada.timeline("general").compactMap { $0.body?["text"]?.stringValue }.suffix(6)), texts)
     }
 }

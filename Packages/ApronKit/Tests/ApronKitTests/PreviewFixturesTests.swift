@@ -120,6 +120,10 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertNil(home.memberListNote(PreviewFixtures.busyRoomID))
         XCTAssertFalse(demo.mayWrite, "a guest the demo lets only read")
         XCTAssertEqual(demo.firstRoom, "help")
+        try await demo.open(PreviewFixtures.guestHistoryRoomID)
+        try await demo.loadOlder(PreviewFixtures.guestHistoryRoomID)
+        XCTAssertEqual(demo.historyEnd(of: PreviewFixtures.guestHistoryRoomID), .signInForOlder, "the demo asks its guest to sign in for older news")
+        XCTAssertEqual(demo.historyEnd(of: "lobby"), .reachedStart)
         XCTAssertEqual(demo.notices(in: "help").map { $0.body?["text"]?.stringValue }, [PreviewFixtures.demoWelcome],
                        "the welcome before auth, kept for a guest given no token, in the first room")
         XCTAssertEqual(demo.notices(in: "lobby"), [])

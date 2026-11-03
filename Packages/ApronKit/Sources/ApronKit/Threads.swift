@@ -282,7 +282,7 @@ extension ServerSession {
     public func replyWords(in roomID: String) -> String? {
         guard store.room(roomID)?.parentRoomID != nil, let history = histories[roomID], history.olderBefore != nil || !history.more else { return nil }
         let count = timeline(roomID).count
-        let more = canLoadOlder(roomID)
+        let more = hasOlder(roomID)
         return "\(count)\(more ? "+" : "") \(count == 1 && !more ? "reply" : "replies")"
     }
 
@@ -291,7 +291,7 @@ extension ServerSession {
     public func thread(startedFrom messageID: LogID, in roomID: String) -> String? {
         if let started = startedThreads[messageID], store.room(started) != nil { return started }
         return threadIDs(in: roomID).first { id in
-            histories[id] != nil && !canLoadOlder(id) && timeline(id).first?.replyTo == messageID
+            historyEnd(of: id).map { $0 != .signInForOlder } == true && timeline(id).first?.replyTo == messageID
         }
     }
 

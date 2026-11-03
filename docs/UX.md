@@ -378,6 +378,7 @@ As built (apron-web #74, #157): a row is the title, its description (two lines, 
 - Older pages load when the top is within one screen. A `ProgressView` row shows while a page loads.
 - The first time a room is shown in a session, its messages wait for its thread listing, at most 3 s, with a `ProgressView` in their place, so the thread cards come with them instead of shifting the timeline afterwards. Shown again, or after a reconnect, it does not wait.
 - At the end of history, show "Start of #General". If `history_log_id` cut history short, show "Earlier messages are no longer available." Without `history`, show "Messages from before you connected aren't available on this server." (§4 fallback).
+- A guest whose page back is refused `denied` (aprond's `--limit.guest-history-depth`, 200 records by default, "Sign in to load older history") has reached the end of what loads, not an error: in the paging row's place at the top, a banner with `clock.arrow.circlepath`, "Sign in to see older messages", "Guests can read the latest messages. Sign in or create an account on <server> to load earlier history." and **Sign In** (the sign-in sheet for the server; VoiceOver hint "Signs in to <server> to load earlier messages"). Nothing more is asked for that room until a sign-in starts it over. Its words wrap at every Dynamic Type size. Shot: `ladle-guest-history-end`.
 
 **Navigation.**
 

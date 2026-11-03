@@ -141,6 +141,9 @@ struct TimelineView: View {
                             .task(id: session.histories[roomID]?.olderBefore) {
                                 do { try await session.loadOlder(roomID) } catch { problem = errorText(error) }
                             }
+                    } else if session.historyEnd(of: roomID) == .signInForOlder {
+                        OlderHistoryPrompt(session: session) { requestSignIn(session.record) }
+                            .id(OlderHistoryPrompt.rowID)
                     }
                     let shown = held ? [] : items
                     let receipts = session.receipts(in: roomID, shown: shown.compactMap {
@@ -1336,6 +1339,27 @@ struct ReadOnlyPrompt: View {
         }
         .padding(.horizontal, Tokens.Space.s4)
         .padding(.vertical, Tokens.Space.s2)
+    }
+}
+
+/// At the top of a guest's timeline where the server asks them to sign in for older messages
+/// (`HistoryEnd.signInForOlder`): the end of what loads here, not an error.
+struct OlderHistoryPrompt: View {
+    /// Its place in the timeline, which the renderer scrolls to at AX3.
+    static let rowID = "older-history-prompt"
+
+    let session: ServerSession
+    let signIn: () -> Void
+
+    var body: some View {
+        ActionBanner(symbol: "clock.arrow.circlepath", title: "Sign in to see older messages",
+                     detail: "Guests can read the latest messages. Sign in or create an account on \(session.serverName) to load earlier history.") {
+            Button("Sign In", action: signIn)
+                .buttonStyle(PrimaryButtonStyle())
+                .accessibilityHint("Signs in to \(session.serverName) to load earlier messages")
+        }
+        .padding(.horizontal, Tokens.Space.s4)
+        .padding(.top, Tokens.Space.s3)
     }
 }
 

@@ -962,7 +962,15 @@ public final class ServerSession {
                 return
             }
         }
-        let page = try await history(["room_id": .string(roomID), "before": before.json, "limit": .number(String(limit))])
+        let page: HistoryPage
+        do {
+            page = try await history(["room_id": .string(roomID), "before": before.json, "limit": .number(String(limit))])
+        } catch let error as RPCError where error.code == RPCError.Code.denied && isGuest {
+            // aprond's `--limit.guest-history-depth`: a guest's page back past it is `denied`,
+            // which no other refusal of `before` alone is. The newest pages stay, as the end.
+            histories[roomID]?.olderNeedsSignIn = true
+            return
+        }
         histories[roomID]?.receivedBackward(page)
     }
 
@@ -1077,11 +1085,24 @@ public final class ServerSession {
         return page
     }
 
-    /// Whether older history may still be loaded: the server said there is more, and it is not
-    /// below the room's retention floor.
+    /// Whether older history may still be loaded: a page is loaded and its history has not ended.
     public func canLoadOlder(_ roomID: String) -> Bool {
-        guard let state = histories[roomID], state.more, let before = state.olderBefore else { return false }
-        return store.floor(of: roomID).map { before >= $0 } ?? true
+        histories[roomID]?.olderBefore != nil && historyEnd(of: roomID) == nil
+    }
+
+    /// Why the room's loaded history goes no further back, or nil while it may (or before its
+    /// first page).
+    public func historyEnd(of roomID: String) -> HistoryEnd? {
+        guard let state = histories[roomID] else { return nil }
+        if state.olderNeedsSignIn { return .signInForOlder }
+        if !state.more { return .reachedStart }
+        if let before = state.olderBefore, let floor = store.floor(of: roomID), before < floor { return .retentionFloor }
+        return nil
+    }
+
+    /// Whether the server holds older records than those loaded, loadable or not.
+    public func hasOlder(_ roomID: String) -> Bool {
+        canLoadOlder(roomID) || historyEnd(of: roomID) == .signInForOlder
     }
 
     /// Shows what the device kept of this account's history before the connection signs in, as
@@ -1500,7 +1521,7 @@ public final class ServerSession {
     /// or before `after`, since the first unread one may be among them.
     public func newLine(in roomID: String, after: LogID?) -> LogID? {
         guard let after else { return nil }
-        let olderAvailable = canLoadOlder(roomID)
+        let olderAvailable = hasOlder(roomID)
         var reached = false
         for message in store.messages(in: roomID) {
             if message.messageID <= after {
@@ -1596,12 +1617,25 @@ public struct RoomNode: Hashable, Sendable, Identifiable {
     }
 }
 
+/// Why a room's history loads no further back (§4.3.2, §4.3.5).
+public enum HistoryEnd: Hashable, Sendable {
+    /// The server has nothing older: the room's first record, or the first it keeps.
+    case reachedStart
+    /// The next page would be below the retention floor.
+    case retentionFloor
+    /// The server has older records but refused a guest's page of them (`denied`): signed in,
+    /// paging goes on.
+    case signInForOlder
+}
+
 /// Paging state of one opened room (§4.3.2, §4.3.5).
 public struct RoomHistory: Hashable, Sendable {
     /// `before` of the next older page: the oldest loaded page's `first_log_id − 1`.
     public internal(set) var olderBefore: LogID?
     public internal(set) var more = true
     public internal(set) var isLoading = false
+    /// A page back was refused to this guest (`HistoryEnd.signInForOlder`).
+    var olderNeedsSignIn = false
     /// The position through which this room is complete; catch-up pages forward from it.
     var checkpoint: LogID?
     /// Whether live records arrive gaplessly, so they may move the checkpoint.

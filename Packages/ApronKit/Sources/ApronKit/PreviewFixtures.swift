@@ -178,8 +178,10 @@ public enum PreviewFixtures {
         ]
     }
 
-    /// `floor` is the result's `history_log_id`, the first line's by default.
-    private static func history(_ roomID: String, _ lines: [Line], memberships: [JSONValue] = [], rooms: [JSONValue] = [], floor: String? = nil) -> JSONValue {
+    /// `floor` is the result's `history_log_id`, the first line's by default; `more` says older
+    /// pages exist.
+    private static func history(_ roomID: String, _ lines: [Line], memberships: [JSONValue] = [], rooms: [JSONValue] = [], floor: String? = nil,
+                                more: Bool = false) -> JSONValue {
         var messages: [JSONValue] = []
         var reactions: [JSONValue] = []
         for line in lines {
@@ -214,7 +216,7 @@ public enum PreviewFixtures {
         }
         let latest = lines.map { $0.editedAt ?? $0.minute }.max().map(message) ?? message(0)
         return [
-            "messages": .array(messages), "reactions": .array(reactions), "memberships": .array(memberships), "rooms": .array(rooms), "more": false,
+            "messages": .array(messages), "reactions": .array(reactions), "memberships": .array(memberships), "rooms": .array(rooms), "more": .bool(more),
             "first_log_id": .string(message(lines.first?.minute ?? 0)), "last_log_id": .string(latest),
             "latest_log_id": .string(latest), "history_log_id": .string(floor ?? message(lines.first?.minute ?? 0)),
         ]
@@ -644,6 +646,7 @@ public enum PreviewFixtures {
             "joined": [
                 room("lobby", "lobby", members: ["guest_7", "host", "wren"], memberCount: lobbyMemberCount),
                 room("help", "help", members: ["guest_7", "host"]),
+                room(guestHistoryRoomID, guestHistoryRoomID, members: ["guest_7", "host", "wren"]),
             ],
             "users": [
                 ["user_id": "guest_7", "name": "Guest 7", "status": "online"],
@@ -661,11 +664,20 @@ public enum PreviewFixtures {
             "help": history("help", [
                 line(-200, "host", "Ask here. Logs help: include your client and server versions."),
             ]),
+            guestHistoryRoomID: history(guestHistoryRoomID, [
+                line(-300, "host", "Release notes for the demo go here."),
+                line(-90, "wren", "The Rust server now has live text readers per address."),
+                line(-40, "host", "Guests can scroll back 200 records; sign in for the rest."),
+            ], floor: message(-600), more: true),
         ],
         readCursors: ["lobby": message(-120), "help": message(-200)],
         welcome: ["from": ["user_id": "~private", "name": "Only you"], "body": ["text": .string(demoWelcome), "format": "markdown"]],
-        token: nil
+        token: nil,
+        olderNeedsSignIn: [guestHistoryRoomID]
     )
+
+    /// The demo room a guest pages back in until the server asks them to sign in.
+    public static let guestHistoryRoomID = "news"
 
     /// The demo's welcome before `auth`, which shows in its first room, help, for a guest it gives
     /// no token.

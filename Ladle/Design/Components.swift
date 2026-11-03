@@ -75,20 +75,30 @@ struct ActionBanner<Actions: View>: View {
     var detail: String?
     var tone = Palette.accent
     @ViewBuilder var actions: Actions
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.fixedTypeSize) private var fixedTypeSize
 
     var body: some View {
-        HStack(spacing: Tokens.Space.s3) {
-            Image(systemName: symbol)
-                .imageScale(.small)
-                .foregroundStyle(tone)
-                .frame(width: Tokens.Control.md, height: Tokens.Control.md)
-                .background(tone.opacity(0.18), in: Circle())
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 0) {
-                Text(title).apText(.ui, .semibold).foregroundStyle(Palette.ink)
-                if let detail { Text(detail).apText(.sm).foregroundStyle(Palette.inkMuted) }
+        // At accessibility sizes the actions go under the words, which then keep the full width.
+        let stacked = (fixedTypeSize ?? typeSize).isAccessibilitySize
+        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: Tokens.Space.s2))
+            : AnyLayout(HStackLayout(spacing: Tokens.Space.s3))
+        layout {
+            HStack(spacing: Tokens.Space.s3) {
+                if !stacked {
+                    Image(systemName: symbol)
+                        .imageScale(.small)
+                        .foregroundStyle(tone)
+                        .frame(width: Tokens.Control.md, height: Tokens.Control.md)
+                        .background(tone.opacity(0.18), in: Circle())
+                        .accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(title).apText(.ui, .semibold).foregroundStyle(Palette.ink)
+                    if let detail { Text(detail).apText(.sm).foregroundStyle(Palette.inkMuted) }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
             actions
         }
         .padding(.vertical, Tokens.Space.s2)

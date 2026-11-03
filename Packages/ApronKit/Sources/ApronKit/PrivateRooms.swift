@@ -238,7 +238,7 @@ extension ServerSession {
     /// of it is loaded, and the least position still retrievable is at or before the room's first
     /// record seen, or nothing is retrievable at all.
     public func reachesStart(_ roomID: String) -> Bool {
-        guard let history = histories[roomID], !history.isLoading, !canLoadOlder(roomID) else { return false }
+        guard let history = histories[roomID], !history.isLoading, let end = historyEnd(of: roomID), end != .signInForOlder else { return false }
         guard let floor = store.floor(of: roomID) else { return true }
         guard let start = store.firstRecordLogID(of: roomID) ?? store.room(roomID)?.logID else { return false }
         return floor <= start

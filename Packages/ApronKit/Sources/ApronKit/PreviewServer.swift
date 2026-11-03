@@ -6,7 +6,8 @@ import Foundation
 /// unjoined threads are the script's `unjoinedThreads`. A `room_set` without a `room_id` creates
 /// the room as asked, with you its one member, in a `room_update` before its result. Removing
 /// someone else (`room_leave` with a `user_id`) is refused, as aprond refuses a member who did
-/// not create the room, for the failed command shot. Every other request gets `{}`. A script's `welcome`
+/// not create the room, for the failed command shot. A page back in a room of `olderNeedsSignIn`
+/// is refused `denied`, as aprond refuses a guest's. Every other request gets `{}`. A script's `welcome`
 /// goes right after the greeting.
 /// It never sends anything unasked, so a seeded session stays still.
 public actor PreviewServer: FrameTransport {
@@ -34,6 +35,9 @@ public actor PreviewServer: FrameTransport {
         public var welcome: JSONValue?
         /// The `token` in the `auth` result; none, as for a guest who cannot resume.
         public var token: String? = "preview"
+        /// Rooms whose older pages (`history` with `before` alone) are refused `denied`, as
+        /// aprond refuses a guest's past `--limit.guest-history-depth`.
+        public var olderNeedsSignIn: Set<String> = []
     }
 
     private let script: Script
@@ -81,6 +85,9 @@ public actor PreviewServer: FrameTransport {
             }
             for notice in script.notices { deliver(["method": "message", "params": notice]) }
             for activity in script.activities { deliver(["method": "activity", "params": activity]) }
+        case "history" where params?["before"] != nil && params?["after"] == nil
+            && script.olderNeedsSignIn.contains(params?["room_id"]?.stringValue ?? ""):
+            deliver(["id": id, "error": ["code": -32001, "message": "Sign in to load older history"]])
         case "history":
             let roomID = params?["room_id"]?.stringValue ?? ""
             deliver(["id": id, "result": script.histories[roomID] ?? ["messages": [], "more": false]])

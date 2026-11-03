@@ -185,7 +185,15 @@ clone), which is only a worked example.
       link names, the loaded history reaches past it, or the floor stops it, so the timeline
       stays one unbroken run. A page arriving after an older one leaves paging where it is.
       `page` asks the device first while a restored room's kept log reaches below what
-      `store` shows (`keptCoverage`), then the server. A `history` refused with `retry_after`
+      `store` shows (`keptCoverage`), then the server. Why paging stopped is `HistoryEnd`
+      (`historyEnd(of:)`: `reachedStart`, `retentionFloor`, `signInForOlder`), the one typed
+      edge `canLoadOlder`, `hasOlder`, `reachesStart`, `replyWords` and `thread(startedFrom:)`
+      read. A guest's page back refused `denied` (aprond's `--limit.guest-history-depth`,
+      Cloudflare's #76; the server's words are "Sign in to load older history", and no other
+      refusal answers `before` alone that way) sets `signInForOlder` without throwing, so the
+      timeline shows `OlderHistoryPrompt` at its top, not an error, and asks no more of that room
+      until `resetChatState` empties `histories` at a sign-in; an account's `denied` stays an
+      error. A `history` refused with `retry_after`
       holds back every `history` until the wait is over (`LimitScope.history`), unless the
       request layer waited it out (Waits).
     - Threads: a thread's record is in its own log (§4.3.1), not its room's, so a member of the
@@ -286,7 +294,7 @@ clone), which is only a worked example.
     deleted message, presence). The design screenshots render from it; `PreviewFixturesTests`
     pins what it holds. It sends the script's `statuses` after `auth` (the design room is muted)
     and echoes a `status` mute back, as servers do; it refuses the `⏳` reaction for 45 s
-    (`write`) and any new upload for two hours (`upload`), for the waits shot. It answers `room_list {filter: not_joined}` with `unjoinedRooms` for Browse Rooms: the garden (three members, its history read before joining) and the book club (12 by `member_count`). The demo sends a welcome before `auth` and gives its guest no token, so the welcome stays in its first room, help. A `room_set` without a
+    (`write`) and any new upload for two hours (`upload`), for the waits shot. It answers `room_list {filter: not_joined}` with `unjoinedRooms` for Browse Rooms: the garden (three members, its history read before joining) and the book club (12 by `member_count`). The demo sends a welcome before `auth` and gives its guest no token, so the welcome stays in its first room, help. A guest's page back in a room of `olderNeedsSignIn` (the demo's news) is refused `denied`, as aprond's guest history depth. A `room_set` without a
     `room_id` creates the room (`new_1`, …) with you its one member. Home's private rooms: Ada's
     untitled conversation from its start (`directRoomID`), Bram and Chiara's (`groupRoomID`), Launch
     plan (`addedRoomID`) and ops, 4 of a limit of 5. Ops holds `/invite-device add phone`'s
@@ -929,7 +937,7 @@ plus `LadleShots/ShotsApp.swift`. It seeds `PreviewFixtures` (and a fetched prev
 (compact width) in dark and light: the first run (no servers), the server list, Connect, Connect after a scanned sign-in, the room list, the busy room (opened at its New line), the
 mention list, the member list and the reaction picker, the composer with attachments, its PDF being renamed in place (`ladle-staged-rename`), the editor on Sam's two photos with their tiles, the first renamed, and his reply's line with its × (`ladle-edit-embeds`), a room
 of uploads (image, video, file, audio, pending), the media viewer, the composer over the text
-limit, a read-only guest's sign-in prompt on the demo server, custom emoji in text, a
+limit, a read-only guest's sign-in prompt on the demo server, the demo's news paged back until the server asks the guest to sign in (`ladle-guest-history-end`, and at AX3, where an `ActionBanner` puts its actions under its words), custom emoji in text, a
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list (`:pa`), `:smi` with the custom `:smilingpan:` first, the standard emoji and the first row highlighted (`ladle-emoji-standard`), its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards, a sender-built GitHub card as others see it (`ladle-sent-link-preview`), the composer's link previews for a pull request and a Wikipedia article (`ladle-composer-link-previews`), a room chip and Apron link chips for a message, a room, a thread, a user and another server (the Icon sketches thread), the `#` room

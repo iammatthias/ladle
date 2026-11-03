@@ -262,4 +262,58 @@ final class LimitsTests: ScriptedSessionCase {
         let log = await socket.sentLog
         XCTAssertEqual(log.count, 3, "nothing resent on the old connection")
     }
+
+    /// Opens general with a newest page that says more is older, as a guest signed in by `signIn`.
+    private func openWithOlder(_ socket: FakeTransport) async throws {
+        let opening = Task { try await session.open("general") }
+        _ = await sent(socket, count: 3)
+        await socket.deliver(["id": "c3", "result": ["messages": [
+            ["message_id": "300", "log_id": "300", "room_id": "general", "from": ["user_id": "bob"], "body": ["text": "newest"]],
+        ], "first_log_id": "300", "last_log_id": "300", "latest_log_id": "300", "more": true]])
+        _ = await sent(socket, count: 4)
+        await socket.deliver(["id": "c4", "result": ["not_joined": []]])
+        try await opening.value
+        XCTAssertTrue(session.canLoadOlder("general"))
+        XCTAssertNil(session.historyEnd(of: "general"))
+    }
+
+    func testAGuestRefusedOlderHistoryReachesItsEndAndAsksToSignIn() async throws {
+        let socket = try await signedIn()
+        try await openWithOlder(socket)
+        let older = Task { try await session.loadOlder("general") }
+        let log = await sent(socket, count: 5)
+        XCTAssertEqual(log[4], #"{"id":"c5","method":"history","params":{"before":"299","limit":50,"room_id":"general"}}"#)
+        await socket.deliver(["id": "c5", "error": ["code": -32001, "message": "Sign in to load older history"]])
+        try await older.value
+        XCTAssertEqual(session.historyEnd(of: "general"), .signInForOlder)
+        XCTAssertFalse(session.canLoadOlder("general"))
+        XCTAssertTrue(session.hasOlder("general"))
+        XCTAssertNil(session.wait(.history))
+        try await session.loadOlder("general")
+        let after = await socket.sentLog
+        XCTAssertEqual(after.count, 5, "paging stops for the room")
+    }
+
+    func testAnAccountRefusedOlderHistorySeesTheError() async throws {
+        let socket = queueTransport(capabilities: ["history", "rooms"])
+        session.start()
+        await eventually("signed out") { session.status == .signedOut }
+        let signIn = Task { try await session.signIn(.token("t1")) }
+        _ = await sent(socket, count: 2)
+        await socket.deliver(["id": "c1", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await socket.deliver(["id": "c2", "result": ["joined": [["room_id": "general", "log_id": "100", "title": "General", "latest_log_id": "300"]]]])
+        _ = try await signIn.value
+        try await openWithOlder(socket)
+        let older = Task { try await session.loadOlder("general") }
+        _ = await sent(socket, count: 5)
+        await socket.deliver(["id": "c5", "error": ["code": -32001, "message": "No"]])
+        do {
+            try await older.value
+            XCTFail("refused")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.message, "No")
+        }
+        XCTAssertNil(session.historyEnd(of: "general"))
+        XCTAssertTrue(session.canLoadOlder("general"))
+    }
 }
