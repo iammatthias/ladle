@@ -533,6 +533,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 These have no apron-web counterpart. They stay.
 
 - Several servers at once, with unread and mentions per server (`Servers/ServerListView.swift`).
+- Several accounts on one server, each its own entry with its own session, token, drafts, read positions, kept history and notification settings (`Kit/SessionStore.swift` `accounts(on:)`, `Kit/LinkRoute.swift` `AccountChoice`, `App/AccountChooser.swift`, the server pane's Add Another Account…). apron-web keeps one account per origin in its page storage; Ladle adds the second. A link to such a server opens in the account that can see its place, else the open one, else asks; a sign-in link always asks, with a new account as a choice.
 - An outbox that queues sends while offline, with Retry and Delete (`Kit/ServerSession.swift`).
 - Remind Me on a message, as a local notification (`Kit/Reminders.swift`, `Timeline/ReminderViews.swift`).
 - Select Text on a message or notice (`Timeline/SelectTextSheet.swift`).

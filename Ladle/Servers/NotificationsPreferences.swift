@@ -32,9 +32,9 @@ struct NotificationsPreferences: View {
             }
             .listRowBackground(Palette.raised)
             ForEach(sessions(store, server), id: \.record.id) { session in
-                ScopesSection(store: store, session: session, header: server == nil ? session.serverName : nil)
+                ScopesSection(store: store, session: session, header: server == nil ? store.heading(for: session) : nil)
                 if session.mayMute {
-                    PauseSection(session: session, header: server == nil ? session.serverName : nil)
+                    PauseSection(session: session, header: server == nil ? store.heading(for: session) : nil)
                 }
             }
             if store.pushInBuild {

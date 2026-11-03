@@ -99,7 +99,7 @@ private struct ProfilePreferences: View {
                     NavigationLink {
                         YouView(session: session, standalone: false)
                     } label: {
-                        LabeledContent(session.serverName, value: session.you.map(session.displayName(for:)) ?? "")
+                        LabeledContent(store.heading(for: session), value: session.you.map(session.displayName(for:)) ?? "")
                     }
                 }
                 .listRowBackground(Palette.raised)
@@ -166,7 +166,7 @@ private struct MediaPreferences: View {
             guard let session = store.session(for: record.id), session.server != nil else { return nil }
             let gate = session.mediaGate
             let sites = ([gate.origin].compactMap { $0 } + gate.serverOrigins.sorted()).map(Self.host)
-            return (session.serverName, sites)
+            return (store.heading(for: session), sites)
         }
     }
 
@@ -255,7 +255,7 @@ private struct HistoryPreferences: View {
             Section {
                 Toggle("Include Private Rooms", isOn: $includePrivate)
                 ForEach(signedIn, id: \.record.id) { session in
-                    Button(signedIn.count == 1 ? "Export Chats" : "Export \(session.serverName)") { export(session) }
+                    Button(signedIn.count == 1 ? "Export Chats" : "Export \(store.heading(for: session))") { export(session) }
                 }
                 if let exportNote { Text(exportNote).apText(.sm).foregroundStyle(Palette.inkMuted) }
             } header: {
@@ -302,7 +302,7 @@ private struct HistoryPreferences: View {
         let labels = HistorySettings.clearLabels(accounts: settings.keptBytes.count, current: !current.isEmpty, used: settings.used)
         if let label = labels.current {
             ForEach(current, id: \.record.id) { session in
-                Button(current.count == 1 ? label : "Clear \(session.serverName)") { clearing = .current(server: session.record.id) }
+                Button(current.count == 1 ? label : "Clear \(store.heading(for: session))") { clearing = .current(server: session.record.id) }
                     .foregroundStyle(Palette.danger)
             }
         }

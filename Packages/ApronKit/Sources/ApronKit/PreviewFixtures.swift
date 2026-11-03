@@ -71,6 +71,37 @@ public enum PreviewFixtures {
         return store
     }
 
+    public static let sousID = UUID(uuidString: "6C61646C-0000-4000-8000-000000000003")!
+
+    /// Home twice: Sam's record and the Sous Chef bot's, two accounts on one server, each with its
+    /// own session, for the server list and rail shots and the account chooser.
+    @MainActor
+    public static func makeTwoAccountsStore() async -> SessionStore {
+        let tokens = InMemoryTokenStore()
+        var bot = home
+        bot.you = ["user_id": "sous", "name": "Sous Chef", "status": "online", "ext": ["bio": "Posts the daily specials. A bot."]]
+        bot.readCursors = [:]
+        let scripts = [homeID: home, sousID: bot]
+        let environment = ServerSession.Environment(
+            makeTransport: { record in PreviewServer(script: scripts[record.id] ?? home) },
+            sleep: { _ in try await Task.sleep(for: .seconds(3600)) },
+            jitter: { 1 }
+        )
+        let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment)
+        try? tokens.setToken("preview", for: homeID)
+        try? tokens.setToken("preview-bot", for: sousID)
+        store.add(ServerRecord(id: homeID, url: URL(string: "wss://home.example/ws")!, label: "Home",
+                               account: .init(userID: "sam", name: "Sam", scheme: "token")))
+        store.add(ServerRecord(id: sousID, url: URL(string: "wss://home.example/ws")!, label: "Home",
+                               account: .init(userID: "sous", name: "Sous Chef", scheme: "token")))
+        for (id, script) in scripts {
+            guard let session = store.session(for: id) else { continue }
+            await until { session.status == .signedIn && session.readCursors.count == script.readCursors.count }
+            if id == homeID { try? await session.open(busyRoomID) }
+        }
+        return store
+    }
+
     @MainActor
     static func until(_ condition: () -> Bool) async {
         for _ in 0 ..< 500 where !condition() {

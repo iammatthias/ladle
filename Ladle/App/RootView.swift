@@ -24,6 +24,10 @@ struct RootView: View {
     @State private var askedLink: AskedLink?
     /// What became of a sign-in link: added, or why it didn't work.
     @State private var linkOutcome: String?
+    /// A link to a server with several saved accounts, waiting for the user to pick one.
+    @State private var choosing: AccountChoice?
+    /// Where the picked account's link goes, run once the chooser has closed.
+    @State private var afterChoosing: (() -> Void)?
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.scenePhase) private var scenePhase
 
@@ -35,9 +39,18 @@ struct RootView: View {
         .apronStyle()
         .appearance(store.appearance)
         .sheet(item: $connecting) { request in
-            ConnectView(store: store, record: request.record, prefill: request.prefill) { id in
+            ConnectView(store: store, record: request.record, prefill: request.prefill, like: request.like) { id in
                 if request.record == nil { show(id, request.place) }
             }
+        }
+        .sheet(item: $choosing, onDismiss: { afterChoosing?(); afterChoosing = nil }) { choice in
+            AccountChooser(choice: choice, store: store, pick: { id in
+                afterChoosing = { choice.route(id).map(go) }
+                choosing = nil
+            }, newAccount: { payload in
+                afterChoosing = { connecting = ConnectRequest(prefill: payload, like: choice.accounts.first) }
+                choosing = nil
+            })
         }
         .sheet(item: $preferences) { PreferencesView(store: store, request: $0) }
         .signInLinkDialog($askedLink, outcome: $linkOutcome, store: store)
@@ -46,7 +59,7 @@ struct RootView: View {
         }
         .environment(\.openPreferences, OpenPreferencesAction { preferences = $0 })
         .environment(\.requestSignIn, SignInAction { connecting = ConnectRequest(record: $0) })
-        .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
+        .environment(\.liveSessions, SessionLookup(store.liveSessions(for:)))
         .environment(\.sessionStore, store)
         .onOpenURL { url in
             // An export handed over from Files or another app opens read-only.
@@ -127,9 +140,11 @@ struct RootView: View {
     // MARK: Links (link.apron.chat SPEC)
 
     /// Opens a link (`LinkRoute`); a relative one here has no server that sent it
-    /// (`resolvingLinks` resolves those in a server's own content), so it opens nothing.
+    /// (`resolvingLinks` resolves those in a server's own content), so it opens nothing. The open
+    /// record is preferred where several accounts on the link's server could take it, so a link
+    /// tapped in one account's room stays in that account.
     private func open(_ link: ApronLink) {
-        LinkRoute(link, records: store.records, proposal: store.proposals.find(link.state, now: Date())).map(go)
+        store.route(link, preferred: serverID.flatMap(UUID.init(uuidString:))).map(go)
     }
 
     /// A tapped reminder's or message's notification (#203), once its server has loaded: its message revealed and highlighted, as a link to it.
@@ -163,6 +178,7 @@ struct RootView: View {
             askedLink = AskedLink(session: session, token: prefill.token)
         case .place(let id, let link): show(id, link)
         case .addServer(let prefill, let place): connecting = ConnectRequest(prefill: prefill, place: place)
+        case .chooseAccount(let choice): choosing = choice
         }
     }
 
@@ -242,7 +258,8 @@ struct PhoneLayout: View {
                         if let session = store.session(for: id) {
                             RoomListView(session: session, selected: opened[id], open: { path.append(.room(id, $0)) },
                                          onSignIn: { connecting = ConnectRequest(record: session.record) },
-                                         onConnect: { connecting = ConnectRequest() }, pickingOpenRoomFolds: false)
+                                         onConnect: { connecting = ConnectRequest() },
+                                         onAddAccount: { connecting = ConnectRequest(like: session.record) }, pickingOpenRoomFolds: false)
                                 .resolvingLinks(from: session)
                                 .onAppear { serverID = id.uuidString; roomID = nil }
                         }
@@ -282,7 +299,8 @@ struct SplitLayout: View {
                     NavigationStack {
                         RoomListView(session: session, selected: roomID, open: { roomID = $0 },
                                      onSignIn: { connecting = ConnectRequest(record: session.record) },
-                                     onConnect: { connecting = ConnectRequest() }, showsServerHead: true)
+                                     onConnect: { connecting = ConnectRequest() },
+                                     onAddAccount: { connecting = ConnectRequest(like: session.record) }, showsServerHead: true)
                             .resolvingLinks(from: session)
                     }
                 } else {

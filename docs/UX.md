@@ -81,12 +81,12 @@ Ladle cannot claim universal links for `link.apron.chat` because the owner does 
 The link's keys resolve as follows:
 
 - **`server` that Ladle does not have.** Open Add Server prefilled, with the host shown. The connection waits for you to tap **Connect** (§A.4, §5.5). This applies to every link from content too.
-- **`server` that Ladle has, or none (content from that server).** Select that server's section.
+- **`server` that Ladle has, or none (content from that server).** Select that server's section. Where several accounts are saved on that server (3.1), a place link opens in the one whose session can see the place, else the account open on screen (so a link tapped in one account's room stays in that account), else a sheet asks "Open on chat.example as…" with each account's face and name. A reminder's or a notification's tap names its account and never asks.
 - **`room`.** Open the room. If you have not joined it, it opens in preview (3.5) and you join only by tapping **Join**. A link never joins or sends (§A.4).
 - **`message`.** Open the room, load history around the message, scroll to it, and highlight it briefly. If it is gone, show "Message unavailable" as a toast above the composer.
 - **`user`.** Open User Profile.
 - **`preferences`.** Not a link key: apron-web names its open Preferences section in its own page address (#184), which no client writes in a link. A link with nothing else opens nothing; beside a place, the place opens and the key is ignored. Ladle opens Preferences at a section from its own screens (3.14).
-- **`token` with `state`.** If the state is from a proposal this connection made, approve it on the server that Ladle proposed to, and ignore `server` (§4.11.2). Without matching state, ask "Sign in to chat.example with this link?" and then present it with `scheme: "token"`.
+- **`token` with `state`.** If the state is from a proposal this connection made, approve it on the server that Ladle proposed to, and ignore `server` (§4.11.2). Without matching state, ask "Sign in to chat.example with this link?" and then present it with `scheme: "token"`. With several accounts saved there, first "Sign in to chat.example as…" lists them and **Sign In as a New Account** (Add Server seeded with the address and the token), under the same warning, since a token says nothing about whose it is; the chosen account then gets the dialog above.
 
 Ladle writes the `https` form when you copy or share a link (§A.4), using `ShareLink` and **Copy Link**.
 
@@ -101,10 +101,10 @@ Ladle writes the `https` form when you copy or share a link (§A.4), using `Shar
 | Where a room opens | Each visit | At the New line, near the top, with what is new below it, as apron-web's `landAtDivider`: up to three older pages load to reach where you had read; further back, it opens at the latest with no line. A link to a message, or a scroll before it lands, keeps the timeline where that put it. The room is not marked read until it has opened. |
 | Collapsed server sections | `@AppStorage` | Same |
 | Draft text, mentions, reply target, and ready files per room and thread | `drafts.json` beside `servers.json`, written on change; the files in `Staged` in Application Support, excluded from backup | Same. A reply whose message is not loaded reads "Replying to a message". An open edit is not kept, as apron-web closes its editor when the pane changes; the draft waits beside it. A file still being fitted when the app ends is not kept. |
-| Rooms, users and each opened room's history within the Retention (Preferences > History) | `History/<server id>.jsonl` beside `servers.json`, in ARCHIVE.md's form; excluded from backup, file protection `completeUntilFirstUserAuthentication` | Shown at once, before the connection signs in; each room then catches up from its kept checkpoint (4.1) |
+| Rooms, users and each opened room's history within the Retention (Preferences > History) | `History/<server id>/<user id>.jsonl` beside `servers.json`, in ARCHIVE.md's form; excluded from backup, file protection `completeUntilFirstUserAuthentication` | Shown at once, before the connection signs in; each room then catches up from its kept checkpoint (4.1) |
 | Local read position per room | A file per server | Unread counts (4.3) |
 
-Kept history is apron-web's history cache and kept view (#56, #137) in one file per server, for the one account signed in there, and only for an account Ladle signs back in to (a saved token), never a passing guest's. It holds what was loaded, from where each opened room's unbroken run of records starts, clamped at the Retention by `log_id` where the server's positions are times: 30 days by default; a day, a week, a year or forever; or Don't Keep, which still keeps the last day of each room, up to 150 messages, as apron-web's kept view does. A room not caught up since before the cutoff starts over from its newest page, as apron-web's `plannedRoom`. A relaunch shows each room's newest 50 entries; scrolling back pages from the device until its kept run ends, then from the server. It is written two seconds after a change and at once as the app goes to the background. Signing out, a token the server refuses, signing in as a different `user_id`, and removing the server delete it. It is left out of backups: the server holds the history, and a backup would carry a signed-out account's chats past the sign-out. Tokens never go in these files.
+Kept history is apron-web's history cache and kept view (#56, #137) in one file per account on each saved record, and only for an account Ladle signs back in to (a saved token), never a passing guest's. It holds what was loaded, from where each opened room's unbroken run of records starts, clamped at the Retention by `log_id` where the server's positions are times: 30 days by default; a day, a week, a year or forever; or Don't Keep, which still keeps the last day of each room, up to 150 messages, as apron-web's kept view does. A room not caught up since before the cutoff starts over from its newest page, as apron-web's `plannedRoom`. A relaunch shows each room's newest 50 entries; scrolling back pages from the device until its kept run ends, then from the server. It is written two seconds after a change and at once as the app goes to the background. Signing out, a token the server refuses, signing in as a different `user_id`, and removing the server delete it. It is left out of backups: the server holds the history, and a backup would carry a signed-out account's chats past the sign-out. Tokens never go in these files.
 
 ## 3. Screens
 
@@ -154,6 +154,8 @@ Each screen section below lists only where it departs from these conventions.
 - **Top.** The large title **Rooms**, and **Add Server** (`plus`) at the trailing edge. Adding a server is rare, so the top is acceptable.
 - **Middle.** Sections with rows.
 - **Bottom (iPhone).** The search field, through `.searchable`, which iOS places in the bottom toolbar. [search-fields] says "Place search at the bottom if there's room." On iPad, the field is at the top of the sidebar.
+
+**Several accounts on one server.** A server can be in the list more than once, once per account: you and a bot, or a guest beside your account. Each is its own entry with its own sign-in, rooms, drafts, read positions, kept history, reminders and notification settings; the room list, profile bar and Preferences > Profile are that account's. Where a server has more than one, its rows carry the account's face on the server's tile (the rail puts it at the tile's top corner, clear of the mention count) and the row's second line reads "Ada on chat.example"; elsewhere a server named in a list (Remove, Preferences' Notifications, Media, History) reads "Home · Ada". A second account is added from the server pane's **Add Another Account…** (3.12), or from Add Server with an address already saved (3.2). Two records may name the same server with different names after Edit; each keeps its own. Removing one removes only that account's things. Two of your own accounts in one room each count its messages unread, and one's message can notify the other, as any two accounts would.
 
 **Section header.** The header shows the server label and a status line only when the server is not live (4.1). An `ellipsis.circle` menu holds these items:
 
@@ -247,7 +249,7 @@ The origin is hidden by default because the default (`https://<host>`) is right 
 **States.**
 
 - An address that is not a `ws` or `wss` URL. Inline: "Enter a ws:// or wss:// address." Text without a scheme gets `wss://` added.
-- A server that is already saved. "chat.example is already in Ladle." with a **Show** button that selects it. Each server has one identity, so a second copy is never created.
+- A server that is already saved. Under the address, "Already in Ladle as Ada. Connecting adds another account on this server." (naming every account saved there). Connect then saves a second record on the server, for the account you sign in as; the first keeps its session. Opened from the server pane's **Add Another Account…**, the sheet starts with that server's address, name and origin, names the server with its description and welcome, and its subtitle reads "Add another account on this server".
 - The upgrade is refused with 403. "chat.example refused this origin (HTTP 403)." Advanced opens with the Origin field focused.
 - No answer. "Can't reach chat.example." with **Try Again**. "No internet connection" appears when the path monitor reports no route (4.1).
 - `retry_after` at connect. "chat.example is busy. Trying again in 30 s."
@@ -260,7 +262,7 @@ The origin is hidden by default because the default (`https://<host>`) is right 
 
 ### 3.3 Sign In
 
-**Purpose.** Sign in with what this server offers. Each server has one identity. Ranked tasks:
+**Purpose.** Sign in with what this server offers, as the account this entry is (a second account on the same server is its own entry, 3.1). Ranked tasks:
 
 1. Token, by paste or scan.
 2. Passkey, where this build may use them for the server.
@@ -614,7 +616,7 @@ When the server keeps another status than the one chosen, a callout under the pi
 2. **Description.** The server's `description` as CommonMark, with custom emoji.
 3. **You.** "Signed in as Ada", with "(guest)" for a guest, and **Edit Profile**, which opens You (3.11).
 4. **Address.** The WebSocket address, selectable, with a copy button that turns to a check for a moment, and the protocol version, "Apron 9".
-5. **Actions.** **Connect to Another Server…** opens the Connect sheet (3.2) for a new server. **Disconnect** closes this server's connection without asking and keeps it closed until **Connect** (the rooms list's banner) or the next launch, which sign back in without asking: the saved session and kept history stay, as the web's. The server stays in the list, its loaded rooms readable. The others stay connected.
+5. **Actions.** **Connect to Another Server…** opens the Connect sheet (3.2) for a new server. **Add Another Account…** opens it for a second account on this server, with the address, name and origin filled in, saved as its own entry beside this one (3.1). **Disconnect** closes this server's connection without asking and keeps it closed until **Connect** (the rooms list's banner) or the next launch, which sign back in without asking: the saved session and kept history stay, as the web's. The server stays in the list, its loaded rooms readable. The others stay connected.
 
 **Sign Out confirmation**, from You's Sign Out: "Sign out of Home?" with "This account signs in only with its token, which is deleted. You may not get back into it." for a token or guest account, and "You can sign in again with the same method." otherwise. The Keychain item is `ThisDeviceOnly`, and Ladle never shows the token, so for token-only accounts the loss is real.
 

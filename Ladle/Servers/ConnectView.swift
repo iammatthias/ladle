@@ -13,6 +13,9 @@ struct ConnectView: View {
     let store: SessionStore
     var record: ServerRecord?
     var prefill: TokenPayload?
+    /// A saved record on the server another account is added to: its address, name and origin
+    /// start the form, its session greets, and a new record is saved.
+    var like: ServerRecord?
     /// Whether the camera can scan; the design-review renderer sets it, the app never does.
     var canScan = QRScanner.isAvailable
     /// The method and passkey choice the sheet opens on; the design-review renderer sets them,
@@ -36,18 +39,18 @@ struct ConnectView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: Tokens.Space.s3) {
                     VStack(alignment: .leading, spacing: Tokens.Space.s1) {
-                        Text(existing?.serverName ?? record?.label ?? "Apron").apText(.display, .semibold).foregroundStyle(Palette.ink)
-                        Text(record == nil ? "Connect to a server" : "Sign in again, or change this server")
+                        Text(greeter?.serverName ?? record?.label ?? like?.label ?? "Apron").apText(.display, .semibold).foregroundStyle(Palette.ink)
+                        Text(record != nil ? "Sign in again, or change this server" : like != nil ? "Add another account on this server" : "Connect to a server")
                             .apText(.field).foregroundStyle(Palette.inkMuted)
-                        if let description = existing?.server?.description {
-                            MessageBlocksView(blocks: MessageText.markdown(description, emoji: existing?.emojiCatalog), catalog: existing?.emojiCatalog, role: .ui,
-                                              gate: existing?.mediaGate, settings: existing?.mediaSettings)
+                        if let greeter, let description = greeter.server?.description {
+                            MessageBlocksView(blocks: MessageText.markdown(description, emoji: greeter.emojiCatalog), catalog: greeter.emojiCatalog, role: .ui,
+                                              gate: greeter.mediaGate, settings: greeter.mediaSettings)
                                 .apText(.ui).foregroundStyle(Palette.inkMuted).tint(Palette.denim)
                                 .written(in: TextDirection(of: description))
-                                .task(id: existing?.server?.emojiCatalogURL) { await existing?.loadEmojiCatalog(for: description) }
+                                .task(id: greeter.server?.emojiCatalogURL) { await greeter.loadEmojiCatalog(for: description) }
                         }
                     }
-                    if let greeter = session ?? existing, let welcome = greeter.server?.welcome {
+                    if let greeter, let welcome = greeter.server?.welcome {
                         Callout {
                             MessageBlocksView(blocks: MessageText.markdown(welcome, emoji: greeter.emojiCatalog), catalog: greeter.emojiCatalog, role: .ui,
                                               gate: greeter.mediaGate, settings: greeter.mediaSettings)
@@ -77,7 +80,8 @@ struct ConnectView: View {
                             .autocorrectionDisabled()
                     } hint: {
                         if !form.address.isEmpty, form.url == nil { Text("Enter a ws:// or wss:// address.").foregroundStyle(Palette.danger) }
-                        if record == nil { HostYourOwnLink().padding(.leading, -Tokens.Space.s3) }
+                        if let note = sameServerNote { Label(note, systemImage: "person.2").foregroundStyle(Palette.inkMuted) }
+                        if record == nil, like == nil { HostYourOwnLink().padding(.leading, -Tokens.Space.s3) }
                     }
                     VStack(alignment: .leading, spacing: Tokens.Space.s1) {
                         Text("Sign in with").apText(.sm, .semibold).foregroundStyle(Palette.inkMuted)
@@ -144,7 +148,7 @@ struct ConnectView: View {
             }
             .sensoryFeedback(.success, trigger: form.receivedToken) { _, new in new != nil }
             .onAppear {
-                form = ConnectForm(record: record, mayWrite: existing?.mayWrite == true, prefill: prefill)
+                form = ConnectForm(record: record, mayWrite: existing?.mayWrite == true, prefill: prefill, like: like)
                 if existing?.passkeyHold == true { form.method = .passkey }
                 if let startMethod { form.method = startMethod }
                 form.passkeyMode = startPasskeyMode
@@ -383,8 +387,16 @@ struct ConnectView: View {
     /// An external sign-in page that shows a code, while the sheet waits for it.
     private var pendingPage: URL? { (session ?? existing)?.pendingPage }
 
-    /// The session whose server frame the sheet shows.
-    private var greeter: ServerSession? { session ?? existing }
+    /// The session whose server frame the sheet shows: the one connecting, the saved record's,
+    /// or the sibling account's while another account is added.
+    private var greeter: ServerSession? { session ?? existing ?? like.flatMap { store.session(for: $0.id) } }
+
+    /// Who is saved on the server the address names already, when adding: the line that says
+    /// connecting adds another account rather than a second copy.
+    private var sameServerNote: String? {
+        guard record == nil, let url = form.url else { return nil }
+        return ConnectForm.sameServerNote(accounts: store.accounts(on: url).map { store.session(for: $0.id)?.accountName ?? $0.accountLabel })
+    }
 
     /// Whether this build can ask for a passkey for the address in the form.
     private var passkeysUsable: Bool { form.url.map { PasskeyDomains.app.covers(server: $0) } ?? true }

@@ -1,7 +1,9 @@
 # Ladle, agent notes
 
 Ladle is a native iOS client for the Apron chat protocol v10. Apron is the protocol; Ladle is the
-client. Single-user: one identity per server, with several servers. Swift 6, SwiftUI, Apple frameworks only. Phase 1 is the scaffold and the
+client. Several servers, and several accounts on one server (you and a bot, a guest beside an
+account): a `ServerRecord` per account, each with its own session, token and files, so no store is
+keyed by a server's URL. Swift 6, SwiftUI, Apple frameworks only. Phase 1 is the scaffold and the
 protocol core behind the protocol's client conformance fixtures. Phase 2 adds the session layer
 (`ServerSession`, `SessionStore`) and a thin SwiftUI client over it.
 
@@ -266,7 +268,15 @@ clone), which is only a worked example.
     every line, from `~private` only), so a structured form (shazow/apron#85) can replace it
     here; `query(in:)` is the command word a draft is typing (after `/`, not `//`, before any
     space).
-  - `SessionStore`: every server's session, the saved list, and account persistence.
+  - `SessionStore`: every record's session, the saved list, and account persistence. `records`
+    is a flat array in the order saved; the accounts on one server are the records at its URL
+    (`accounts(on:)`, a scan), `heading(for:)` names a session "Home · Ada" where another record
+    shares its server (the server list, rail, remove dialog and Preferences' server lists; the
+    room list's title stays `serverName`), `liveSessions(for:)` gives a URL's signed-in sessions
+    for place cards (the first that can see the place draws it), and `route(_:preferred:)` is
+    `LinkRoute` with the open record and which sessions can see the link's place. `remove`
+    drops one record's token, kept history, read positions, reminders, drafts, notification
+    scopes, hidden descriptions and room order; a sibling record keeps its own.
   - Uploads (§4.8.3, §4.8.4, §4.8.6), as apron-web does them. `Embed` parses an embed once;
     its `upload` is pending until `url`, then an image, video or audio from `og`, or a file.
     `MediaGate` (`MediaGate.swift`) is the one place a media URL is decided, as apron-web's
@@ -590,7 +600,14 @@ clone), which is only a worked example.
     naming only it is no link, and beside a place it stays in `otherKeys` (`PreferencesSection`).
   - `LinkRoute` (`LinkRoute.swift`): where an Apron link that reaches the app, or a tapped
     reminder, goes: a saved server's sign-in sheet with the link's token, a place on a saved
-    server, or the Connect sheet for the link's server; nowhere for a relative link.
+    server, or the Connect sheet for the link's server; nowhere for a relative link. With
+    several accounts saved on the link's server: a proposal's `state` names its record; a place
+    link goes to the one account whose session can see the place (`sees`, `placeCard`), else the
+    open record (`preferred`) when it is one of them, else `chooseAccount` (`AccountChoice`,
+    the app's `AccountChooser` sheet); a sign-in link always asks, with "Sign In as a New
+    Account" (Connect seeded from a sibling record, `ConnectForm(like:)`) as one more choice, since
+    a token says nothing about whose it is. A reminder's or notification's `ReminderKey` names
+    its record, so those never ask.
   - `SignIn`, `TokenPayload` (a bare token or a sign-in link read by `ApronLink`), `SignInFill` (what a
     scanned or pasted sign-in fills in: server and token when adding a server, the token alone
     otherwise, or the other server a saved server's link names), `UserDirectory` (one kept
@@ -599,9 +616,10 @@ clone), which is only a worked example.
     follows it until edited), name and origin, the methods the server offers, a scanned,
     pasted or tapped sign-in filling it in, the submit button's word, the `SignIn` to send,
     and the record to save (`SessionStore.save` adds it or saves changes).
-  - `ServerRecord`, `ServerStore`, `TokenStore`, `ReadPositionStore`: the saved servers (JSON, no
-    secrets), the seam for the bearer token, and the read positions. The in-memory stores are
-    for tests.
+  - `ServerRecord`, `ServerStore`, `TokenStore`, `ReadPositionStore`: the saved records (JSON, no
+    secrets; one per account, `url` shared between a server's accounts and never a key;
+    `accountLabel` names the account), the seam for the bearer token, and the read positions.
+    The in-memory stores are for tests.
   - Kept history (`KeptHistory.swift`, `ServerSession+History.swift`, `Archive.swift`,
     `LogEntry.swift`), as apron-web's `history-keeper.ts` and `session-cache.ts` (#56, #137) in
     one file per account: `History/<server id>/<user id>.jsonl` beside `servers.json`
@@ -854,7 +872,9 @@ clone), which is only a worked example.
   profile bar; `signOutDialog`; `ProfileCardView`: someone's card, from a sender's avatar or
   name, a mention chip, a member row or a link's `user`; `ServerPaneView`: the server pane, from
   the room list's title or, on iPad, its server head, with Edit Profile, Connect to Another
-  Server… and Disconnect, which closes the connection and keeps the saved session, #177),
+  Server…, Add Another Account… (Connect seeded from this record, saving a second record on the
+  same server) and Disconnect, which closes the connection and keeps the saved session, #177),
+  `App/AccountChooser.swift` (the sheet for a link a server's several accounts could take),
   `Rooms/RoomFormSheet.swift` (the web's RoomForm: title and Markdown description for New Room,
   with its Private toggle, New Thread, Start Thread and Edit Room or Thread), `Rooms/NewPrivateSheet.swift`
   (the + beside Private: the web's PrivateRoomForm, with `QuotaLine` and the limit's Leave list),
@@ -901,7 +921,8 @@ clone), which is only a worked example.
   StatusDot and RoleBadges; `Components`: the web's UnreadCount, Callout, ActionBanner, EmptyState, buttons, and Ladle's `ReactionNewsBadge`, new reactions to your messages on a room or thread row).
   `TimelineView`'s `ReactionJumpPill` (⇧⌘R, the rotor "New Reactions") goes to `nextUnseenReaction`, highlights it as a link's message (`flash`) and marks it seen; a row half in view (`rowsInView`) while the pane is on screen in the active app and landed marks its reactions seen (`seenInView`), as reading marks read.
   `Servers/KeychainStore.swift` is the only place a secret is persisted (generic password,
-  service `app.ladle.ios.token`, account = server id).
+  service `app.ladle.ios.token`, account = the record's id, so two accounts on one server are
+  two items).
 - `LadleTests/`: hermetic app tests (no network, no server).
 - `LadleShots/`: the design-review renderer (see "Design review").
 - `Packages/ApronKit/Tests/ApronKitIntegrationTests/`: `ServerSession` against the real Rust

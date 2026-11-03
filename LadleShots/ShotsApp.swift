@@ -28,6 +28,7 @@ enum Screen: String, CaseIterable {
     case you, profileCard = "profile-card", profileCardOffline = "profile-card-offline", serverPane = "server-pane", serverPaneDemo = "server-pane-demo", mentionChip = "mention-chip"
     case draftKept = "draft-kept", typing, ipadTyping = "ipad-typing", rolePicker = "role-picker", roleChip = "role-chip"
     case muted, paused, notificationsPaused = "notifications-paused", limited, outbox
+    case serversTwoAccounts = "servers-two-accounts", ipadTwoAccounts = "ipad-two-accounts", accountChooser = "account-chooser", accountChooserSignIn = "account-chooser-signin"
     case appearance, appearanceCustom = "appearance-custom", preferences, preferencesMedia = "preferences-media", history
     case search, searchFiltered = "search-filtered", roomsSearch = "rooms-search"
     case roomsUnseenReactions = "rooms-unseen-reactions", unseenReactionJump = "unseen-reaction-jump"
@@ -72,7 +73,7 @@ enum Screen: String, CaseIterable {
     /// Shots with sites blocked and trusted in Preferences > Media.
     var hasSiteLists: Bool { self == .mediaGateBlocked || self == .preferencesMedia }
 
-    var isPad: Bool { self == .ipad || self == .ipadTyping || self == .ipadCatchingUp }
+    var isPad: Bool { self == .ipad || self == .ipadTyping || self == .ipadCatchingUp || self == .ipadTwoAccounts }
 
     /// What the reconnect shots hold the timeline at.
     var heldLoading: PaneLoading.Shown? {
@@ -117,6 +118,7 @@ enum Renderer {
         notify = await PreviewFixtures.makeNotifyStore()
         notifyOffer = await PreviewFixtures.makeNotifyOfferStore()
         reactionNews = await PreviewFixtures.makeStore(reactionNews: true)
+        twoAccounts = await PreviewFixtures.makeTwoAccountsStore()
         let firstListed = home.roomTree.map(\.roomID)
 
         var shots: [(screen: Screen, style: UIUserInterfaceStyle, large: Bool, look: Look?)] = []
@@ -128,6 +130,7 @@ enum Renderer {
         shots.append((.liveTyping, .dark, true, nil))
         shots.append((.guestHistoryEnd, .dark, true, nil))
         shots.append((.unseenReactionJump, .dark, true, nil))
+        shots.append((.serversTwoAccounts, .dark, true, nil))
         // The busy room in each premade theme but Apron, which every other shot is in, and in the
         // custom CSS of the custom Appearance shot.
         for look in PremadeTheme.all.dropFirst().map(Look.premade) + [Look.custom] {
@@ -189,7 +192,7 @@ enum Renderer {
             show(AnyView(view(shot.screen, store: store, home: home, staged: staged)
                 .environment(\.fixedTypeSize, shot.large ? .accessibility3 : .large)
                 .environment(\.scenePhase, .inactive)
-                .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
+                .environment(\.liveSessions, SessionLookup(store.liveSessions(for:)))
                 .environment(\.fixedNow, PreviewFixtures.now)
                 .dynamicTypeSize(shot.large ? .accessibility3 : .large)
                 .apronStyle()
@@ -222,6 +225,8 @@ enum Renderer {
     static var notifyOffer = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
     /// New reactions to Sam's messages in #general (`PreviewFixtures.newReactions`).
     static var reactionNews = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
+    /// Home as Sam and as the Sous Chef bot (`PreviewFixtures.makeTwoAccountsStore`).
+    static var twoAccounts = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
 
     static func view(_ screen: Screen, store: SessionStore, home: ServerSession, staged: [StagedFile]) -> AnyView {
         let owner = signIn.session(for: PreviewFixtures.ownerID)
@@ -636,6 +641,18 @@ enum Renderer {
         case .ipad:
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
                                 roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))
+        case .serversTwoAccounts:
+            // Home saved twice, as Sam and as the bot: each row carries its account's face.
+            AnyView(NavigationStack { ServerListView(store: twoAccounts, open: { _ in }, connecting: .constant(nil)) })
+        case .ipadTwoAccounts:
+            // The rail with both of home's accounts, Sam's open.
+            AnyView(SplitLayout(store: twoAccounts, serverID: .constant(PreviewFixtures.homeID.uuidString),
+                                roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil)))
+        case .accountChooser, .accountChooserSignIn:
+            // A link to home, which both accounts could take: which one, and for a sign-in link a new account too.
+            AnyView(AccountChooser(choice: AccountChoice(link: ApronLink(server: URL(string: "wss://home.example/ws")!, room: "general"),
+                                                         token: screen == .accountChooserSignIn ? "inv_Qm7x" : nil, accounts: twoAccounts.records),
+                                   store: twoAccounts, pick: { _ in }, newAccount: { _ in }))
         case .ipadTyping:
             // The same, wider: the line with the dots above the composer.
             AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),

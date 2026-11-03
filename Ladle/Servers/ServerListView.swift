@@ -22,7 +22,7 @@ struct ServerListView: View {
             Section {
                 ForEach(store.records) { record in
                     if let session = store.session(for: record.id) {
-                        Button { open(record.id) } label: { ServerRow(session: session) }
+                        Button { open(record.id) } label: { ServerRow(session: session, shared: store.accounts(on: record.url).count > 1) }
                             .buttonStyle(.plain)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
@@ -60,18 +60,24 @@ struct ServerListView: View {
     }
 }
 
-/// One server: its tile, name, who you are there or the connection state, and what is new.
+/// One account on one server: the server's tile (with your face on it where another saved
+/// account shares the server), its name, who you are there or the connection state, and what is new.
 private struct ServerRow: View {
     let session: ServerSession
+    /// Another saved record is on the same server, so the account tells the rows apart.
+    var shared = false
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.fixedTypeSize) private var fixedTypeSize
 
     var body: some View {
         let unread = session.joinedRoomIDs.reduce(0) { $0 + session.unreadCount(in: $1) }
         let mentions = session.joinedRoomIDs.reduce(0) { $0 + session.mentionCount(in: $1) }
         HStack(spacing: Tokens.Space.s3) {
             RailTile(label: session.serverName, image: session.serverAvatarURL, active: false, offline: session.status != .signedIn)
+                .accountFace(session, shown: shared)
             VStack(alignment: .leading, spacing: 1) {
                 Text(session.serverName).apText(.body, unread > 0 ? .semibold : .medium).foregroundStyle(Palette.ink)
-                Text(statusText).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
+                Text(statusText).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit((fixedTypeSize ?? typeSize).isAccessibilitySize ? 2 : 1)
             }
             Spacer(minLength: Tokens.Space.s2)
             if mentions > 0 {
@@ -135,7 +141,7 @@ struct ServerRail: View {
         ScrollView {
             VStack(spacing: Tokens.Space.s2) {
                 ForEach(store.records) { record in
-                    if let session = store.session(for: record.id) { tile(record, session) }
+                    if let session = store.session(for: record.id) { tile(record, session, shared: store.accounts(on: record.url).count > 1) }
                 }
                 Button { connecting = ConnectRequest() } label: {
                     Image(systemName: "plus")
@@ -167,12 +173,13 @@ struct ServerRail: View {
         .removeServerDialog(store: store, removing: $removing)
     }
 
-    private func tile(_ record: ServerRecord, _ session: ServerSession) -> some View {
+    private func tile(_ record: ServerRecord, _ session: ServerSession, shared: Bool) -> some View {
         let active = record.id == selected
         let unread = session.joinedRoomIDs.contains { session.unreadCount(in: $0) > 0 }
         let mentions = session.joinedRoomIDs.reduce(0) { $0 + session.mentionCount(in: $1) }
         return Button { open(record.id) } label: {
             RailTile(label: session.serverName, image: session.serverAvatarURL, active: active, offline: session.status != .signedIn)
+                .accountFace(session, shown: shared, corner: .topTrailing)
                 .frame(width: Tokens.Size.railW, height: Tokens.Size.touchTarget)
                 .overlay(alignment: .leading) {
                     UnevenRoundedRectangle(bottomTrailingRadius: 4, topTrailingRadius: 4)
@@ -191,7 +198,8 @@ struct ServerRail: View {
             Button("Sign In or Edit", systemImage: "pencil") { connecting = ConnectRequest(record: record) }
             Button("Remove", systemImage: "trash", role: .destructive) { removing = record }
         }
-        .accessibilityLabel([session.serverName, record.url.host(), active ? "open" : nil, mentions > 0 ? "\(mentions) mentions" : unread ? "new messages" : nil,
+        .accessibilityLabel([session.serverName, shared ? session.accountName : nil, record.url.host(), active ? "open" : nil,
+                             mentions > 0 ? "\(mentions) mentions" : unread ? "new messages" : nil,
                              session.status == .signedIn ? nil : ConnectionState(session.status)?.title(record), session.unavailableMessage]
             .compactMap { $0 }.joined(separator: ", "))
         .accessibilityAddTraits(active ? .isSelected : [])
@@ -225,20 +233,36 @@ struct HostYourOwnLink: View {
     }
 }
 
-/// What the Connect sheet opens with: a new server, a saved one, or a link's contents. A new
-/// server opens once signed in, at the link's room when it named one.
+/// What the Connect sheet opens with: a new server, a saved one, another account on a saved
+/// server (`like`, whose address, name and origin start the form), or a link's contents. A new
+/// record opens once signed in, at the link's room when it named one.
 struct ConnectRequest: Identifiable {
     var record: ServerRecord?
     var prefill: TokenPayload?
     /// The link that asked for this server, opened once you sign in.
     var place: ApronLink?
+    var like: ServerRecord?
     let id = UUID()
 }
 
 extension View {
-    /// Confirms removing a server, since a token-only account cannot be signed in to again.
+    /// Your face on the server's tile, where another saved account shares the server. The rail
+    /// keeps its mention count at the bottom corner, so the face goes at the top there.
+    fileprivate func accountFace(_ session: ServerSession, shown: Bool, corner: Alignment = .bottomTrailing) -> some View {
+        overlay(alignment: corner) {
+            if shown, let name = session.accountName {
+                Avatar(name: name, userID: session.you?.userID ?? session.record.account?.userID ?? session.record.id.uuidString, size: .sm,
+                       image: session.accountAvatarURL)
+                    .overlay(Circle().strokeBorder(Palette.chrome, lineWidth: 2))
+                    .offset(x: 4, y: corner == .topTrailing ? -4 : 4)
+            }
+        }
+    }
+
+    /// Confirms removing a server, since a token-only account cannot be signed in to again. The
+    /// account is named where another saved one shares the server.
     func removeServerDialog(store: SessionStore, removing: Binding<ServerRecord?>) -> some View {
-        confirmationDialog(removing.wrappedValue.map { "Remove \($0.label)?" } ?? "", isPresented: Binding(
+        confirmationDialog(removing.wrappedValue.map { "Remove \(store.session(for: $0.id).map(store.heading(for:)) ?? $0.label)?" } ?? "", isPresented: Binding(
             get: { removing.wrappedValue != nil }, set: { if !$0 { removing.wrappedValue = nil } }
         ), titleVisibility: .visible, presenting: removing.wrappedValue) { record in
             Button("Remove Server", role: .destructive) { Task { await store.remove(record.id) } }

@@ -4,13 +4,14 @@ import UIKit
 
 /// The web's ServerPane, as a sheet from the room list's title: the server's face, name, how
 /// the connection stands and its host, its description, who you are with Edit Profile, its
-/// address with copy and the protocol version, then Connect to Another Server… and Disconnect.
-/// Ladle keeps several servers, so Disconnect signs out of this one, after the sign-out
-/// confirmation; the others stay as they are.
+/// address with copy and the protocol version, then Connect to Another Server…, Add Another
+/// Account… (a second account on this server, as its own record) and Disconnect. Ladle keeps
+/// several servers and accounts, so Disconnect closes this one's connection; the others stay as they are.
 struct ServerPaneView: View {
     let session: ServerSession
     var onEditProfile: () -> Void = {}
     var onConnect: () -> Void = {}
+    var onAddAccount: () -> Void = {}
     @State private var copied = false
     @Environment(\.dismiss) private var dismiss
 
@@ -71,10 +72,17 @@ struct ServerPaneView: View {
                         .background(Palette.raised, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
                         .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.warn))
                 }
-                HStack(spacing: Tokens.Space.s2) {
-                    Button("Connect to Another Server…") {
-                        dismiss()
-                        onConnect()
+                HStack(alignment: .top, spacing: Tokens.Space.s2) {
+                    VStack(alignment: .leading, spacing: Tokens.Space.s1) {
+                        Button("Connect to Another Server…") {
+                            dismiss()
+                            onConnect()
+                        }
+                        Button("Add Another Account…") {
+                            dismiss()
+                            onAddAccount()
+                        }
+                        .accessibilityHint("Signs in to \(session.serverName) as another account, beside this one")
                     }
                     .buttonStyle(GhostButtonStyle(tone: Palette.accent))
                     Spacer(minLength: 0)

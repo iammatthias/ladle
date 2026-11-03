@@ -15,6 +15,8 @@ struct RoomListView: View {
     var onSignIn: () -> Void = {}
     /// Connect to Another Server…: the Connect sheet for a new server.
     var onConnect: () -> Void = {}
+    /// Add Another Account…: the Connect sheet for a second account on this server.
+    var onAddAccount: () -> Void = {}
     /// The iPad sidebar, whose navigation bar is hidden: the server's head leads the list.
     var showsServerHead = false
     /// Picking the open room again folds its threads (#145), where the room shows beside the
@@ -247,7 +249,8 @@ struct RoomListView: View {
         }) { panel in
             switch panel {
             case .server:
-                ServerPaneView(session: session, onEditProfile: { afterPanel = { self.panel = .you } }, onConnect: { afterPanel = onConnect })
+                ServerPaneView(session: session, onEditProfile: { afterPanel = { self.panel = .you } }, onConnect: { afterPanel = onConnect },
+                               onAddAccount: { afterPanel = onAddAccount })
             case .you:
                 YouView(session: session)
             }
