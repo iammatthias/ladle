@@ -278,11 +278,12 @@ extension ServerSession {
     }
 
     /// An open thread's replies in its header, as apron-web's RoomHeader: "1 reply", "12 replies",
-    /// and "12+ replies" while older ones are still to load. Nil until its history has loaded.
+    /// and "12+ replies" while older ones are still to load or a hole lies between loaded spans.
+    /// Nil until its history has loaded.
     public func replyWords(in roomID: String) -> String? {
         guard store.room(roomID)?.parentRoomID != nil, let history = histories[roomID], history.olderBefore != nil || !history.more else { return nil }
         let count = timeline(roomID).count
-        let more = hasOlder(roomID)
+        let more = hasOlder(roomID) || !history.coverage.holes.isEmpty
         return "\(count)\(more ? "+" : "") \(count == 1 && !more ? "reply" : "replies")"
     }
 

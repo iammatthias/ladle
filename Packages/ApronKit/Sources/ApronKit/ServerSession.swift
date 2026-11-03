@@ -844,10 +844,12 @@ public final class ServerSession {
         keptChanged()
     }
 
-    /// The server has expired a room's history below `floor`: what is kept goes too.
+    /// The server has expired a room's history below `floor`: what is kept goes too, and a span
+    /// loaded down there is no longer held.
     private func raiseFloor(of roomID: String, to floor: LogID) {
         store.raiseFloor(of: roomID, to: floor)
         kept.raiseFloor(of: roomID, to: floor)
+        histories[roomID]?.coverage.dropBelow(floor)
     }
 
     private func applyRoomList(_ result: JSONValue) {
@@ -877,8 +879,7 @@ public final class ServerSession {
         for set in records.reactions { note(set.roomID, set.logID) }
         for membership in records.memberships { note(membership.roomID, membership.logID) }
         for (roomID, logID) in latest where histories[roomID]?.isLive == true {
-            if let checkpoint = histories[roomID]?.checkpoint, checkpoint >= logID { continue }
-            histories[roomID]?.checkpoint = logID
+            histories[roomID]?.coverage.advance(to: logID)
         }
     }
 
@@ -903,9 +904,9 @@ public final class ServerSession {
         histories[roomID] = RoomHistory()
         let opening = Task {
             do {
-                let page = try await history(["room_id": .string(roomID), "limit": .number(String(environment.pageSize))])
-                histories[roomID]?.receivedBackward(page)
-                histories[roomID]?.checkpoint = page.latestLogID
+                let request = PageRequest(limit: environment.pageSize)
+                let page = try await history(request.params(room: roomID))
+                histories[roomID]?.receive(page, for: request)
                 histories[roomID]?.isLive = true
             } catch {
                 histories[roomID] = nil
@@ -949,37 +950,75 @@ public final class ServerSession {
         }
     }
 
-    /// Loads the page before the oldest one loaded, while there is one (§4.3.2).
+    /// Loads the page below the oldest span, while there is one (§4.3.2).
     public func loadOlder(_ roomID: String) async throws {
-        guard canLoadOlder(roomID), let state = histories[roomID], !state.isLoading, let before = state.olderBefore else { return }
-        histories[roomID]?.isLoading = true
-        defer { histories[roomID]?.isLoading = false }
-        try await page(roomID, before: before, limit: environment.pageSize)
+        guard canLoadOlder(roomID), let state = histories[roomID], state.loading == nil, let before = state.olderBefore else { return }
+        histories[roomID]?.loading = .older
+        defer { histories[roomID]?.loading = nil }
+        do {
+            try await page(roomID, PageRequest(before: before, limit: environment.pageSize))
+        } catch let error as RPCError where error.code == RPCError.Code.denied && isGuest {
+            // aprond's `--limit.guest-history-depth` (Cloudflare's `guestHistoryDepth`): a
+            // guest's page back past it, `before` alone, is `denied`, which no other refusal of
+            // `before` alone is. The spans loaded stay, as the end.
+            histories[roomID]?.olderNeedsSignIn = true
+        }
     }
 
-    /// Pages a room back until it holds a message, as a link to it opens (link.apron.chat SPEC
-    /// §2): the timeline stays one unbroken run from the newest page. True when the room shows
-    /// the message; false once the loaded history reaches back past it without it (deleted,
-    /// moved, or never in this room), or there is no more. Stops when its task is cancelled.
+    /// The holes between a room's loaded spans, oldest first: what the timeline shows a gap row
+    /// for. Each is filled from either side with `fill`.
+    public func holes(in roomID: String) -> [LogSpan] { histories[roomID]?.coverage.holes ?? [] }
+
+    /// Loads one page into a hole from one side, from the device while it holds it, then the
+    /// server; the hole shrinks, and goes once the spans meet. Nothing while another page of the
+    /// room is under way. A guest's page down from above is `before` alone, which the depth may
+    /// refuse; neither server counts a page bounded on both sides, so it goes on from below.
+    public func fill(_ hole: LogSpan, in roomID: String, _ side: Fill) async throws {
+        guard let state = histories[roomID], state.loading == nil, state.coverage.holes.contains(hole) else { return }
+        histories[roomID]?.loading = .hole(hole, side)
+        defer { histories[roomID]?.loading = nil }
+        let fromBelow = PageRequest(after: hole.lower, before: hole.upper, limit: environment.pageSize)
+        switch side {
+        case .olderFromAbove:
+            do {
+                try await page(roomID, PageRequest(before: hole.upper, limit: environment.pageSize))
+            } catch let error as RPCError where error.code == RPCError.Code.denied && isGuest {
+                try await page(roomID, fromBelow)
+            }
+        case .newerFromBelow:
+            try await page(roomID, fromBelow)
+        }
+    }
+
+    /// Loads the history from a message on, as a link to it opens (link.apron.chat SPEC §2): one
+    /// window `after` it, bounded `before` the span above, so the page either meets that span or
+    /// leaves a hole between them for the timeline's gap row. True when the room shows the
+    /// message; false when it is gone or never here (its position is loaded without it, below
+    /// the floor or the room's start) or newer than the room is caught up to. A window loads
+    /// the records from the message on, so a later edit, delete or reaction of it in the hole
+    /// above shows only once the hole is filled.
     public func reveal(_ messageID: LogID, in roomID: String) async throws -> Bool {
         try await open(roomID)
         func shown() -> Bool { timeline(roomID).contains { $0.messageID == messageID } }
-        while !shown(), !Task.isCancelled, canLoadOlder(roomID), let before = histories[roomID]?.olderBefore, before >= messageID {
-            try await page(roomID, before: before, limit: 200)
-        }
+        if shown() { return true }
+        guard let state = histories[roomID], !state.coverage.holds(messageID), let newest = state.coverage.newest, messageID <= newest.upper,
+              let above = state.coverage.span(above: messageID), let before = above.lower.predecessor else { return false }
+        if let floor = store.floor(of: roomID), messageID < floor { return false }
+        if let oldest = state.coverage.oldest, messageID < oldest.lower, !state.more { return false }
+        try await page(roomID, PageRequest(after: messageID, before: before, limit: environment.pageSize))
         return shown()
     }
 
-    /// The page before `before`, from what the device keeps while its kept log reaches there,
-    /// then from the server (apron-web's `olderPage`).
-    private func page(_ roomID: String, before: LogID, limit: Int) async throws {
-        if let cover = keptCoverage[roomID] {
+    /// One page by its bounds, from what the device keeps while its kept log reaches there, then
+    /// from the server (apron-web's `olderPage`), applied to the room's coverage.
+    private func page(_ roomID: String, _ request: PageRequest) async throws {
+        if request.after == nil, let before = request.before, let cover = keptCoverage[roomID] {
             let log = kept.logEntries(of: roomID).filter { entry in cover.start.map { entry.logID >= $0 } ?? true }
-            let (slice, more) = LogEntry.slice(log, before: before, limit: limit)
+            let (slice, more) = LogEntry.slice(log, before: before, limit: request.limit)
             if !more { keptCoverage[roomID] = nil }
             if let first = slice.first {
                 store.apply(Records(entries: slice))
-                histories[roomID]?.receivedBackward(HistoryPage(firstLogID: first.logID, more: more || cover.older))
+                histories[roomID]?.receive(HistoryPage(firstLogID: first.logID, more: more || cover.older), for: request)
                 return
             }
             guard cover.older else {
@@ -987,16 +1026,8 @@ public final class ServerSession {
                 return
             }
         }
-        let page: HistoryPage
-        do {
-            page = try await history(["room_id": .string(roomID), "before": before.json, "limit": .number(String(limit))])
-        } catch let error as RPCError where error.code == RPCError.Code.denied && isGuest {
-            // aprond's `--limit.guest-history-depth`: a guest's page back past it is `denied`,
-            // which no other refusal of `before` alone is. The newest pages stay, as the end.
-            histories[roomID]?.olderNeedsSignIn = true
-            return
-        }
-        histories[roomID]?.receivedBackward(page)
+        let page = try await history(request.params(room: roomID))
+        histories[roomID]?.receive(page, for: request)
     }
 
     /// After a sign-in, pages each opened room forward from its checkpoint until `more` is false.
@@ -1019,13 +1050,14 @@ public final class ServerSession {
             for roomID in plan.rooms { histories[roomID]?.isLive = true }
         }
         for roomID in ordered {
-            if histories[roomID]?.isLive != true, var after = histories[roomID]?.checkpoint?.successor {
-                while true {
-                    let params: JSONValue = ["room_id": .string(roomID), "after": after.json, "limit": 200]
-                    guard let page = try? await history(params, on: connection) else { break }
-                    if let latest = page.latestLogID { histories[roomID]?.checkpoint = latest }
-                    guard page.more, let next = page.lastLogID?.successor else { break }
-                    after = next
+            if histories[roomID]?.isLive != true, histories[roomID]?.checkpoint != nil {
+                // Each page moves the newest span's upper edge to its last record, so a drop
+                // between pages leaves the checkpoint where the records end, not at the head.
+                while let checkpoint = histories[roomID]?.checkpoint, let after = checkpoint.successor {
+                    let request = PageRequest(after: after, limit: 200)
+                    guard let page = try? await history(request.params(room: roomID), on: connection) else { break }
+                    histories[roomID]?.receive(page, for: request)
+                    guard page.more, histories[roomID]?.checkpoint != checkpoint else { break }
                 }
                 histories[roomID]?.isLive = true
             }
@@ -1092,8 +1124,8 @@ public final class ServerSession {
     /// position is now complete up to there.
     private func advance(_ plan: JoinedCatchUp, through: LogID) {
         for roomID in plan.rooms {
-            guard let checkpoint = histories[roomID]?.checkpoint, checkpoint >= plan.position, checkpoint < through else { continue }
-            histories[roomID]?.checkpoint = through
+            guard let checkpoint = histories[roomID]?.checkpoint, checkpoint >= plan.position else { continue }
+            histories[roomID]?.coverage.advance(to: through)
         }
     }
 
@@ -1639,22 +1671,28 @@ public final class ServerSession {
 
     /// The message the New line goes before, as the web's `newDividerBefore`: the first shown
     /// message after `after`, where you had read when the visit opened. None when that message is
-    /// your own, or when older messages are still to load and none loaded, deleted or not, is at
-    /// or before `after`, since the first unread one may be among them.
+    /// your own, or when the log between `after` and it is not all loaded (older pages still to
+    /// load below, or a hole between two spans), since the first unread one may be in there.
     public func newLine(in roomID: String, after: LogID?) -> LogID? {
         guard let after else { return nil }
-        let olderAvailable = hasOlder(roomID)
-        var reached = false
-        for message in store.messages(in: roomID) {
-            if message.messageID <= after {
-                reached = true
-                continue
-            }
-            if !reached, olderAvailable { return nil }
+        for message in store.messages(in: roomID) where message.messageID > after {
+            guard isComplete(roomID, from: after, through: message.messageID) else { return nil }
             if message.isTombstone { continue }
             return isYou(message.from.userID) ? nil : message.messageID
         }
         return nil
+    }
+
+    /// Whether every record from `from` through `to` is loaded: both lie in one span (a live
+    /// record past the checkpoint counts with the newest), or `from` is below the oldest span and
+    /// nothing older is left to load. A room never opened holds only what came live, and nothing
+    /// older is loadable.
+    func isComplete(_ roomID: String, from: LogID, through to: LogID) -> Bool {
+        guard let state = histories[roomID] else { return !hasOlder(roomID) }
+        let spans = state.coverage.spans
+        guard let newest = spans.last, let index = state.coverage.index(holding: to) ?? (to > newest.upper ? spans.count - 1 : nil) else { return false }
+        if from >= spans[index].lower { return true }
+        return index == 0 && !hasOlder(roomID)
     }
 
     /// Loaded messages from others after `readThrough`, or all of them when nothing is known; in
@@ -1750,28 +1788,84 @@ public enum HistoryEnd: Hashable, Sendable {
     case signInForOlder
 }
 
-/// Paging state of one opened room (§4.3.2, §4.3.5).
+/// Paging state of one opened room (§4.3.2, §4.3.5): the spans of its log loaded, with the holes
+/// between them, and what lies below the oldest.
 public struct RoomHistory: Hashable, Sendable {
-    /// `before` of the next older page: the oldest loaded page's `first_log_id − 1`.
-    public internal(set) var olderBefore: LogID?
+    /// What is loaded: the newest span ends at the checkpoint; a window loaded around an old
+    /// message is a span of its own until the hole between them is filled.
+    public internal(set) var coverage = Coverage()
+    /// Whether the server has records below the oldest span (true until a page says otherwise).
     public internal(set) var more = true
-    public internal(set) var isLoading = false
+    /// The page under way, if one is: at most one per room.
+    public internal(set) var loading: HistoryLoad?
     /// A page back was refused to this guest (`HistoryEnd.signInForOlder`).
     var olderNeedsSignIn = false
-    /// The position through which this room is complete; catch-up pages forward from it.
-    var checkpoint: LogID?
     /// Whether live records arrive gaplessly, so they may move the checkpoint.
     var isLive = false
 
-    /// A page older than the oldest loaded moves paging back; one that arrives after an older
-    /// one (`loadOlder` and `reveal` both page) changes nothing.
-    mutating func receivedBackward(_ page: HistoryPage) {
-        let next = page.firstLogID?.predecessor
-        if let olderBefore, let next, next >= olderBefore { return }
-        more = page.more
-        olderBefore = next
-        if olderBefore == nil { more = false }
+    /// `before` of the next older page: the oldest span's lower edge − 1.
+    public var olderBefore: LogID? { coverage.oldest?.lower.predecessor }
+    /// The position through which the newest span is complete; catch-up pages forward from it.
+    public var checkpoint: LogID? { coverage.newest?.upper }
+    public var isLoading: Bool { loading != nil }
+
+    /// Applies a page to the coverage as the request's bounds say (§4.3.2). Forward from `after`,
+    /// the page holds every record from `after` through its `last_log_id`, or through `before`
+    /// (else the log's head) when nothing more matches within the bounds. Back from `before`
+    /// (else the head), it holds `first_log_id` through there, and its `more` says what lies
+    /// below only when that is the oldest edge loaded. A page the coverage already holds changes
+    /// nothing, so `loadOlder` and a window arriving in either order leave the same coverage.
+    mutating func receive(_ page: HistoryPage, for request: PageRequest) {
+        if let after = request.after {
+            guard let through = page.more ? page.lastLogID : request.before ?? page.latestLogID ?? page.lastLogID, through >= after else { return }
+            coverage.insert(LogSpan(after, through))
+        } else {
+            guard let upper = request.before ?? page.latestLogID else {
+                more = false
+                return
+            }
+            let lower = page.firstLogID.map { min($0, upper) } ?? upper
+            let oldest = coverage.oldest?.lower
+            coverage.insert(LogSpan(lower, upper))
+            if oldest.map({ lower <= $0 }) ?? true { more = page.more }
+        }
     }
+}
+
+/// One `history` request's bounds (§4.3.2): back from `before` (else the newest), or forward
+/// from `after`, within `before` when given.
+struct PageRequest: Hashable, Sendable {
+    var after: LogID?
+    var before: LogID?
+    var limit: Int
+
+    init(after: LogID? = nil, before: LogID? = nil, limit: Int) {
+        self.after = after
+        self.before = before
+        self.limit = limit
+    }
+
+    func params(room roomID: String) -> JSONValue {
+        var params: [String: JSONValue] = ["room_id": .string(roomID), "limit": .number(String(limit))]
+        params["after"] = after?.json
+        params["before"] = before?.json
+        return .object(params)
+    }
+}
+
+/// A page under way in a room: at the bottom edge of what is loaded, or into a hole from one side.
+public enum HistoryLoad: Hashable, Sendable {
+    case older
+    case hole(LogSpan, Fill)
+}
+
+/// Which side a hole between two loaded spans is filled from.
+public enum Fill: Hashable, Sendable {
+    /// Down from the span above: `before` the hole's upper edge, as paging older does.
+    case olderFromAbove
+    /// Up from the span below: `after` the hole's lower edge and `before` its upper, so a page
+    /// with nothing more within the bounds closes the hole.
+    case newerFromBelow
 }
 
 struct HistoryPage {

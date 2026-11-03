@@ -314,13 +314,10 @@ public struct KeptRestore: Sendable {
             let log = kept.logEntries(of: roomID)
             let (page, below) = LogEntry.slice(log, limit: Self.window)
             var history = RoomHistory()
-            history.checkpoint = sync.checkpoint
-            if let first = page.first {
-                history.olderBefore = first.logID.predecessor
-                history.more = below || sync.older
-            } else {
-                history.olderBefore = sync.start?.predecessor
-                history.more = sync.older && history.olderBefore != nil
+            if let checkpoint = sync.checkpoint {
+                let lower = page.first?.logID ?? sync.start ?? checkpoint
+                history.coverage.insert(LogSpan(min(lower, checkpoint), checkpoint))
+                history.more = page.first != nil ? below || sync.older : sync.older
             }
             if history.olderBefore == nil { history.more = false }
             rooms[roomID] = (history, Array(page), sync)

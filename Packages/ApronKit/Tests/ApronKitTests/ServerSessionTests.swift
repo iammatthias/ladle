@@ -855,34 +855,180 @@ final class ServerSessionTests: XCTestCase {
         _ = await frame(socket, 3)
         await socket.deliver(["id": "c4", "result": ["not_joined": []]])
         try await open.value
-        let older = await frame(socket, 4)
-        XCTAssertEqual(older, #"{"id":"c5","method":"history","params":{"before":"103","limit":200,"room_id":"general"}}"#)
+        let window = await frame(socket, 4)
+        XCTAssertEqual(window, #"{"id":"c5","method":"history","params":{"after":"101","before":"103","limit":3,"room_id":"general"}}"#,
+                       "one window from the message, bounded by the page above")
         await socket.deliver(["id": "c5", "result": [
             "messages": [message("101", "a"), message("102", "b"), message("103", "c")],
-            "first_log_id": "101", "last_log_id": "103", "more": true, "latest_log_id": "106", "history_log_id": "90",
+            "first_log_id": "101", "last_log_id": "103", "more": false, "latest_log_id": "106", "history_log_id": "90",
         ]])
         let shown = try await reveal.value
         XCTAssertTrue(shown)
         XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["101", "102", "103", "104", "105", "106"])
+        XCTAssertEqual(session.holes(in: "general"), [], "nothing more within the bounds: the window met the page above")
         XCTAssertEqual(session.histories["general"]?.olderBefore, LogID("100"), "paging goes on from the revealed page")
     }
 
-    func testRevealStopsOnceHistoryReachesPastAMissingMessage() async throws {
+    /// Opens general (104 to 106, the floor 100 from the listing) and reveals 100, whose window
+    /// comes back with `records` and `more`, so a hole lies between it and the newest page.
+    private func revealHundred(on socket: FakeTransport, records: [String], more: Bool = true) async throws {
+        try await openGeneral(on: socket, floor: "100")
+        let reveal = Task { try await session.reveal(LogID("100")!, in: "general") }
+        let window = await frame(socket, 4)
+        XCTAssertEqual(window, #"{"id":"c5","method":"history","params":{"after":"100","before":"103","limit":3,"room_id":"general"}}"#,
+                       "one window from the message, bounded by the page above")
+        await socket.deliver(["id": "c5", "result": [
+            "messages": .array(records.map { message($0, "m\($0)") }), "first_log_id": .string(records.first!), "last_log_id": .string(records.last!),
+            "more": .bool(more), "latest_log_id": "106", "history_log_id": "100",
+        ]])
+        let shown = try await reveal.value
+        XCTAssertTrue(shown)
+    }
+
+    func testRevealLeavesAHoleAboveTheWindowWhichFillsFromEitherSideUntilTheSpansMeet() async throws {
         session.start()
         let socket = await transport(0)
         try await signInAsGuest(on: socket)
-        try await openGeneral(on: socket, floor: "90")
+        try await revealHundred(on: socket, records: ["100", "101"])
+        XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["100", "101", "104", "105", "106"])
+        XCTAssertEqual(session.holes(in: "general"), [LogSpan(LogID("102")!, LogID("103")!)])
+        XCTAssertEqual(session.histories["general"]?.checkpoint, LogID("106"), "the checkpoint is the newest span's end")
+        XCTAssertEqual(session.histories["general"]?.olderBefore, LogID("99"), "older pages go on below the window")
+        XCTAssertEqual(session.newLine(in: "general", after: LogID("100")!), LogID("101"), "within one span the line is known")
+        XCTAssertNil(session.newLine(in: "general", after: LogID("101")!), "the first unread may be in the hole")
+        XCTAssertEqual(session.newLine(in: "general", after: LogID("104")!), LogID("105"))
+
+        let hole = LogSpan(LogID("102")!, LogID("103")!)
+        let above = Task { try await session.fill(hole, in: "general", .olderFromAbove) }
+        let older = await frame(socket, 5)
+        XCTAssertEqual(older, #"{"id":"c6","method":"history","params":{"before":"103","limit":3,"room_id":"general"}}"#)
+        XCTAssertEqual(session.histories["general"]?.loading, .hole(hole, .olderFromAbove))
+        await socket.deliver(["id": "c6", "result": [
+            "messages": [message("103", "f")], "first_log_id": "103", "last_log_id": "103", "more": true, "latest_log_id": "106", "history_log_id": "100",
+        ]])
+        try await above.value
+        XCTAssertEqual(session.holes(in: "general"), [LogSpan(LogID("102")!, LogID("102")!)])
+        XCTAssertEqual(session.histories["general"]?.more, true, "a page into a hole says nothing about the room's oldest edge")
+        XCTAssertNil(session.histories["general"]?.loading)
+
+        let shrunk = LogSpan(LogID("102")!, LogID("102")!)
+        let below = Task { try await session.fill(shrunk, in: "general", .newerFromBelow) }
+        let newer = await frame(socket, 6)
+        XCTAssertEqual(newer, #"{"id":"c7","method":"history","params":{"after":"102","before":"102","limit":3,"room_id":"general"}}"#)
+        await socket.deliver(["id": "c7", "result": [
+            "messages": [message("102", "e")], "first_log_id": "102", "last_log_id": "102", "more": false, "latest_log_id": "106", "history_log_id": "100",
+        ]])
+        try await below.value
+        XCTAssertEqual(session.holes(in: "general"), [], "nothing more within the bounds: the spans met")
+        XCTAssertEqual(session.histories["general"]?.coverage.spans, [LogSpan(LogID("100")!, LogID("106")!)])
+        XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["100", "101", "102", "103", "104", "105", "106"])
+        XCTAssertEqual(session.newLine(in: "general", after: LogID("101")!), LogID("102"))
+    }
+
+    func testAGuestsFillFromAboveRefusedGoesOnFromBelow() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        try await revealHundred(on: socket, records: ["100"])
+        let hole = LogSpan(LogID("101")!, LogID("103")!)
+        let fill = Task { try await session.fill(hole, in: "general", .olderFromAbove) }
+        _ = await frame(socket, 5)
+        await socket.deliver(["id": "c6", "error": ["code": -32001, "message": "Sign in to load older history"]])
+        let retried = await frame(socket, 6)
+        XCTAssertEqual(retried, #"{"id":"c7","method":"history","params":{"after":"101","before":"103","limit":3,"room_id":"general"}}"#,
+                       "the depth counts pages back alone, never one bounded on both sides")
+        await socket.deliver(["id": "c7", "result": [
+            "messages": [message("101", "b")], "first_log_id": "101", "last_log_id": "101", "more": true, "latest_log_id": "106", "history_log_id": "100",
+        ]])
+        try await fill.value
+        XCTAssertEqual(session.holes(in: "general"), [LogSpan(LogID("102")!, LogID("103")!)])
+        XCTAssertEqual(session.historyEnd(of: "general"), .retentionFloor, "the refusal was the hole's, not the room's bottom edge, which the floor ends")
+    }
+
+    func testRevealOfAMessageGoneFromTheMiddleOfAHoleClosesTheHole() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        try await openGeneral(on: socket, floor: "100")
         let reveal = Task { try await session.reveal(LogID("102")!, in: "general") }
         _ = await frame(socket, 4)
         await socket.deliver(["id": "c5", "result": [
-            "messages": [message("101", "a"), message("103", "c")],
-            "first_log_id": "101", "last_log_id": "103", "more": true, "latest_log_id": "106", "history_log_id": "90",
+            "messages": [message("103", "c")],
+            "first_log_id": "103", "last_log_id": "103", "more": false, "latest_log_id": "106", "history_log_id": "100",
         ]])
         let shown = try await reveal.value
         XCTAssertFalse(shown)
         let sent = await socket.sentLog.count
-        XCTAssertEqual(sent, 5, "no page older than the message")
+        XCTAssertEqual(sent, 5, "one window and nothing more")
+        XCTAssertEqual(session.histories["general"]?.coverage.spans, [LogSpan(LogID("102")!, LogID("106")!)], "102 through 103 came whole, without a 102")
         XCTAssertEqual(session.canLoadOlder("general"), true, "the room still pages back on scroll")
+    }
+
+    func testRevealAsksNothingForAMessageNewerThanTheCheckpointOrBelowTheRoomsStart() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        let open = Task { try await session.open("general") }
+        _ = await frame(socket, 2)
+        await socket.deliver(["id": "c3", "result": [
+            "messages": [message("104", "d"), message("105", "e"), message("106", "f")],
+            "first_log_id": "104", "last_log_id": "106", "more": false, "latest_log_id": "106", "history_log_id": "100",
+        ]])
+        _ = await frame(socket, 3)
+        await socket.deliver(["id": "c4", "result": ["not_joined": []]])
+        try await open.value
+        let newer = try await session.reveal(LogID("108")!, in: "general")
+        XCTAssertFalse(newer, "not caught up to it yet")
+        let older = try await session.reveal(LogID("101")!, in: "general")
+        XCTAssertFalse(older, "the room's log starts above it")
+        let sent = await socket.sentLog.count
+        XCTAssertEqual(sent, 4)
+    }
+
+    func testAWindowShowsAMessageAsItWasUntilTheHoleAboveItIsFilled() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        try await revealHundred(on: socket, records: ["100"])
+        XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["100", "104", "105", "106"],
+                       "its delete at 102 is in the hole above: the window shows the message as logged")
+        let fill = Task { try await session.fill(LogSpan(LogID("101")!, LogID("103")!), in: "general", .newerFromBelow) }
+        _ = await frame(socket, 5)
+        await socket.deliver(["id": "c6", "result": [
+            "messages": [["message_id": "100", "log_id": "102", "room_id": "general", "from": ["user_id": "bob"], "deleted": true]],
+            "first_log_id": "102", "last_log_id": "102", "more": false, "latest_log_id": "106", "history_log_id": "100",
+        ]])
+        try await fill.value
+        XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["104", "105", "106"], "filled, the delete takes effect")
+        XCTAssertEqual(session.holes(in: "general"), [])
+    }
+
+    func testAReconnectCatchesUpFromTheNewestSpanAndLeavesAHoleBelowIt() async throws {
+        let firstSocket = FakeTransport()
+        await firstSocket.deliver(Self.greeting)
+        transports.queued.withLock { $0 = [firstSocket] }
+        session.start()
+        try await signInAsGuest(on: firstSocket)
+        try await revealHundred(on: firstSocket, records: ["100"])
+        await firstSocket.dropFromServer()
+        await eventually("backoff") { clock.recorded.count == 1 }
+        clock.release()
+
+        let second = await transport(1)
+        _ = await frames(second, count: 2)
+        await second.deliver(["id": "c6", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await second.deliver(["id": "c7", "result": ["joined": [["room_id": "general", "log_id": "100", "latest_log_id": "108", "history_log_id": "100"]]]])
+        let catchUp = await frame(second, 2)
+        XCTAssertEqual(catchUp, #"{"id":"c8","method":"history","params":{"after":"107","limit":200,"room_id":"general"}}"#,
+                       "from the newest span's end, not the window's")
+        await second.deliver(["id": "c8", "result": [
+            "messages": [message("108", "missed")], "first_log_id": "108", "last_log_id": "108", "more": false, "latest_log_id": "108", "history_log_id": "100",
+        ]])
+        _ = await frame(second, 3)
+        await second.deliver(["id": "c9", "result": ["not_joined": []]])
+        await eventually("caught up") { session.timeline("general").last?.messageID == LogID("108") }
+        XCTAssertEqual(session.histories["general"]?.coverage.spans, [LogSpan(LogID("100")!, LogID("100")!), LogSpan(LogID("104")!, LogID("108")!)])
+        XCTAssertEqual(session.holes(in: "general"), [LogSpan(LogID("101")!, LogID("103")!)], "the hole is still there to fill")
     }
 
     func testRevealAsksNothingBelowTheRetentionFloor() async throws {
