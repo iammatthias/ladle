@@ -1093,7 +1093,7 @@ struct ThreadCard: View {
                     .foregroundStyle(session.isPrivate(threadID) ? Palette.private : Palette.denim)
                     .lineLimit(1)
                 Spacer(minLength: Tokens.Space.s2)
-                if unread > 0 { UnreadCount(count: unread) }
+                if unread > 0 { UnreadCount(count: unread, quiet: true) }
                 if let last {
                     Text(last.date, format: .dateTime.hour().minute()).apText(.sm).monospacedDigit().foregroundStyle(Palette.inkMuted)
                 }

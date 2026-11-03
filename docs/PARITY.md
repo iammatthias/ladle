@@ -113,7 +113,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
 | Joined rooms listed | bh | has | `Rooms/RoomListView.swift` | |
-| Unread bubble, mention `@` bubble in orange | #17, #76 | has | `Rooms/RoomListView.swift` (`RoomRow`, `UnreadCount`) | |
+| Unread bubble, mention `@` bubble in orange | #17, #76, #202 | has | `Rooms/RoomListView.swift` (`RoomRow`), `Design/Components.swift` (`UnreadCount`), `Design/Apron.swift` (`unreadCount`) | Unread in a room or thread that isn't muted is ink mixed with 15% of the list's ground, then 18% denim, its number in the ground (#202), on the server list too. Muted rows and the timeline's thread cards keep the grey. |
 | Room row shows the description line | #73 | has | `Rooms/RoomListView.swift` | |
 | Open row: neutral fill and accent bar | #76 | has | `Rooms/RoomListView.swift` | |
 | Rooms order kept on device, new rooms last | #151 | has | `Kit/RoomArrangement.swift` (`RoomOrder`, `RoomArrangement`), `Kit/ServerSession+RoomOrder.swift`, `Kit/ServerSession.swift` (`roomTree`) | Per server and account in `room-order.json`, following a rename, dropped with the server. Rooms first listed together take title order, so an upgrade does not reshuffle a list. Rooms and Private share the one order. |

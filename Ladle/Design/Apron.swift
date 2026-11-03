@@ -53,6 +53,9 @@ enum Palette {
     static var viewerInkMuted: Color { C.viewerInkMuted.color() }
     static var viewerControl: Color { C.viewerControl.color() }
 
+    /// An unread count on the rooms list (#202): `color-mix(in srgb, color-mix(in srgb, var(--ink)
+    /// 85%, var(--bg-000)) 82%, var(--denim))`, ink softened by the list's ground, a little cool.
+    static var unreadCount: Color { ink.mix(with: chrome, by: 0.15, in: .device).mix(with: denim, by: 0.18, in: .device) }
     /// `--count-shade`: a quiet count keeps this much of its ground, the rest black.
     static var quietCount: Color {
         Color(uiColor: UIColor { [shades = Tokens.countShade, grounds = C.bg300] traits in

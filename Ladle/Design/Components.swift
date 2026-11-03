@@ -2,19 +2,30 @@ import SwiftUI
 
 /// The web's UnreadCount: a 20 pt bubble. New messages in accent; mentions of you as `@ n` in
 /// accent and semibold; a muted room's count quiet. Its VoiceOver label is the words.
+/// What's new, in one bubble, as the web's UnreadCount (#202): ink with a touch of denim for
+/// unread messages, orange with an @ when they mention you, grey when `quiet` (a muted row, a
+/// thread card in the timeline), mentions too.
 struct UnreadCount: View {
     let count: Int
     var mentions = false
     var quiet = false
 
+    private var ground: Color {
+        if quiet { Palette.quietCount } else if mentions { Palette.accent } else { Palette.unreadCount }
+    }
+
+    private var ink: Color {
+        if quiet { Palette.ink } else if mentions { Palette.onAccent } else { Palette.chrome }
+    }
+
     var body: some View {
         Text((mentions ? "@\u{202F}" : "") + (count > 99 ? "99+" : "\(count)"))
             .apText(.sm, .semibold)
             .monospacedDigit()
-            .foregroundStyle(quiet ? Palette.ink : Palette.onAccent)
+            .foregroundStyle(ink)
             .padding(.horizontal, Tokens.Space.s1_5)
             .frame(minWidth: 20, minHeight: 20)
-            .background(quiet ? Palette.quietCount : Palette.accent, in: Capsule())
+            .background(ground, in: Capsule())
             .accessibilityLabel(mentions ? "\(count) \(count == 1 ? "mention" : "mentions")" : "\(count) new")
     }
 }
