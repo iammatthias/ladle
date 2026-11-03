@@ -29,6 +29,9 @@ final class Aprond: @unchecked Sendable {
 
     var url: URL { URL(string: "ws://127.0.0.1:\(port)/ws")! }
 
+    /// What the server wrote to stderr so far, for a failure's message.
+    var output: String { log.contents }
+
     /// Skips the test when the binary is missing, or fails it when `APRON_REQUIRE_SERVER=1`.
     /// `arguments` go after the defaults, such as `--upload.max-mb 1`. The defaults let guests post
     /// (read-only otherwise) without the five-a-minute limit every test's guests share, as they
