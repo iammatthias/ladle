@@ -254,13 +254,14 @@ final class KeptHistorySessionTests: XCTestCase {
         for session in sessions { await session.stop() }
     }
 
-    private func session(_ record: ServerRecord, settings: HistorySettings = HistorySettings()) -> ServerSession {
+    private func session(_ record: ServerRecord, settings: HistorySettings = HistorySettings(), files: (any HistoryFiles)? = nil) -> ServerSession {
         let counter = Mutex(0)
         let transports = transports
         let environment = ServerSession.Environment(
             makeTransport: { _ in transports.next() }, sleep: { try await Task.sleep(for: $0) }, jitter: { 1 },
             makeRequestID: { counter.withLock { $0 += 1; return "c\($0)" } }, makeState: { "s" }, agent: "ladle-ios/test", pageSize: 3)
-        let session = ServerSession(record: record, tokens: tokens, keeping: HistoryKeeping(files: files, settings: settings), environment: environment)
+        let session = ServerSession(record: record, tokens: tokens, keeping: HistoryKeeping(files: files ?? self.files, settings: settings),
+                                    environment: environment)
         sessions.append(session)
         return session
     }
@@ -275,11 +276,11 @@ final class KeptHistorySessionTests: XCTestCase {
     }
 
     /// Signs in as Ada with a token, opens general with 1001–1060 kept, and writes what is kept.
-    private func keptSession() async throws -> ServerSession {
+    private func keptSession(files: (any HistoryFiles)? = nil) async throws -> ServerSession {
         let socket = FakeTransport()
         transports.queued.withLock { $0 = [socket] }
         await socket.deliver(Self.greeting)
-        let first = session(record)
+        let first = session(record, files: files)
         first.start()
         await eventually("signed out") { first.status == .signedOut }
         let signIn = Task { try await first.signIn(.guest(name: nil)) }
@@ -413,6 +414,32 @@ final class KeptHistorySessionTests: XCTestCase {
         XCTAssertEqual(try Archive(text: kept).records.messages.count, 60, "writing again kept all 60")
     }
 
+    func testTheAccountsOwnReadCursorArrivingWhileItsKeptHistoryIsReadIsItsOwn() async throws {
+        let gated = GatedHistoryFiles(files)
+        let first = try await keptSession(files: gated)
+        let socket = FakeTransport()
+        transports.queued.withLock { $0 = [socket] }
+        await socket.deliver(Self.greeting)
+        await first.signOut()
+        await eventually("signed out") { first.status == .signedOut }
+        gated.hold()
+        let signIn = Task { try await first.signIn(.token("t1")) }
+        _ = await frame(socket, 0)
+        await socket.deliver(["id": "c5", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await socket.deliver(["id": "c6", "result": ["joined": [["room_id": "general", "log_id": "900", "latest_log_id": "1060"]]]])
+        await eventually("the kept history is being read") { gated.heldReads.withLock { $0 } == 1 }
+        await socket.deliver(["method": "activity", "params": ["room_id": "general", "from": ["user_id": "ada"], "read_message_id": "1060"]])
+        await socket.deliver(["method": "activity", "params": ["room_id": "general", "from": ["user_id": "bob", "name": "Bob"], "typing": 10]])
+        await eventually("the frames behind the sign-in are applied") { first.typingNames(in: "general") == ["Bob"] }
+        gated.release()
+        _ = await frame(socket, 2)
+        await socket.deliver(["id": "c7", "result": ["not_joined": []]])
+        _ = try await signIn.value
+        XCTAssertEqual(first.timeline("general").count, 50)
+        XCTAssertEqual(first.readCursors, ["general": LogID("1060")!], "the cursor that came while the kept history was read")
+        XCTAssertEqual(first.unreadCount(in: "general"), 0)
+    }
+
     func testSignOutWithoutKeepingDeletesOnlyThisAccountsHistory() async throws {
         let zed = KeptAccount(server: record.id, userID: "zed")
         try files.write(Data("zed".utf8), for: zed)
@@ -442,4 +469,35 @@ final class KeptHistorySessionTests: XCTestCase {
         let source = try XCTUnwrap(first.keptSource(now: Date()))
         XCTAssertEqual(source.rooms.map(\.stretch), [.from(LogID("1001")!)], "positions that are not times have no age to cut at")
     }
+}
+
+/// Kept history whose reads wait at a gate while it is held, so a test can act while a sign-in's
+/// restore is suspended. Reads run off the main actor (`keptPlan`), so blocking one is safe.
+final class GatedHistoryFiles: HistoryFiles, @unchecked Sendable {
+    private let inner: InMemoryHistoryFiles
+    private let gate = DispatchSemaphore(value: 0)
+    private let holding = Mutex(false)
+    /// How many reads have begun at the gate while it was held.
+    let heldReads = Mutex(0)
+
+    init(_ inner: InMemoryHistoryFiles) { self.inner = inner }
+
+    func hold() { holding.withLock { $0 = true } }
+
+    func release() {
+        holding.withLock { $0 = false }
+        gate.signal()
+    }
+
+    func read(_ account: KeptAccount) -> Data? {
+        if holding.withLock({ $0 }) {
+            heldReads.withLock { $0 += 1 }
+            gate.wait()
+        }
+        return inner.read(account)
+    }
+
+    func write(_ data: Data, for account: KeptAccount) throws { try inner.write(data, for: account) }
+    func remove(server: UUID?, userID: String?) { inner.remove(server: server, userID: userID) }
+    func sizes() -> [KeptAccount: Int] { inner.sizes() }
 }
