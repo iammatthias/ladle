@@ -231,6 +231,8 @@ public final class ServerSession {
     public let addedRooms: AddedRooms
     /// The rooms list's order and folded threads, shared with every other server's session.
     public let roomArrangement: RoomArrangement
+    /// How far each account has seen the reactions to its messages, shared by every session.
+    public let seenReactions: SeenReactions
     /// Rooms that arrive joined without this device asking (`noteArrivals`).
     @ObservationIgnored var arrivals = ArrivalWatch()
     /// Rooms someone else added you to while this session watched (`ArrivalWatch`), as apron-web's
@@ -321,7 +323,7 @@ public final class ServerSession {
 
     public init(record: ServerRecord, tokens: any TokenStore, positions: any ReadPositionStore = InMemoryReadPositionStore(),
                 mediaSettings: MediaSettings = MediaSettings(), addedRooms: AddedRooms = AddedRooms(),
-                roomArrangement: RoomArrangement = RoomArrangement(), keeping: HistoryKeeping? = nil,
+                roomArrangement: RoomArrangement = RoomArrangement(), seenReactions: SeenReactions = SeenReactions(), keeping: HistoryKeeping? = nil,
                 proposals: Proposals = Proposals(), linkPreviews: DraftLinkPreviews? = nil, receiptSettings: ReceiptSettings = ReceiptSettings(),
                 environment: Environment = .live) {
         self.record = record
@@ -331,6 +333,7 @@ public final class ServerSession {
         self.addedRooms = addedRooms
         self.proposals = proposals
         self.roomArrangement = roomArrangement
+        self.seenReactions = seenReactions
         self.keeping = keeping
         self.tokens = tokens
         self.positions = positions
@@ -675,6 +678,7 @@ public final class ServerSession {
         formerUserIDs.insert(old)
         positions.rename(server: record.id, from: old, to: new)
         roomArrangement.rename(server: record.id, from: old, to: new)
+        seenReactions.rename(server: record.id, from: old, to: new)
         for index in outbox.indices where outbox[index].userID == old { outbox[index].userID = new }
         if let kept = users.user(new).flatMap(UserObject.init) { you = kept }
         if let account = record.account {
@@ -804,8 +808,10 @@ public final class ServerSession {
         guard let records = Records(notification: notification) else { return }
         let live = notification.method == "message" && status == .signedIn
         let before = live ? Dictionary(records.messages.compactMap { message in store.message(message.messageID).map { (message.messageID, $0) } }) { $1 } : [:]
+        let removals = notification.method == "reactions" ? seenRemovals(records.reactions) : [:]
         install(records)
         if live { adoptEcho(records.messages) }
+        seeRemovals(removals)
         if live, let onArrivals {
             let arrived = arrivals(records.messages, before: before)
             if !arrived.isEmpty { onArrivals(arrived) }
@@ -824,6 +830,7 @@ public final class ServerSession {
             if let floor = delivery.floor { raiseFloor(of: room.roomID, to: floor) }
         }
         if !pendingEdits.isEmpty { settleEdits(records.messages) }
+        noteFirstSight(Set(records.rooms.map { $0.0.roomID } + records.messages.map(\.roomID) + records.reactions.compactMap(\.roomID)))
         keptChanged()
     }
 
@@ -1089,6 +1096,7 @@ public final class ServerSession {
         if let roomID = params["room_id"]?.stringValue, let latest = page.latestLogID {
             store.noteLatest(of: roomID, latest)
             kept.noteLatest(of: roomID, latest)
+            noteFirstSight([roomID])
         }
         return page
     }
@@ -1139,6 +1147,7 @@ public final class ServerSession {
         }
         readPositions = positions.positions(server: record.id, user: restore.you.userID)
         placeNewRooms()
+        noteFirstSight(store.roomIDs)
         return true
     }
 

@@ -28,6 +28,8 @@ public final class SessionStore {
     public let proposals: Proposals
     /// Each account's rooms list order and folded threads, kept beside `servers.json`.
     public let roomArrangement: RoomArrangement
+    /// How far each account has seen the reactions to its messages, kept beside `servers.json`.
+    public let seenReactions: SeenReactions
     /// Whether anyone attends the app, which every session tells its server (§4.5 `idle`).
     public let attention: Attention
     /// Read Receipts on this device, for every server, kept beside `servers.json`.
@@ -67,6 +69,7 @@ public final class SessionStore {
         addedRooms = AddedRooms(directory: serverStore?.directory)
         proposals = Proposals(directory: serverStore?.directory)
         roomArrangement = RoomArrangement(directory: serverStore?.directory)
+        seenReactions = SeenReactions(directory: serverStore?.directory)
         if let directory = serverStore?.directory {
             drafts = Drafts(store: FileDraftStore(directory: directory), staging: directory.appending(path: "Staged", directoryHint: .isDirectory))
             drafts.pruneStaging()
@@ -129,7 +132,7 @@ public final class SessionStore {
     }
 
     /// Stops the session and forgets the server, its token, its reminders, its drafts, the
-    /// descriptions put away there and how its rooms list was arranged.
+    /// descriptions put away there, how its rooms list was arranged and the reactions seen there.
     public func remove(_ id: UUID) async {
         if let session = sessions.removeValue(forKey: id) {
             await session.unregisterPush()
@@ -144,6 +147,7 @@ public final class SessionStore {
         addedRooms.removeAll(server: id)
         proposals.removeAll(server: id)
         roomArrangement.removeAll(server: id)
+        seenReactions.removeAll(server: id)
         records.removeAll { $0.id == id }
         try? tokens.setToken(nil, for: id)
         save()
@@ -154,7 +158,7 @@ public final class SessionStore {
     private func startSession(for record: ServerRecord) -> ServerSession {
         let keeping = historyFiles.map { HistoryKeeping(files: $0, settings: historySettings) }
         let session = ServerSession(record: record, tokens: tokens, positions: positions, mediaSettings: mediaSettings, addedRooms: addedRooms,
-                                    roomArrangement: roomArrangement,
+                                    roomArrangement: roomArrangement, seenReactions: seenReactions,
                                     keeping: keeping, proposals: proposals, linkPreviews: linkPreviews, receiptSettings: receiptSettings,
                                     environment: environment)
         session.onRecordChange = { [weak self] changed in self?.accountChanged(changed) }

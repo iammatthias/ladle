@@ -808,6 +808,21 @@ clone), which is only a worked example.
     `placeNewRooms` places them after each listing, `room_update` and restore. `moveRoom`
     (Option+↑/↓), `moveRooms` (`List.onMove`), `shownRooms` (a folded section: the open room and
     those with news, `hasNews` counting joined threads), `threadsFolded` and `foldThreads`.
+  - New reactions to your messages (`SeenReactions.swift`, `ServerSession+ReactionNews.swift`),
+    Ladle's own: `SeenReactions` (`reactions-seen.json`, owned by `SessionStore`, passed to every
+    session, dropped with the server, moved on a rename) keeps per `ArrangementKey` each room's
+    `baseline`, its `latest_log_id` when the account first saw it (`noteFirstSight`, from
+    `install`, `history` and a kept restore; a live record never says it, so what follows the
+    first sight stays new), and each message's `mark`, the newest reaction on it that was on
+    screen (2000 per account, the oldest messages' going first). A mark per message, not one
+    watermark per room: seeing a newer message must not hide the reactions further up.
+    `unseenReactions(in:)` lists your loaded messages (renames included) with sets from others,
+    not empty, logged past both, oldest first, one per person; history pages and catch-ups count,
+    since they are what happened while away. A live set that only takes emoji away from a seen
+    set leaves it seen (`seenRemovals`); a page carries no earlier set, so a removal while away
+    counts. `markReactionsSeen` raises the marks; `nextUnseenReaction` is the jump's target.
+    Reactions on a message not loaded can't be told to be yours and wait for it, and after a
+    relaunch your pre-rename messages are no longer yours (`formerUserIDs` is not kept).
   - Members (`Members.swift`), as apron-web's MemberList (#129, #152, #161): `mayChangeMembers`,
     `mayAddMembers` (`add_members`, or a private room; `Permissions.core` without
     `ext:permissions`), `memberMenu` (Direct Message, Remove; none on your own row),
