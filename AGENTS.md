@@ -147,7 +147,7 @@ clone), which is only a worked example.
       `edit` and `move` share one save that sends the message's `body`, `reply_to` and `ext` as stored (§4.4 replaces client fields); `edit` takes a `MessageEdit` and replaces the text, `body.mentions`, the embeds it keeps and the reply, `removeReply` drops `reply_to` alone (omitted, which clears it on aprond), `move` adds the new `room_id`;
       `mayMove` allows your own messages, and anyone's with `move_any`. The message menu offers
       Move To the room's threads, or out of a thread to its room and that room's other threads.
-    - Reconnect: pending requests fail with `Connection.Failure.closed` (no same-id resend),
+    - Reconnect: pending requests fail with `Connection.Failure.closed` (no same-id resend on the new connection; a short wait's resend below goes only on the old one),
       then `backoff(attempt:jitter:)` = min(60 s, 1 s × 2^min(6, attempt − 1)) × [0.5, 1.5) (Cloudflare's docs/limits.md checklist),
       never below a `retry_after`, a refused resume's included (an account's connection limit). Attempts restart after 30 s signed in. An id-less `denied`
       or a refused upgrade other than 429 or 5xx stops reconnecting (`Status.stopped`).
@@ -186,7 +186,8 @@ clone), which is only a worked example.
       stays one unbroken run. A page arriving after an older one leaves paging where it is.
       `page` asks the device first while a restored room's kept log reaches below what
       `store` shows (`keptCoverage`), then the server. A `history` refused with `retry_after`
-      holds back every `history` until the wait is over (`LimitScope.history`).
+      holds back every `history` until the wait is over (`LimitScope.history`), unless the
+      request layer waited it out (Waits).
     - Threads: a thread's record is in its own log (§4.3.1), not its room's, so a member of the
       room who has not joined it learns of it from `room_update` `updated` while connected, and
       otherwise only from `room_list {parent_room_id, filter: not_joined}` (§4.2.1). `open` and
@@ -673,6 +674,17 @@ clone), which is only a worked example.
     words it (`17s`, `m:ss`, `3h 12m`, spoken forms, `45s`/`3m`/`2h`), and `RPCError.userFacing`
     adds "Try again in 45s." to every `retry_after` error the app shows. The outbox's sleeps
     read the same clock, so tests tie `Environment.now` to `FakeClock`'s released sleeps.
+    Short waits are the request layer's, in `ServerSession.ask` (every request after sign-in,
+    and the catch-up and thread listings), not `Connection`'s, which never sleeps: a refusal
+    with `retry_after` of at most `ShortWait.longest` (5 s) of `history`, `room_list`,
+    `reactions` or a `message` with `message_id` (edit, move, delete; never a post, which the
+    outbox owns) is slept out through `Environment.sleep` and sent again under the same `id`,
+    at most `ShortWait.resends` (2) times. `heldBack` runs before the first send only and
+    `noteLimit` only for the refusal that is shown, so one layer waits, never both, and a hold
+    another request notes meanwhile does not refuse the resend. The resend goes on the
+    connection it was refused on, so a reconnect during the wait fails it with
+    `Connection.Failure.closed`. `LimitsIntegrationTests` pages history past aprond's
+    `--limit.history-per-minute 15` and sees each 4 s refusal waited out.
   - Themes (`ThemeCSS.swift`, `CSSValues.swift`, `ResolvedTheme.swift`, `Themes.swift`,
     `ThemeValues.swift`, generated `WebTokens.swift`), as apron-web's `appearance.svelte.ts` and
     `theme-colors.ts`: `ThemeCSS.parse` is `parseThemeCss` (same grammar, 4000-character and

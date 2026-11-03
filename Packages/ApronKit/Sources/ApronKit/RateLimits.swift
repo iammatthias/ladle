@@ -47,6 +47,29 @@ public enum LimitScope: String, Hashable, Sendable, CaseIterable {
     }
 }
 
+/// A `retry_after` (§1.1) short enough to wait out at the request rather than show: a page of
+/// history, a room listing, a reaction or an edit is sent again under its `id` once the wait is
+/// over. A post is not: the outbox keeps its own retries and its Not sent state.
+public enum ShortWait {
+    /// The longest wait waited out. aprond's limits refill one request in 60 s over the rate a
+    /// minute: a history page in 3 s at its 20 a minute, 1 s at an address's 60; a room listing
+    /// at its 6 a minute takes 10 s, and so shows, as every longer wait does.
+    public static let longest: Duration = .seconds(5)
+    /// Sends after the first. One refill lets the first resend in; the second covers another
+    /// request taking that place first. At most 10 s more, each send with its own timeout.
+    public static let resends = 2
+
+    /// The requests a short wait is waited out for: `history`, `room_list`, `reactions`, and a
+    /// `message` naming its `message_id` (an edit, move or delete), never a post.
+    public static func waitsOut(_ method: String, _ params: JSONValue?) -> Bool {
+        switch method {
+        case "history", "room_list", "reactions": true
+        case "message": params?["message_id"] != nil
+        default: false
+        }
+    }
+}
+
 /// A wait the server asked for: when it is over, the server's words, and when it began, which
 /// decides whether it counts down in seconds or in minutes.
 public struct LimitWait: Hashable, Sendable {

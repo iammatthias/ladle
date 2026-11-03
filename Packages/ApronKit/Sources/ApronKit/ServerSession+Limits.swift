@@ -30,6 +30,34 @@ extension ServerSession {
         return RPCError(code: RPCError.Code.retryAfter, message: words, data: ["retry_after": .number(String(seconds))])
     }
 
+    /// Sends a request on `connection` and gives its result, as every request after sign-in goes.
+    /// A wait this account is under refuses it before it is sent (`heldBack`). A refusal with a
+    /// `retry_after` of at most `ShortWait.longest`, of a request `ShortWait.waitsOut` allows, is
+    /// waited out here and sent again under the same `id` (§1.2), at most `ShortWait.resends`
+    /// times; any other refusal, or the last, notes what it holds back and throws. So the hold is
+    /// checked only before the first send and noted only once nothing will be resent: the two
+    /// never both wait. The resend goes on `connection`, so a reconnect meanwhile fails it with
+    /// `Connection.Failure.closed`, as it fails every pending request.
+    func ask(_ method: String, _ params: JSONValue, id: String? = nil, on connection: Connection) async throws -> JSONValue {
+        if let held = heldBack(method, params) { throw held }
+        let waitsOut = ShortWait.waitsOut(method, params)
+        let id = id ?? (waitsOut ? environment.makeRequestID() : nil)
+        var resends = 0
+        while true {
+            do {
+                return try await connection.request(method, params: params, id: id)
+            } catch let error as RPCError {
+                if waitsOut, resends < ShortWait.resends, let wait = error.retryAfter, wait <= ShortWait.longest {
+                    resends += 1
+                    try await environment.sleep(wait)
+                    continue
+                }
+                noteLimit(error, method: method, params: params)
+                throw error
+            }
+        }
+    }
+
     /// Notes what a refusal holds back, and until when, unless a longer wait runs already. The
     /// category counts only while the server has `ext:limits`. Waits belong to who was asked.
     func noteLimit(_ error: RPCError, method: String, params: JSONValue) {

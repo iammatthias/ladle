@@ -312,6 +312,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Link previews above the composer with × to drop | #11, #19 | has | `Kit/DraftLinkPreviews.swift`, `Timeline/ComposerView.swift` (`LinkPreviewTray`), `Kit/Drafts.swift` (`dismissedPreviews`) | Looked up 800 ms after typing pauses, as the web; a paste waits too, since a SwiftUI field reports no paste. The removed previews ride with the room's draft in memory, so they outlast leaving the room, where the web forgets them with the pane. Shot: `ladle-composer-link-previews`. |
 | Rate limit: Send counts down under "Sending is paused" | #109 | has | `Kit/ServerSession+Limits.swift` (`sendWait`), `Timeline/RateLimitNotice.swift`, `Timeline/ComposerView.swift` | The ring, or a clock with × for an hour or more. |
 | Uploads are paused notice (`ext:limits` upload) | #109 | has | `Kit/ServerSession+Limits.swift` (`composerWait`), `Timeline/RateLimitNotice.swift` | Holds Send only with files attached. |
+| A refusal of a few seconds waited out, not shown | bh | has | `Kit/ServerSession+Limits.swift` (`ask`), `Kit/RateLimits.swift` (`ShortWait`) | A history page, room listing, reaction or edit refused with `retry_after` of 5 s or less is sent again under its id after the wait, twice at most; anything longer, or a third refusal, shows and holds back as above. Posts keep the outbox's waits. Ladle's own: the web shows every refusal. |
 
 ## 15. Links, deep links, and place cards
 

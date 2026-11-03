@@ -497,6 +497,7 @@ A thread is a room with `parent_room_id`, so it uses 3.5 with these differences.
 - Send shows `hourglass` and the time left, and does nothing; the draft and its files stay, and nothing goes by itself. An upload wait holds Send only while files are attached. A message already in the outbox waits out the time and goes, as before (4.2).
 - A reaction, join or leave during a write wait is refused without sending, in the server's words with when to try again: "Posting limit reached. Try again in 18s." Every refused request with `retry_after` reads that way.
 - A wait belongs to its account: another sign-in starts without them.
+- A wait of 5 s or less on a page of history, a room listing, a reaction or an edit never shows: the request goes again under its id once the wait is over, twice at most, so scrolling back or reacting only takes a moment longer. A post is not sent again this way; the outbox waits as above.
 
 **Accessibility.** Suggestions are announced as "3 suggestions", and each is a button. The field's accessibility label includes the room ("Message, General"). The send button label is "Send" or "Run".
 

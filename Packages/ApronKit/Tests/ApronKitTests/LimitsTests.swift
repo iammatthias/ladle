@@ -156,4 +156,110 @@ final class LimitsTests: ScriptedSessionCase {
         await session.signOut()
         XCTAssertNil(session.sendWait)
     }
+
+    func testOnlyReadsReactionsAndEditsWaitOutAShortRefusal() {
+        XCTAssertEqual(["history", "room_list", "reactions", "room_join", "command", "me"].filter { ShortWait.waitsOut($0, [:]) },
+                       ["history", "room_list", "reactions"])
+        XCTAssertTrue(ShortWait.waitsOut("message", ["message_id": "100", "room_id": "general", "deleted": true]), "an edit or delete")
+        XCTAssertFalse(ShortWait.waitsOut("message", ["room_id": "general", "body": ["text": "hi"]]), "a post keeps the outbox's own logic")
+    }
+
+    /// Waits for the clock's next sleep, checks how long it is, and lets it end.
+    private func releaseSleep(_ index: Int, of delay: Duration) async {
+        await eventually("sleep \(index)") { clock.recorded.count > index }
+        XCTAssertEqual(clock.recorded[index], delay)
+        clock.release()
+    }
+
+    func testAShortHistoryWaitIsWaitedOutAndTheSameRequestSentAgain() async throws {
+        let socket = try await signedIn()
+        let slept = clock.recorded.count
+        let opening = Task { try await session.open("general") }
+        let first = await sent(socket, count: 3)
+        XCTAssertEqual(first[2], #"{"id":"c3","method":"history","params":{"limit":50,"room_id":"general"}}"#)
+        await socket.deliver(["id": "c3", "error": ["code": -32002, "message": "History request limit reached",
+                                                    "data": ["retry_after": 2, "ext": ["limits": "read"]]]])
+        await releaseSleep(slept, of: .seconds(2))
+        let again = await sent(socket, count: 4)
+        XCTAssertEqual(again[3], #"{"id":"c3","method":"history","params":{"limit":50,"room_id":"general"}}"#, "the same id")
+        await socket.deliver(["id": "c3", "result": ["messages": [
+            ["message_id": "100", "log_id": "100", "room_id": "general", "from": ["user_id": "bob"], "body": ["text": "hi"]],
+        ], "more": false]])
+        _ = await sent(socket, count: 5)
+        await socket.deliver(["id": "c4", "result": ["not_joined": []]])
+        try await opening.value
+        XCTAssertEqual(session.timeline("general").map(\.messageID), [LogID("100")!])
+        XCTAssertNil(session.wait(.history), "a wait waited out holds nothing back")
+    }
+
+    func testAShortWaitIsResentTwiceAtMostThenShows() async throws {
+        let socket = try await signedIn()
+        let slept = clock.recorded.count
+        let reacting = Task { try await session.toggleReaction("👍", on: LogID("100")!) }
+        let refusal: JSONValue = ["code": -32002, "message": "Posting limit reached", "data": ["retry_after": 1]]
+        for (index, count) in [3, 4, 5].enumerated() {
+            let log = await sent(socket, count: count)
+            XCTAssertEqual(log[count - 1], #"{"id":"c3","method":"reactions","params":{"emojis":["👍"],"message_id":"100"}}"#)
+            await socket.deliver(["id": "c3", "error": refusal])
+            if index < 2 { await releaseSleep(slept + index, of: .seconds(1)) }
+        }
+        do {
+            try await reacting.value
+            XCTFail("refused")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.userFacing, "Posting limit reached. Try again in 1s.")
+        }
+        let log = await socket.sentLog
+        XCTAssertEqual(log.count, 5, "the first send and two more")
+        XCTAssertEqual(clock.recorded.count, slept + 2)
+    }
+
+    func testALongerWaitShowsAtOnce() async throws {
+        let socket = try await signedIn()
+        let slept = clock.recorded.count
+        let opening = Task { try await session.open("general") }
+        _ = await sent(socket, count: 3)
+        await socket.deliver(["id": "c3", "error": ["code": -32002, "message": "History request limit reached", "data": ["retry_after": 6]]])
+        do {
+            try await opening.value
+            XCTFail("refused")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.userFacing, "History request limit reached. Try again in 6s.")
+        }
+        XCTAssertEqual(clock.recorded.count, slept, "nothing waited")
+        XCTAssertEqual(session.wait(.history)?.until, now.addingTimeInterval(6))
+    }
+
+    func testAPostRefusedForAMomentIsNotSentAgainHere() async throws {
+        let socket = try await signedIn(capabilities: ["history", "rooms", "reactions"])
+        let slept = clock.recorded.count
+        let sending = Task { try await session.send("hi", in: "general") }
+        let log = await sent(socket, count: 3)
+        XCTAssertTrue(log[2].contains(#""method":"message""#))
+        await socket.deliver(["id": "c3", "error": ["code": -32002, "message": "Too fast", "data": ["retry_after": 1]]])
+        _ = try? await sending.value
+        XCTAssertNotNil(session.wait(.message), "the outbox sees sending paused")
+        XCTAssertFalse(clock.recorded.dropFirst(slept).contains(.seconds(1)), "not waited out at the request")
+        let after = await socket.sentLog
+        XCTAssertEqual(after.count, 3)
+    }
+
+    func testAReconnectDuringTheWaitFailsTheRequest() async throws {
+        let socket = try await signedIn()
+        let slept = clock.recorded.count
+        let opening = Task { try await session.open("general") }
+        _ = await sent(socket, count: 3)
+        await socket.deliver(["id": "c3", "error": ["code": -32002, "message": "History request limit reached", "data": ["retry_after": 3]]])
+        await eventually("waiting") { clock.recorded.count > slept }
+        await socket.dropFromServer()
+        await releaseSleep(slept, of: .seconds(3))
+        do {
+            try await opening.value
+            XCTFail("failed")
+        } catch let error as Connection.Failure {
+            XCTAssertEqual(error, .closed)
+        }
+        let log = await socket.sentLog
+        XCTAssertEqual(log.count, 3, "nothing resent on the old connection")
+    }
 }

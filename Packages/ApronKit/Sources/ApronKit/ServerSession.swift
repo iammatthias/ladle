@@ -905,7 +905,7 @@ public final class ServerSession {
         guard server?.has("rooms") == true, store.room(roomID)?.parentRoomID == nil,
               let connection = connection ?? self.connection else { return }
         let params: JSONValue = ["parent_room_id": .string(roomID), "filter": "not_joined"]
-        guard let result = try? await connection.request("room_list", params: params) else { return }
+        guard let result = try? await ask("room_list", params, on: connection) else { return }
         install(Records(roomListResult: result))
     }
 
@@ -1032,11 +1032,9 @@ public final class ServerSession {
             if let head { params["before"] = head.json }
             let result: JSONValue
             do {
-                if let held = heldBack("history", .object(params)) { throw held }
-                result = try await connection.request("history", params: .object(params))
+                result = try await ask("history", .object(params), on: connection)
             } catch let error as RPCError {
                 if error.code == RPCError.Code.unsupported { joinedHistoryUnsupported = true }
-                noteLimit(error, method: "history", params: .object(params))
                 return false
             } catch {
                 return false
@@ -1068,14 +1066,7 @@ public final class ServerSession {
 
     private func history(_ params: JSONValue, on connection: Connection? = nil) async throws -> HistoryPage {
         guard let connection = connection ?? self.connection else { throw Failure.notConnected }
-        if let held = heldBack("history", params) { throw held }
-        let result: JSONValue
-        do {
-            result = try await connection.request("history", params: params)
-        } catch let error as RPCError {
-            noteLimit(error, method: "history", params: params)
-            throw error
-        }
+        let result = try await ask("history", params, on: connection)
         install(Records(historyResult: result))
         let page = HistoryPage(result)
         if let roomID = params["room_id"]?.stringValue, let floor = page.floor { raiseFloor(of: roomID, to: floor) }
@@ -1425,13 +1416,7 @@ public final class ServerSession {
     func request(_ method: String, _ params: JSONValue, id: String? = nil) async throws -> JSONValue {
         guard let connection else { throw Failure.notConnected }
         guard status == .signedIn else { throw Failure.notSignedIn }
-        if let held = heldBack(method, params) { throw held }
-        do {
-            return try await connection.request(method, params: params, id: id)
-        } catch let error as RPCError {
-            noteLimit(error, method: method, params: params)
-            throw error
-        }
+        return try await ask(method, params, id: id, on: connection)
     }
 
     // MARK: Reading
