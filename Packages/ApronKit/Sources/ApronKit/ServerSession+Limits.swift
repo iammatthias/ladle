@@ -47,9 +47,10 @@ extension ServerSession {
             do {
                 return try await connection.request(method, params: params, id: id)
             } catch let error as RPCError {
-                if waitsOut, resends < ShortWait.resends, let wait = error.retryAfter, wait <= ShortWait.longest {
+                // A wait cut short (its task cancelled) shows the refusal, as it would have unwaited.
+                if waitsOut, resends < ShortWait.resends, let wait = error.retryAfter, wait <= ShortWait.longest,
+                   (try? await environment.sleep(wait)) != nil {
                     resends += 1
-                    try await environment.sleep(wait)
                     continue
                 }
                 noteLimit(error, method: method, params: params)

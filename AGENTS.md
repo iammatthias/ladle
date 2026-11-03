@@ -203,8 +203,9 @@ clone), which is only a worked example.
       Cloudflare's #76; the server's words are "Sign in to load older history", and no other
       refusal answers `before` alone that way) sets `signInForOlder` without throwing, so the
       timeline shows `OlderHistoryPrompt` at its top, not an error, and asks no more of that room
-      until `resetChatState` empties `histories` at a sign-in; an account's `denied` stays an
-      error. A `history` refused with `retry_after`
+      while the account is a guest: a sign-in that keeps the session's rooms (a guest's passkey
+      becoming an account) pages on from there, and another account starts over
+      (`resetChatState`); an account's `denied` stays an error. A `history` refused with `retry_after`
       holds back every `history` until the wait is over (`LimitScope.history`), unless the
       request layer waited it out (Waits).
     - Threads: a thread's record is in its own log (§4.3.1), not its room's, so a member of the
@@ -702,7 +703,9 @@ clone), which is only a worked example.
     `noteLimit` only for the refusal that is shown, so one layer waits, never both, and a hold
     another request notes meanwhile does not refuse the resend. The resend goes on the
     connection it was refused on, so a reconnect during the wait fails it with
-    `Connection.Failure.closed`. `LimitsIntegrationTests` pages history past aprond's
+    `Connection.Failure.closed`; a wait whose task is cancelled throws the refusal, as unwaited.
+    `open`'s thread listing goes through `ask` too, so a read hold skips it and its refusal
+    notes one. `LimitsIntegrationTests` pages history past aprond's
     `--limit.history-per-minute 15` and sees each 4 s refusal waited out.
   - Themes (`ThemeCSS.swift`, `CSSValues.swift`, `ResolvedTheme.swift`, `Themes.swift`,
     `ThemeValues.swift`, generated `WebTokens.swift`), as apron-web's `appearance.svelte.ts` and

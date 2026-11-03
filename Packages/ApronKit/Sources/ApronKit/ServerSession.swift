@@ -1094,7 +1094,9 @@ public final class ServerSession {
     /// first page).
     public func historyEnd(of roomID: String) -> HistoryEnd? {
         guard let state = histories[roomID] else { return nil }
-        if state.olderNeedsSignIn { return .signInForOlder }
+        // Kept while the account is a guest; signed in, even keeping this session's rooms (a
+        // guest's passkey becomes an account), it pages on.
+        if state.olderNeedsSignIn, isGuest { return .signInForOlder }
         if !state.more { return .reachedStart }
         if let before = state.olderBefore, let floor = store.floor(of: roomID), before < floor { return .retentionFloor }
         return nil

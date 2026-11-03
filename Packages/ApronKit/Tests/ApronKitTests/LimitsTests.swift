@@ -244,6 +244,24 @@ final class LimitsTests: ScriptedSessionCase {
         XCTAssertEqual(after.count, 3)
     }
 
+    func testAWaitCutShortShowsTheRefusal() async throws {
+        let socket = try await signedIn()
+        let slept = clock.recorded.count
+        let reacting = Task { try await session.toggleReaction("👍", on: LogID("100")!) }
+        _ = await sent(socket, count: 3)
+        await socket.deliver(["id": "c3", "error": ["code": -32002, "message": "Posting limit reached", "data": ["retry_after": 2]]])
+        await eventually("waiting") { clock.recorded.count > slept }
+        reacting.cancel()
+        do {
+            try await reacting.value
+            XCTFail("refused")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.userFacing, "Posting limit reached. Try again in 2s.")
+        }
+        let log = await socket.sentLog
+        XCTAssertEqual(log.count, 3, "not sent again")
+    }
+
     func testAReconnectDuringTheWaitFailsTheRequest() async throws {
         let socket = try await signedIn()
         let slept = clock.recorded.count
@@ -292,6 +310,35 @@ final class LimitsTests: ScriptedSessionCase {
         try await session.loadOlder("general")
         let after = await socket.sentLog
         XCTAssertEqual(after.count, 5, "paging stops for the room")
+    }
+
+    func testSignedInTheRoomPagesOnFromWhereTheGuestStopped() async throws {
+        let socket = try await signedIn()
+        try await openWithOlder(socket)
+        let older = Task { try await session.loadOlder("general") }
+        _ = await sent(socket, count: 5)
+        await socket.deliver(["id": "c5", "error": ["code": -32001, "message": "Sign in to load older history"]])
+        try await older.value
+        XCTAssertEqual(session.historyEnd(of: "general"), .signInForOlder)
+
+        let account = queueTransport(capabilities: ["history", "rooms", "reactions", "ext:limits"])
+        let signIn = Task { try await session.signIn(.token("t2")) }
+        _ = await sent(account, count: 2)
+        await account.deliver(["id": "c6", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await account.deliver(["id": "c7", "result": ["joined": [["room_id": "general", "log_id": "100", "title": "General", "latest_log_id": "300"]]]])
+        let threads = await sent(account, count: 3)
+        XCTAssertEqual(threads[2], #"{"id":"c8","method":"room_list","params":{"filter":"not_joined","parent_room_id":"general"}}"#, "the catch-up's thread listing")
+        await account.deliver(["id": "c8", "result": ["not_joined": []]])
+        _ = try await signIn.value
+        XCTAssertEqual(session.record.account?.scheme, "token")
+        XCTAssertNil(session.historyEnd(of: "general"))
+        XCTAssertTrue(session.canLoadOlder("general"))
+        let paging = Task { try await session.loadOlder("general") }
+        let log = await sent(account, count: 4)
+        XCTAssertEqual(log.last, #"{"id":"c9","method":"history","params":{"before":"299","limit":50,"room_id":"general"}}"#)
+        await account.deliver(["id": "c9", "result": ["messages": [], "more": false]])
+        try await paging.value
+        XCTAssertEqual(session.historyEnd(of: "general"), .reachedStart)
     }
 
     func testAnAccountRefusedOlderHistorySeesTheError() async throws {
