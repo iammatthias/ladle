@@ -321,7 +321,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Strict place reading (A.4 shapes, first value wins, reachable server) | #126 | has | `Kit/ApronLink.swift` | |
 | Link to another server opens the connect screen first | bh | has | `Kit/LinkRoute.swift` | |
 | Message link scrolls to the message and highlights it | #86 | has | `Kit/ServerSession.swift` (`reveal`), `Timeline/MessageRow.swift` | |
-| User link opens the profile | #86 | partial | `App/RootView.swift` | Opens the member list. No profile card. |
+| User link opens the profile | #86 | has | `Timeline/TimelineView.swift` (`show`, `showProfile`) | A link naming a room and a user opens the room and its profile card for them, as the web's `revealLinkedUser`; a link with a user and no room opens the server, as the web needs a room for it too. The row's earlier "Opens the member list" was stale. |
 | Apron links as chips that say what they are ("Message in #general") | #119 | has | `Kit/LinkChips.swift` (`linkChip`, `LinkChipKey`), `Kit/MessageText.swift`, `Timeline/LinkChipViews.swift` | Only a link written as its own URL; a user's is a mention chip. The icons are SF Symbols (bubble, number, corner arrow) for the web's Lucide ones. |
 | Other-server link as an outlined globe chip | #119 | has | `Kit/LinkChips.swift`, `Timeline/LinkChipViews.swift` (`LinkChipRenderer`) | Host, "· Message" or "· Room", ↗, a `line-strong` outline drawn by a `TextRenderer`. |
 | Place cards for messages, rooms, threads (up to 3) | #119 | has | `Kit/PlaceCards.swift`, `Timeline/PlaceCardView.swift` | |
