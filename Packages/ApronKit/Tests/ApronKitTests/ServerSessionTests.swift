@@ -159,7 +159,28 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertTrue(session.roomsListed)
     }
 
-    // MARK: Sign-in
+    func testDisconnectClosesTheConnectionAndKeepsTheSavedSession() async throws {
+        let socket = FakeTransport()
+        await socket.deliver(Self.greeting)
+        transports.queued.withLock { $0 = [socket] }
+        session.start()
+        try await signInAsGuest(on: socket)
+        await session.disconnect()
+        XCTAssertEqual(session.status, .offline)
+        XCTAssertTrue(session.isDisconnected)
+        XCTAssertEqual(try tokens.token(for: record.id), "t1", "connecting again signs back in without asking")
+        XCTAssertEqual(session.record.account?.userID, "ada")
+        XCTAssertEqual(ConnectionState(session.status)?.title(session.record), "Not connected")
+
+        let again = FakeTransport()
+        await again.deliver(Self.greeting)
+        transports.queued.withLock { $0 = [again] }
+        session.start()
+        XCTAssertFalse(session.isDisconnected)
+        let auth = await frame(again, 0)
+        XCTAssertTrue(auth.contains(#""scheme":"token","token":"t1""#), auth)
+    }
+
 
     func testResumePipelinesRoomListBehindTheTokenAndSavesTheRotatedOne() async throws {
         try tokens.setToken("t1", for: record.id)

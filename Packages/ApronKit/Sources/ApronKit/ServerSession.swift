@@ -333,13 +333,28 @@ public final class ServerSession {
 
     // MARK: Lifecycle
 
-    /// Connects, and keeps reconnecting until `stop()`. A no-op while running.
+    /// Connects, and keeps reconnecting until `stop()`. A no-op while running. Connecting on
+    /// purpose ends a `disconnect`.
     public func start() {
+        isDisconnected = false
         suspensions += 1
         guard runTask == nil else { return }
         status = .connecting
         restoreKept()
         runTask = Task { await run() }
+    }
+
+    /// The server pane's Disconnect was used (apron-web #177): the app coming back or the network
+    /// returning leaves this session offline until connecting again on purpose (`start`).
+    public private(set) var isDisconnected = false
+
+    /// Closes the connection and keeps it closed, as apron-web's Disconnect: what is being typed
+    /// live is finished, read positions and the kept history are written, and the saved session
+    /// stays, so connecting again (`start`, or the next launch) signs back in without asking.
+    public func disconnect() async {
+        await suspend()
+        isDisconnected = true
+        status = .offline
     }
 
     public func stop() async {

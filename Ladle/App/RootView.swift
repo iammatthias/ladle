@@ -85,7 +85,7 @@ struct RootView: View {
                         await session.suspend()
                         UIApplication.shared.endBackgroundTask(task)
                     }
-                case .active: session.start()
+                case .active where !session.isDisconnected: session.start()
                 default: break
                 }
             }
@@ -185,7 +185,10 @@ struct RootView: View {
         var previous: NWPath.Status?
         for await status in paths {
             if status == .satisfied, previous == .unsatisfied {
-                for record in store.records { store.session(for: record.id)?.start() }
+                for record in store.records {
+                    guard let session = store.session(for: record.id), !session.isDisconnected else { continue }
+                    session.start()
+                }
             }
             previous = status
         }

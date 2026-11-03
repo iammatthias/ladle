@@ -481,7 +481,7 @@ struct RoomListView: View {
             guard !session.reconnectingQuietly, let state = ConnectionState(session.status) else { return nil }
             if state.isProblem {
                 return AnyView(ActionBanner(symbol: state.symbol, title: state.title(session.record), detail: state.detail) {
-                    if state.canRetry { Button("Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
+                    if state.canRetry { Button(session.isDisconnected ? "Connect" : "Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
                 })
             }
             return AnyView(Label(state.title(session.record), systemImage: state.symbol)

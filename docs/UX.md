@@ -611,9 +611,9 @@ When the server keeps another status than the one chosen, a callout under the pi
 2. **Description.** The server's `description` as CommonMark, with custom emoji.
 3. **You.** "Signed in as Ada", with "(guest)" for a guest, and **Edit Profile**, which opens You (3.11).
 4. **Address.** The WebSocket address, selectable, with a copy button that turns to a check for a moment, and the protocol version, "Apron 9".
-5. **Actions.** **Connect to Another Server…** opens the Connect sheet (3.2) for a new server. **Disconnect** signs out of this server only: Ladle keeps several servers side by side, so the web's Disconnect, which leaves its one server for the connect screen, maps to signing out here. The others stay connected.
+5. **Actions.** **Connect to Another Server…** opens the Connect sheet (3.2) for a new server. **Disconnect** closes this server's connection without asking and keeps it closed until **Connect** (the rooms list's banner) or the next launch, which sign back in without asking: the saved session and kept history stay, as the web's. The server stays in the list, its loaded rooms readable. The others stay connected.
 
-**Sign Out confirmation**, from Disconnect and from You's Sign Out: "Sign out of Home?" with "This account signs in only with its token, which is deleted. You may not get back into it." for a token or guest account, and "You can sign in again with the same method." otherwise. The Keychain item is `ThisDeviceOnly`, and Ladle never shows the token, so for token-only accounts the loss is real.
+**Sign Out confirmation**, from You's Sign Out: "Sign out of Home?" with "This account signs in only with its token, which is deleted. You may not get back into it." for a token or guest account, and "You can sign in again with the same method." otherwise. The Keychain item is `ThisDeviceOnly`, and Ladle never shows the token, so for token-only accounts the loss is real.
 
 The server's name, address and origin are edited in the Connect sheet (Edit on the server list), and **Remove Server** stays on the server list's swipe and menu, with its confirmation: "Ladle forgets this server and its sign-in. …". The `agent`, capabilities and schemes are not shown.
 

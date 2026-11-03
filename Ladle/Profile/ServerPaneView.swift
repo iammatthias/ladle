@@ -12,7 +12,6 @@ struct ServerPaneView: View {
     var onEditProfile: () -> Void = {}
     var onConnect: () -> Void = {}
     @State private var copied = false
-    @State private var disconnecting = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -78,9 +77,14 @@ struct ServerPaneView: View {
                         onConnect()
                     }
                     .buttonStyle(GhostButtonStyle(tone: Palette.accent))
-                    if session.you != nil {
-                        Button("Disconnect") { disconnecting = true }
-                            .buttonStyle(GhostButtonStyle(tone: Palette.danger))
+                    Spacer(minLength: 0)
+                    if session.status != .offline {
+                        // Closes the connection and keeps it closed; the saved session and what is kept stay (#177).
+                        Button("Disconnect") {
+                            dismiss()
+                            Task { await session.disconnect() }
+                        }
+                        .buttonStyle(GhostButtonStyle(tone: Palette.danger))
                     }
                 }
             }
@@ -90,7 +94,6 @@ struct ServerPaneView: View {
         .presentationDetents([.medium, .large])
         .presentationBackground(Palette.chrome)
         .presentationDragIndicator(.visible)
-        .signOutDialog(session: session, isPresented: $disconnecting) { dismiss() }
     }
 
     private func color(_ tone: ServerPane.Tone) -> Color {

@@ -724,7 +724,7 @@ clone), which is only a worked example.
   profile bar; `signOutDialog`; `ProfileCardView`: someone's card, from a sender's avatar or
   name, a mention chip, a member row or a link's `user`; `ServerPaneView`: the server pane, from
   the room list's title or, on iPad, its server head, with Edit Profile, Connect to Another
-  Server… and Disconnect, which signs out of that server),
+  Server… and Disconnect, which closes the connection and keeps the saved session, #177),
   `Rooms/RoomFormSheet.swift` (the web's RoomForm: title and Markdown description for New Room,
   with its Private toggle, New Thread, Start Thread and Edit Room or Thread), `Rooms/NewPrivateSheet.swift`
   (the + beside Private: the web's PrivateRoomForm, with `QuotaLine` and the limit's Leave list),

@@ -646,7 +646,7 @@ struct TimelineView: View {
             }
             if let state, state.isProblem {
                 ActionBanner(symbol: state.symbol, title: state.title(session.record), detail: state.detail) {
-                    if state.canRetry { Button("Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
+                    if state.canRetry { Button(session.isDisconnected ? "Connect" : "Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
                 }
             } else if let state {
                 Label(state.title(session.record), systemImage: state.symbol)
