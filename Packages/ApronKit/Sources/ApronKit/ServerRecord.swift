@@ -1,7 +1,9 @@
 import Foundation
 import Synchronization
 
-/// One server the app knows, with its single account. Persisted as JSON; holds no secrets. The
+/// One account on one server: a server with several accounts (you and a bot, a guest and an
+/// account) has a record per account, each with its own `id`, session, token and files, so
+/// `url` is shared between records and never a key. Persisted as JSON; holds no secrets. The
 /// bearer token lives in the `TokenStore`, keyed by `id`.
 ///
 /// Decoding supplies a default for every field added after `id` and `url`, so files saved by an
@@ -68,6 +70,14 @@ public struct ServerRecord: Codable, Hashable, Identifiable, Sendable {
 
     public static func defaultLabel(for url: URL) -> String {
         url.host() ?? url.absoluteString
+    }
+
+    /// Who this record is on its server, where several records share the server: the saved
+    /// account's name, else its `@user_id`, a guest marked, or "Not signed in".
+    public var accountLabel: String {
+        guard let account else { return "Not signed in" }
+        let name = account.name ?? "@" + account.userID
+        return account.scheme == "guest" ? name + " (guest)" : name
     }
 
     /// `https://host`, with the port only when `url` names one.

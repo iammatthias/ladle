@@ -1,11 +1,14 @@
 import Foundation
 import Observation
 
-/// Every saved server and its session. Each server has its own sign-in and one identity; the
-/// sessions share nothing but the token store.
+/// Every saved record and its session: one per account, so a server with two accounts is two
+/// records at one `url`, two sessions and two sign-ins. The sessions share nothing but the token
+/// store and this device's settings.
 @MainActor
 @Observable
 public final class SessionStore {
+    /// In the order saved. The accounts on one server are the records at its `url`
+    /// (`accounts(on:)`), read by a scan: a handful of records, no index to keep.
     public private(set) var records: [ServerRecord] = []
     public private(set) var sessions: [UUID: ServerSession] = [:]
     /// The last error saving `servers.json`, for the UI to show.
@@ -100,6 +103,25 @@ public final class SessionStore {
 
     public func session(for id: UUID) -> ServerSession? { sessions[id] }
 
+    /// The saved accounts on the server at `url`, in the order saved.
+    public func accounts(on url: URL) -> [ServerRecord] { records.filter { $0.url == url } }
+
+    /// What to call a session where every saved record is listed: its server's name, and the
+    /// account's after a dot where another saved record shares the server ("Home · Ada").
+    public func heading(for session: ServerSession) -> String {
+        let name = session.serverName
+        guard accounts(on: session.record.url).count > 1, let account = session.accountName else { return name }
+        return name + " · " + TextDirection.isolated(account)
+    }
+
+    /// Where a link that reached the app goes (`LinkRoute`): `preferred` is the open record, which
+    /// a place link on its server takes when several accounts could; an account whose session
+    /// can see the place (`placeCard`) comes before one that can't.
+    public func route(_ link: ApronLink, preferred: UUID?, now: Date = Date()) -> LinkRoute? {
+        LinkRoute(link, records: records, proposal: proposals.find(link.state, now: now), preferred: preferred,
+                  sees: { [sessions] id in sessions[id]?.placeCard(link) != nil })
+    }
+
     /// Keeps history this long from now on: what each server keeps is written again at once,
     /// within it, as apron-web's `setRetention` prunes.
     /// History's Clear All Users: deletes every account's kept history on every server; each
@@ -131,8 +153,10 @@ public final class SessionStore {
         await sessions[record.id]?.update(record)
     }
 
-    /// Stops the session and forgets the server, its token, its reminders, its drafts, the
-    /// descriptions put away there, how its rooms list was arranged and the reactions seen there.
+    /// Stops the session and forgets the record: its token, kept history, read positions,
+    /// reminders, drafts, notification scopes, the descriptions put away there, how its rooms
+    /// list was arranged and the reactions seen there. Another account saved on the same server
+    /// keeps all of its own.
     public func remove(_ id: UUID) async {
         if let session = sessions.removeValue(forKey: id) {
             await session.unregisterPush()
@@ -148,6 +172,8 @@ public final class SessionStore {
         proposals.removeAll(server: id)
         roomArrangement.removeAll(server: id)
         seenReactions.removeAll(server: id)
+        positions.remove(server: id)
+        alerts.settings.removeAll(server: id)
         records.removeAll { $0.id == id }
         try? tokens.setToken(nil, for: id)
         save()

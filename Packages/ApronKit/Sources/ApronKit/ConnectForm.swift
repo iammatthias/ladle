@@ -55,8 +55,9 @@ public struct ConnectForm: Sendable {
 
     /// The form for `record`, or for a new server with `record` nil, with what a link filled in.
     /// A saved server signs in again by its last method, unless that was a guest the server now
-    /// lets only read (`mayWrite` false).
-    public init(record: ServerRecord?, mayWrite: Bool, prefill: TokenPayload?) {
+    /// lets only read (`mayWrite` false). `like` is a saved record on the server a new account is
+    /// added to: its address, name and origin start the form, and a new record is saved.
+    public init(record: ServerRecord?, mayWrite: Bool, prefill: TokenPayload?, like: ServerRecord? = nil) {
         self.record = record
         if let record {
             address = record.url.absoluteString
@@ -65,8 +66,20 @@ public struct ConnectForm: Sendable {
             if let scheme = record.account?.scheme, let saved = Method(scheme: scheme), saved != .guest || mayWrite {
                 method = saved
             }
+        } else if let like {
+            address = like.url.absoluteString
+            label = like.label
+            origin = like.origin
         }
         if let prefill { accept(prefill) }
+    }
+
+    /// The line under the address when the server is saved already, naming who is on it: adding
+    /// it again adds another account there, not a second copy of the one. Nil with no one saved.
+    public static func sameServerNote(accounts: [String]) -> String? {
+        guard let first = accounts.first else { return nil }
+        let who = accounts.count == 1 ? first : accounts.dropLast().joined(separator: ", ") + " and " + accounts[accounts.count - 1]
+        return "Already in Ladle as \(who). Connecting adds another account on this server."
     }
 
     public static func url(from address: String) -> URL? {

@@ -53,17 +53,18 @@ extension ApronLink {
 extension ServerSession {
     /// The cards for the Apron links in a message's text, in order, one per place, at most
     /// `PlaceCard.limit`. A link without a server is this server's (§5). A link to another server
-    /// draws from that server's session, which `sessions` gives only while it is signed in. A link
-    /// to the message itself, to a user, or to a place the session can't see draws none.
-    /// Nothing is fetched to draw a card.
-    public func placeCards(in message: MessageSnapshot, sessions: (URL) -> ServerSession? = { _ in nil }) -> [PlaceCard] {
+    /// draws from that server's signed-in sessions, which `sessions` gives (one per account saved
+    /// there), the first that can see the place drawing it. A link to the message itself, to a
+    /// user, or to a place no session can see draws none. Nothing is fetched to draw a card.
+    public func placeCards(in message: MessageSnapshot, sessions: (URL) -> [ServerSession] = { _ in [] }) -> [PlaceCard] {
         var cards: [PlaceCard] = []
         for url in MessageText.links(message.body) {
             guard cards.count < PlaceCard.limit, let read = ApronLink(url), read.token == nil, read.user == nil, read.room != nil else { continue }
             let link = read.resolved(against: record.url).place
             if link.server == record.url, link.message == message.messageID { continue }
-            let session = link.server == record.url ? self : link.server.flatMap(sessions)
-            guard let card = session?.placeCard(link), !cards.contains(where: { $0.link == card.link }) else { continue }
+            let readers = link.server == record.url ? [self] : link.server.map(sessions) ?? []
+            guard let card = readers.lazy.compactMap({ $0.placeCard(link) }).first,
+                  !cards.contains(where: { $0.link == card.link }) else { continue }
             cards.append(card)
         }
         return cards
@@ -85,10 +86,9 @@ extension ServerSession {
 }
 
 extension SessionStore {
-    /// The signed-in session of the saved server at `url`, for a link card from another server.
-    public func liveSession(for url: URL) -> ServerSession? {
-        guard let record = records.first(where: { $0.url == url }), let session = sessions[record.id],
-              session.status == .signedIn else { return nil }
-        return session
+    /// The signed-in sessions of the accounts saved on the server at `url`, in the order saved,
+    /// for a link card from another server: the first that can see the place draws it.
+    public func liveSessions(for url: URL) -> [ServerSession] {
+        accounts(on: url).compactMap { sessions[$0.id] }.filter { $0.status == .signedIn }
     }
 }

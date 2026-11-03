@@ -97,4 +97,25 @@ final class ConnectFormTests: XCTestCase {
         XCTAssertEqual(record.id, saved.id)
         XCTAssertEqual(record.account?.userID, "sam")
     }
+
+    func testAddingAnotherAccountStartsFromTheSavedServersAddressNameAndOrigin() {
+        let form = ConnectForm(record: nil, mayWrite: false, prefill: nil, like: saved)
+        XCTAssertNil(form.record, "a new record is saved, not the sibling")
+        XCTAssertEqual([form.address, form.label, form.origin], ["wss://home.example/ws", "Home", "https://web.apron.chat"])
+        XCTAssertEqual(form.method, .token, "the sibling's method is not assumed")
+        XCTAssertEqual(form.submitLabel(pendingEmail: nil), "Connect")
+        let record = form.saved(at: form.url!)
+        XCTAssertNotEqual(record.id, saved.id)
+        XCTAssertEqual([record.url.absoluteString, record.label, record.origin], ["wss://home.example/ws", "Home", "https://web.apron.chat"])
+        XCTAssertNil(record.account)
+    }
+
+    func testTheNoteUnderAnAddressAlreadySavedNamesWhoIsThere() {
+        XCTAssertNil(ConnectForm.sameServerNote(accounts: []))
+        XCTAssertEqual(ConnectForm.sameServerNote(accounts: ["Sam"]), "Already in Ladle as Sam. Connecting adds another account on this server.")
+        XCTAssertEqual(ConnectForm.sameServerNote(accounts: ["Sam", "Sous Chef"]),
+                       "Already in Ladle as Sam and Sous Chef. Connecting adds another account on this server.")
+        XCTAssertEqual(ConnectForm.sameServerNote(accounts: ["Sam", "Sous Chef", "Not signed in"]),
+                       "Already in Ladle as Sam, Sous Chef and Not signed in. Connecting adds another account on this server.")
+    }
 }

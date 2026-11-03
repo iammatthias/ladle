@@ -6,7 +6,7 @@ final class MessageRowModelTests: XCTestCase {
     private func row(_ room: String, _ id: String, in store: SessionStore) throws -> MessageRowModel {
         let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
         let message = try XCTUnwrap(home.timeline(room).first { $0.messageID.text == id })
-        return MessageRowModel(message, in: home, sessions: store.liveSession(for:))
+        return MessageRowModel(message, in: home, sessions: store.liveSessions(for:))
     }
 
     /// The row's spoken text with its time, which follows the test machine's locale, as TIME.

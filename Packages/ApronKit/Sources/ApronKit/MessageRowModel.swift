@@ -51,7 +51,7 @@ public struct MessageRowModel {
     private let reactions: String?
 
     @MainActor
-    public init(_ message: MessageSnapshot, in session: ServerSession, sessions: (URL) -> ServerSession? = { _ in nil },
+    public init(_ message: MessageSnapshot, in session: ServerSession, sessions: (URL) -> [ServerSession] = { _ in [] },
                 pending: ServerSession.PendingMessage? = nil) {
         self.message = message
         self.pending = pending

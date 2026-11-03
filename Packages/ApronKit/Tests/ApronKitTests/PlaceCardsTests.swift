@@ -54,13 +54,13 @@ final class PlaceCardsTests: XCTestCase {
         let store = await PreviewFixtures.makeStore()
         let session = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
         let text = message("apron:?server=wss://demo.apron.example/ws&room=lobby&message=\(id(-15).text)")
-        XCTAssertEqual(session.placeCards(in: text, sessions: store.liveSession(for:)), [PlaceCard(
+        XCTAssertEqual(session.placeCards(in: text, sessions: store.liveSessions(for:)), [PlaceCard(
             link: ApronLink(server: demo, room: "lobby", message: id(-15)),
             content: .message(sender: "Wren", preview: "Anyone tried the Rust server with email sign-in?"),
             roomTitle: "lobby", memberCount: 1204)], "the room's member_count, not the three listed")
         XCTAssertEqual(session.placeCards(in: text), [], "no other sessions given")
         await store.session(for: PreviewFixtures.demoID)?.stop()
-        XCTAssertEqual(session.placeCards(in: text, sessions: store.liveSession(for:)), [], "a server not signed in draws none")
+        XCTAssertEqual(session.placeCards(in: text, sessions: store.liveSessions(for:)), [], "a server not signed in draws none")
     }
 
     func testAnEmbedForAPlaceACardShowsIsHidden() {

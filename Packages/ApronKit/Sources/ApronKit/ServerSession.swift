@@ -271,6 +271,16 @@ public final class ServerSession {
         server?.avatar.flatMap { URL(string: $0) }.flatMap { mediaGate.decide($0, for: .avatar).url }
     }
 
+    /// Who this session is on its server, for telling its record from another account's there:
+    /// `you` as shown, else the saved account (`ServerRecord.accountLabel`), nil with neither.
+    public var accountName: String? {
+        if let you { return displayName(for: you) }
+        return record.account == nil ? nil : record.accountLabel
+    }
+
+    /// Your own avatar (§4.8.6), where it may load.
+    public var accountAvatarURL: URL? { you.flatMap { avatarURL(of: $0.userID) } }
+
     /// Whether a token is saved for this server, which the next connection resumes with.
     var hasSavedToken: Bool { ((try? tokens.token(for: record.id)) ?? nil) != nil }
 

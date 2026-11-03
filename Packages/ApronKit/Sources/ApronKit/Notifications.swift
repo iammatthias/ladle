@@ -295,6 +295,16 @@ public final class NotificationSettings {
         save()
     }
 
+    /// Forgets the scopes and `push_id`s of every account on a server, as when its record is
+    /// removed; another record on the same URL keeps its own.
+    public func removeAll(server: UUID) {
+        let prefix = server.uuidString + "\n"
+        let before = scopes.count + pushIDs.count
+        scopes = scopes.filter { !$0.key.hasPrefix(prefix) }
+        pushIDs = pushIDs.filter { !$0.key.hasPrefix(prefix) }
+        if scopes.count + pushIDs.count != before { save() }
+    }
+
     /// A new relay drops the endpoint the old one gave.
     public func setRelay(_ url: URL?) {
         if url != relay { endpoint = nil }

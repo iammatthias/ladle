@@ -11,6 +11,8 @@ public protocol ReadPositionStore: Sendable {
     func advance(_ roomID: String, to position: LogID, server: UUID, user: String)
     /// Re-keys the positions kept for `old` under `new`, keeping the further of the two per room.
     func rename(server: UUID, from old: String, to new: String)
+    /// Forgets every position kept for the record, as when it is removed.
+    func remove(server: UUID)
 }
 
 /// `read-positions.json` in the store's directory: `{server id: {user id: {room id: message id}}}`,
@@ -51,6 +53,13 @@ public struct FileReadPositionStore: ReadPositionStore {
         try? data.write(to: fileURL, options: .atomic)
     }
 
+    public func remove(server: UUID) {
+        var all = load()
+        guard all.removeValue(forKey: server.uuidString) != nil,
+              let data = try? JSONSerialization.data(withJSONObject: all, options: [.sortedKeys, .prettyPrinted]) else { return }
+        try? data.write(to: fileURL, options: .atomic)
+    }
+
     private func load() -> [String: [String: [String: String]]] {
         guard let data = try? Data(contentsOf: fileURL) else { return [:] }
         return (try? JSONSerialization.jsonObject(with: data)) as? [String: [String: [String: String]]] ?? [:]
@@ -82,5 +91,9 @@ public final class InMemoryReadPositionStore: ReadPositionStore {
                 all[server, default: [:]][new, default: [:]][roomID] = position
             }
         }
+    }
+
+    public func remove(server: UUID) {
+        kept.withLock { $0[server] = nil }
     }
 }
