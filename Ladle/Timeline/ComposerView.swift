@@ -254,11 +254,26 @@ struct ComposerView: View {
         .padding(.trailing, Tokens.Space.s2)
     }
 
+    /// A draft that goes to the server as a command (§4.1), as apron-web's composer shows it: a
+    /// Command tag, the line in monospace, and Run in Send's place.
+    private var isCommand: Bool {
+        !live && draft.field.edit == nil && session.server?.has("command") == true && ServerSession.Draft(text: draft.field.text).isCommand
+    }
+
     @ViewBuilder
     private var field: some View {
         if canAttach { attachMenu }
+        if isCommand {
+            Text("Command")
+                .apText(.ui, .medium)
+                .foregroundStyle(Palette.inkMuted)
+                .padding(.horizontal, Tokens.Space.s2)
+                .frame(height: Tokens.Control.md)
+                .background(Palette.hover, in: Capsule())
+                .accessibilityLabel("Command, sent to the server, not posted")
+        }
         TextField(placeholder, text: $draft.field.text, axis: .vertical)
-            .apText(.field)
+            .apText(isCommand ? .ui : .field, mono: isCommand)
             .foregroundStyle(Palette.ink)
             .lineLimit(1 ... 8)
             .focused($focused)
@@ -303,9 +318,10 @@ struct ComposerView: View {
                 .accessibilityLabel("Send again in \(WaitWords.spoken(left, long: left >= WaitWords.long))")
             }
         } else {
-            Button("Send") { send() }
+            Button(isCommand ? "Run" : "Send") { send() }
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(!canSend)
+                .accessibilityLabel(isCommand ? "Run command" : "Send message")
                 .keyboardShortcut(.return, modifiers: .command)
         }
     }
