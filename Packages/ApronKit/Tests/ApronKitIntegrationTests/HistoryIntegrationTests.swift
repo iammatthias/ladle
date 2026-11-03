@@ -72,4 +72,35 @@ final class HistoryIntegrationTests: XCTestCase {
         XCTAssertNil(files.read(eve), "Keep Local History off deletes Eve's")
         XCTAssertNotNil(files.read(account), "and leaves Ada's")
     }
+
+    func testARelaunchCatchesUpRoomsThatMovedOnTogetherAndAsksNothingOfOneThatDidNot() async throws {
+        let server = try await Aprond.start()
+        servers.append(server)
+        let ada = session(ServerRecord(url: server.url))
+        try await waitFor("connected") { ada.status == .signedOut }
+        _ = try await ada.signIn(.emailProposal(address: "ada@example.com"))
+        _ = try await ada.signIn(.emailCode(try await server.emailCode(for: "ada@example.com")))
+        try await ada.open("general")
+        let deployID = try await ada.createRoom(title: "Deploy", parentRoomID: "general")
+        let quietID = try await ada.createRoom(title: "Quiet", parentRoomID: "general")
+        let deploy = try XCTUnwrap(deployID), quiet = try XCTUnwrap(quietID)
+        for room in [deploy, quiet] { try await ada.open(room) }
+        _ = try await ada.send("before", in: "general")
+        try await waitFor("sent") { self.texts(ada).last == "before" }
+        await ada.suspend()
+
+        let bob = session(ServerRecord(url: server.url), keeping: false)
+        try await waitFor("bob connected") { bob.status == .signedOut }
+        try await bob.signIn(.guest(name: nil))
+        _ = try await bob.send("in general", in: "general")
+        try await bob.join(deploy)
+        _ = try await bob.send("in the thread", in: deploy)
+
+        let again = session(ada.record)
+        try await waitFor("caught up") {
+            self.texts(again).last == "in general" && again.timeline(deploy).last?.body?["text"]?.stringValue == "in the thread"
+        }
+        XCTAssertEqual(again.status, .signedIn)
+        XCTAssertFalse(again.isCatchingUp(quiet))
+    }
 }

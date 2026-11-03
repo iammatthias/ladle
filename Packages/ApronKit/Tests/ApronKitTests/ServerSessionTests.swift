@@ -906,37 +906,9 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.joinedRoomIDs, ["general"])
     }
 
-    func testAReconnectCatchesUpTheRoomOnScreenFirst() async throws {
-        let firstSocket = FakeTransport()
-        await firstSocket.deliver(Self.greeting)
-        transports.queued.withLock { $0 = [firstSocket] }
-        session.start()
-        try await signInAsGuest(on: firstSocket)
-        try await openGeneral(on: firstSocket)
-        let open = Task { try await session.open("130") }
-        _ = await frame(firstSocket, 4)
-        await firstSocket.deliver(["id": "c5", "result": ["messages": [], "more": false, "latest_log_id": "130", "history_log_id": "130"]])
-        _ = await frame(firstSocket, 5)
-        await firstSocket.deliver(["id": "c6", "result": ["not_joined": []]])
-        try await open.value
-        session.show("general", true)
-        await firstSocket.dropFromServer()
-        await eventually("backoff") { clock.recorded.count == 1 }
-        clock.release()
-
-        let second = await transport(1)
-        _ = await frames(second, count: 2)
-        await second.deliver(["id": "c7", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
-        await second.deliver(["id": "c8", "result": ["joined": [
-            ["room_id": "general", "log_id": "100", "latest_log_id": "106", "history_log_id": "101"],
-            ["room_id": "130", "log_id": "130", "latest_log_id": "130", "history_log_id": "130"],
-        ]]])
-        let first = await frame(second, 2)
-        XCTAssertEqual(first, #"{"id":"c9","method":"history","params":{"after":"107","limit":200,"room_id":"general"}}"#,
-                       "general is on screen, so it goes before 130")
-    }
-
-    func testEachOpenedRoomCatchesUpUntilItsCatchUpIsDone() async throws {
+    /// General (on screen, its checkpoint 106) and 130 opened, then the connection dropped and a
+    /// new one signed in, its joined listing giving each room's head.
+    private func reconnectWithTwoRoomsOpen(heads: (general: String, other: String)) async throws -> FakeTransport {
         let firstSocket = FakeTransport()
         await firstSocket.deliver(Self.greeting)
         transports.queued.withLock { $0 = [firstSocket] }
@@ -961,19 +933,79 @@ final class ServerSessionTests: XCTestCase {
         _ = await frames(second, count: 2)
         await second.deliver(["id": "c7", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
         await second.deliver(["id": "c8", "result": ["joined": [
-            ["room_id": "general", "log_id": "100", "latest_log_id": "106", "history_log_id": "101"],
-            ["room_id": "130", "log_id": "130", "latest_log_id": "130", "history_log_id": "130"],
+            ["room_id": "general", "log_id": "100", "latest_log_id": .string(heads.general), "history_log_id": "101"],
+            ["room_id": "130", "log_id": "130", "latest_log_id": .string(heads.other), "history_log_id": "130"],
         ]]])
+        return second
+    }
+
+    func testAReconnectCatchesUpTheRoomOnScreenFirst() async throws {
+        let second = try await reconnectWithTwoRoomsOpen(heads: ("108", "130"))
+        let first = await frame(second, 2)
+        XCTAssertEqual(first, #"{"id":"c9","method":"history","params":{"after":"107","limit":200,"room_id":"general"}}"#,
+                       "general is on screen, so it goes first")
+    }
+
+    func testEachOpenedRoomCatchesUpUntilItsCatchUpIsDoneAndOneWithNothingNewAsksNothing() async throws {
+        let second = try await reconnectWithTwoRoomsOpen(heads: ("108", "130"))
         _ = await frame(second, 2)
         XCTAssertFalse(session.reconnectingQuietly)
-        XCTAssertEqual([session.isCatchingUp("general"), session.isCatchingUp("130")], [true, true])
-        await second.deliver(["id": "c9", "result": ["messages": [], "more": false, "latest_log_id": "106", "history_log_id": "101"]])
-        _ = await frame(second, 3)
-        XCTAssertEqual([session.isCatchingUp("general"), session.isCatchingUp("130")], [false, true])
+        XCTAssertEqual([session.isCatchingUp("general"), session.isCatchingUp("130")], [true, false],
+                       "130's listed head is its checkpoint: nothing to ask for")
+        await second.deliver(["id": "c9", "result": ["messages": [message("108", "g")], "first_log_id": "108", "last_log_id": "108",
+                                                      "more": false, "latest_log_id": "108", "history_log_id": "101"]])
+        let threads = await frame(second, 3)
+        XCTAssertEqual(threads, #"{"id":"c10","method":"room_list","params":{"filter":"not_joined","parent_room_id":"general"}}"#)
+        XCTAssertEqual([session.isCatchingUp("general"), session.isCatchingUp("130")], [false, false])
         await second.deliver(["id": "c10", "result": ["not_joined": []]])
+        let all = await frames(second, count: 5)
+        XCTAssertEqual(all.count, 5, "and 130's thread listing")
+        XCTAssertFalse(all.contains { $0.contains(#""room_id":"130""#) && $0.contains("history") })
+    }
+
+    func testRoomsThatMovedOnCatchUpTogetherWithOneHistoryWithoutARoom() async throws {
+        let second = try await reconnectWithTwoRoomsOpen(heads: ("108", "131"))
+        let together = await frame(second, 2)
+        XCTAssertEqual(together, #"{"id":"c9","method":"history","params":{"after":"107","limit":200}}"#,
+                       "from the older checkpoint, every joined room's log as one")
+        await second.deliver(["id": "c9", "result": [
+            "messages": [message("108", "g"), message("131", "late", room: "130")], "first_log_id": "108", "last_log_id": "131",
+            "more": false, "latest_log_id": "131", "history_log_id": "100",
+        ]])
+        let threads = await frame(second, 3)
+        XCTAssertEqual(threads, #"{"id":"c10","method":"room_list","params":{"filter":"not_joined","parent_room_id":"general"}}"#)
+        XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["104", "105", "106", "108"])
+        XCTAssertEqual(session.timeline("130").map(\.messageID.text), ["131"])
+        XCTAssertEqual([session.isCatchingUp("general"), session.isCatchingUp("130")], [false, false])
+    }
+
+    func testAServerWithoutHistoryAcrossRoomsCatchesUpEachRoomAndIsNotAskedAgain() async throws {
+        let second = try await reconnectWithTwoRoomsOpen(heads: ("108", "131"))
+        _ = await frame(second, 2)
+        await second.deliver(["id": "c9", "error": ["code": -32601, "message": "Unsupported"]])
+        let general = await frame(second, 3)
+        XCTAssertEqual(general, #"{"id":"c10","method":"history","params":{"after":"107","limit":200,"room_id":"general"}}"#)
+        await second.deliver(["id": "c10", "result": ["messages": [], "more": false, "latest_log_id": "108", "history_log_id": "101"]])
         _ = await frame(second, 4)
-        await second.deliver(["id": "c11", "result": ["messages": [], "more": false, "latest_log_id": "130", "history_log_id": "130"]])
-        await eventually("130 caught up") { !session.isCatchingUp("130") }
+        await second.deliver(["id": "c11", "result": ["not_joined": []]])
+        let other = await frame(second, 5)
+        XCTAssertEqual(other, #"{"id":"c12","method":"history","params":{"after":"131","limit":200,"room_id":"130"}}"#)
+        await second.deliver(["id": "c12", "result": ["messages": [], "more": false, "latest_log_id": "131", "history_log_id": "130"]])
+        await eventually("caught up") { !session.isCatchingUp("130") }
+
+        await second.dropFromServer()
+        await eventually("backoff") { clock.recorded.count == 2 }
+        clock.release()
+        let third = await transport(2)
+        _ = await frames(third, count: 2)
+        await third.deliver(["id": "c14", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await third.deliver(["id": "c15", "result": ["joined": [
+            ["room_id": "general", "log_id": "100", "latest_log_id": "109", "history_log_id": "101"],
+            ["room_id": "130", "log_id": "130", "latest_log_id": "132", "history_log_id": "130"],
+        ]]])
+        let again = await frame(third, 2)
+        XCTAssertEqual(again, #"{"id":"c16","method":"history","params":{"after":"109","limit":200,"room_id":"general"}}"#,
+                       "not asked across rooms again")
     }
 
     func testOwnReadCursorOnlyMovesForwardAndOthersAreIgnored() async throws {

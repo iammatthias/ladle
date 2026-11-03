@@ -399,17 +399,15 @@ final class KeptHistorySessionTests: XCTestCase {
         _ = await frame(socket, 0)
         await socket.deliver(["id": "c5", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
         await socket.deliver(["id": "c6", "result": ["joined": [["room_id": "general", "log_id": "900", "latest_log_id": "1060"]]]])
-        let catchUp = await frame(socket, 2)
-        XCTAssertEqual(catchUp, #"{"id":"c7","method":"history","params":{"after":"1061","limit":200,"room_id":"general"}}"#,
-                       "goes on from the kept checkpoint")
-        await socket.deliver(["id": "c7", "result": ["messages": [], "more": false, "latest_log_id": "1060", "history_log_id": "950"]])
-        _ = await frame(socket, 3)
-        await socket.deliver(["id": "c8", "result": ["not_joined": []]])
+        let threads = await frame(socket, 2)
+        XCTAssertEqual(threads, #"{"id":"c7","method":"room_list","params":{"filter":"not_joined","parent_room_id":"general"}}"#,
+                       "the kept checkpoint is the listed head: no history asked for")
+        await socket.deliver(["id": "c7", "result": ["not_joined": []]])
         _ = try await signIn.value
         XCTAssertEqual(first.timeline("general").count, 50, "the newest 50 kept, as a launch shows them")
         while first.timeline("general").first?.messageID != LogID("1001") { try await first.loadOlder("general") }
         let sent = await socket.sentLog.count
-        XCTAssertEqual(sent, 4, "the kept pages came from the device")
+        XCTAssertEqual(sent, 3, "the kept pages came from the device")
         await first.flushKept()
         let kept = try XCTUnwrap(files.read(ada).flatMap { String(data: $0, encoding: .utf8) })
         XCTAssertEqual(try Archive(text: kept).records.messages.count, 60, "writing again kept all 60")

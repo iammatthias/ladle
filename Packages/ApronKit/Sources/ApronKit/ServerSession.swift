@@ -941,17 +941,85 @@ public final class ServerSession {
     /// After a sign-in, pages each opened room forward from its checkpoint until `more` is false.
     private func catchUp(on connection: Connection) async {
         let rooms = histories.keys.sorted(by: codePointLess)
-        for roomID in rooms.filter(onScreen.contains) + rooms.filter({ !onScreen.contains($0) }) {
-            guard var after = histories[roomID]?.checkpoint?.successor else { continue }
-            while true {
-                let params: JSONValue = ["room_id": .string(roomID), "after": after.json, "limit": 200]
-                guard let page = try? await history(params, on: connection) else { break }
-                if let latest = page.latestLogID { histories[roomID]?.checkpoint = latest }
-                guard page.more, let next = page.lastLogID?.successor else { break }
-                after = next
+        let ordered = rooms.filter(onScreen.contains) + rooms.filter { !onScreen.contains($0) }
+        // The joined listing says how far each room's log goes: one no further than its checkpoint
+        // has nothing new and is not asked about (#200).
+        var behind: [String: LogID] = [:]
+        for roomID in ordered {
+            guard let checkpoint = histories[roomID]?.checkpoint else { continue }
+            if let head = store.latestLogID(of: roomID), head <= checkpoint {
+                histories[roomID]?.isLive = true
+            } else {
+                behind[roomID] = checkpoint
             }
-            histories[roomID]?.isLive = true
+        }
+        if !joinedHistoryUnsupported, server?.has("rooms") == true, let plan = JoinedCatchUp.plan(behind, now: environment.now()),
+           await catchUpTogether(plan, on: connection) {
+            for roomID in plan.rooms { histories[roomID]?.isLive = true }
+        }
+        for roomID in ordered {
+            if histories[roomID]?.isLive != true, var after = histories[roomID]?.checkpoint?.successor {
+                while true {
+                    let params: JSONValue = ["room_id": .string(roomID), "after": after.json, "limit": 200]
+                    guard let page = try? await history(params, on: connection) else { break }
+                    if let latest = page.latestLogID { histories[roomID]?.checkpoint = latest }
+                    guard page.more, let next = page.lastLogID?.successor else { break }
+                    after = next
+                }
+                histories[roomID]?.isLive = true
+            }
             await listThreads(of: roomID, on: connection)
+        }
+    }
+
+    /// The server answered a `history` without `room_id` with `unsupported`: rooms catch up one by
+    /// one on it from then on.
+    @ObservationIgnored private var joinedHistoryUnsupported = false
+
+    /// Pages the joined rooms' log as one from just after `plan.position` (§4.3), the first page
+    /// fixing the head. Each page moves every planned room's checkpoint to its last record, so
+    /// whatever ends this early (`unsupported`, an error, a wait, a log that starts past the
+    /// position, the page limit) leaves each room to go on by itself from there. True when the
+    /// rooms are complete up to the head.
+    private func catchUpTogether(_ plan: JoinedCatchUp, on connection: Connection) async -> Bool {
+        guard var after = plan.position.successor else { return false }
+        var head: LogID?
+        for _ in 0 ..< JoinedCatchUp.pageLimit {
+            var params: [String: JSONValue] = ["after": after.json, "limit": 200]
+            if let head { params["before"] = head.json }
+            let result: JSONValue
+            do {
+                if let held = heldBack("history", .object(params)) { throw held }
+                result = try await connection.request("history", params: .object(params))
+            } catch let error as RPCError {
+                if error.code == RPCError.Code.unsupported { joinedHistoryUnsupported = true }
+                noteLimit(error, method: "history", params: .object(params))
+                return false
+            } catch {
+                return false
+            }
+            let page = HistoryPage(result)
+            if let floor = page.floor, floor > after { return false }
+            guard let pageHead = head ?? page.latestLogID else { return false }
+            head = pageHead
+            install(Records(historyResult: result))
+            guard page.more else {
+                advance(plan, through: pageHead)
+                return true
+            }
+            guard let last = page.lastLogID, last >= after, last < pageHead, let next = last.successor else { return false }
+            advance(plan, through: last)
+            after = next
+        }
+        return false
+    }
+
+    /// The joined rooms' log is in up to `through`: each planned room complete up to the plan's
+    /// position is now complete up to there.
+    private func advance(_ plan: JoinedCatchUp, through: LogID) {
+        for roomID in plan.rooms {
+            guard let checkpoint = histories[roomID]?.checkpoint, checkpoint >= plan.position, checkpoint < through else { continue }
+            histories[roomID]?.checkpoint = through
         }
     }
 

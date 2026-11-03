@@ -176,7 +176,11 @@ clone), which is only a worked example.
       room record or history result, kept in `ReplayStore` per room and never lowered; raising
       it drops the snapshots whose `log_id` is below it, with their reactions, and refuses late
       ones. Each opened room keeps a checkpoint that live records advance; after a reconnect it
-      pages forward from `checkpoint + 1`. A second `open` while the first page loads waits for
+      pages forward from `checkpoint + 1`, unless the joined listing shows its head no further than
+      the checkpoint (then nothing is asked). Two or more behind catch up together (#200,
+      `JoinedCatchUp`, `catchUpTogether`): one `history` without `room_id` from the oldest
+      checkpoint, at most five pages, falling back to room by room on `unsupported` (remembered
+      per session), an error or the cap. A second `open` while the first page loads waits for
       it. `reveal(_:in:)` pages back 200 changes at a time until the timeline holds a message a
       link names, the loaded history reaches past it, or the floor stops it, so the timeline
       stays one unbroken run. A page arriving after an older one leaves paging where it is.
