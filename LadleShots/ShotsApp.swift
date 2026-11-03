@@ -251,14 +251,14 @@ enum Renderer {
             AnyView(PreferencesView(store: notify, request: PreferencesRequest(section: .notifications, server: PreviewFixtures.homeID)))
         case .notifyOffer:
             // Above the profile bar, saying Preferences is where to change it.
-            AnyView(PhoneShot(store: notifyOffer, server: PreviewFixtures.homeID).environment(\.messageAlerts, notifyOffer.alerts))
+            AnyView(PhoneShot(store: notifyOffer, server: PreviewFixtures.homeID).environment(\.sessionStore, notifyOffer))
         case .notifyOfferTimeline:
             // On iPhone, above the composer of the room being read.
             AnyView(notifyOffer.session(for: PreviewFixtures.homeID).map { session in
                 NavigationStack {
                     TimelineView(session: session, roomID: PreviewFixtures.linkRoomID, reminders: notifyOffer.reminders, hidden: notifyOffer.hiddenDescriptions, drafts: Drafts())
                 }
-                .environment(\.messageAlerts, notifyOffer.alerts)
+                .environment(\.sessionStore, notifyOffer)
             })
         default:
             screens(screen, store: store, home: home, staged: staged)

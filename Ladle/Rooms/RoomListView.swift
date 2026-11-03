@@ -63,7 +63,7 @@ struct RoomListView: View {
     /// Search Local History, from the rooms search's "Search Messages for".
     @State private var searchingHistory: HistoryQuery?
     @Environment(\.openPreferences) private var openPreferences
-    @Environment(\.messageAlerts) private var messageAlerts
+    @Environment(\.sessionStore) private var sessionStore
 
     struct HistoryQuery: Identifiable {
         var query: String
@@ -176,8 +176,8 @@ struct RoomListView: View {
         .background(Palette.chrome)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
-                if let alerts = messageAlerts, let offer = alerts.offer, session.you != nil {
-                    NotifyOfferView(alerts: alerts, offer: offer, pointsAtPreferences: true)
+                if let sessionStore, let offer = sessionStore.alerts.offer, session.you != nil {
+                    NotifyOfferView(store: sessionStore, offer: offer, pointsAtPreferences: true)
                         .background(Palette.chrome)
                         .overlay(alignment: .top) { Rectangle().fill(Palette.line).frame(height: 1) }
                 }

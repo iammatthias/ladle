@@ -6,7 +6,7 @@ import SwiftUI
 /// Notifications switch does; Not now is a choice too, so it isn't offered again. Above the
 /// profile bar it says where the switch lives; above the composer it doesn't.
 struct NotifyOfferView: View {
-    let alerts: MessageAlerts
+    let store: SessionStore
     let offer: NotifyOffer
     /// Push works here, so notifications reach this device with Ladle closed too.
     var whenClosed = false
@@ -33,8 +33,8 @@ struct NotifyOfferView: View {
             }
             HStack(spacing: Tokens.Space.s2) {
                 Spacer(minLength: 0)
-                Button("Not now") { alerts.decline() }.buttonStyle(GhostButtonStyle())
-                Button("Turn on") { Task { await alerts.turnOn() } }.buttonStyle(PrimaryButtonStyle())
+                Button("Not now") { store.alerts.decline() }.buttonStyle(GhostButtonStyle())
+                Button("Turn on") { Task { await store.setNotifications(true) } }.buttonStyle(PrimaryButtonStyle())
             }
         }
         .padding(Tokens.Space.s3)

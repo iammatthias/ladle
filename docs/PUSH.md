@@ -57,6 +57,12 @@ The recommended end state combines them. Generate a P-256 key pair and an auth s
 
 Ladle ships step 1 without `keys` first because it works with nothing more than the relay above. The extension needs its own App ID, an App Group or keychain group, and a provisioning profile, which are more portal steps, and the relay has to exist first in either design. Moving to encrypted pushes later changes the relay's forwarding and adds the extension. Registration on the Apron side stays the same apart from `keys`.
 
+## Follow-ups
+
+- **Inline reply.** It needs a `UNNotificationCategory` with a text action, and a way to post while Ladle is not in front. Under push over pull, that means opening a connection from the app's brief background time, or teaching the relay or an extension to speak to the server. So it comes after the relay.
+- **Communication notifications.** Donating an `INSendMessageIntent` with the sender's name and avatar fits the local tier now, and the Notification Service Extension later. It needs the Communication Notifications capability, another App ID step.
+- **A per-server opt-out.** apron-web has none: its switch is per device and its scopes per account. Ladle's per-account Notify Me About comes close, since at least one scope stays on. A per-server switch would be Ladle's own addition, not a parity gap.
+
 ## What aprond supports, and what is missing
 
 apron-server-rust already implements kind `relay` (`src/server/push.rs`, `push_delivery.rs`; docs/DEVIATIONS.md, "Push kind relay and the badge scope"). It advertises `server.push.relay` and the `badge` scope. It posts JSON, or `aes128gcm` with `keys`, with `TTL`, `Urgency` and the bearer token. It waits `--push.delay` (default 30 s) and pushes only to users who are still away, and it removes a registration whose relay answers 404 or 410.

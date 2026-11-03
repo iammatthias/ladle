@@ -132,6 +132,7 @@ public final class SessionStore {
     /// descriptions put away there and how its rooms list was arranged.
     public func remove(_ id: UUID) async {
         if let session = sessions.removeValue(forKey: id) {
+            await session.unregisterPush()
             await session.stop()
             session.forgetKept(of: nil)
         }
@@ -146,6 +147,7 @@ public final class SessionStore {
         records.removeAll { $0.id == id }
         try? tokens.setToken(nil, for: id)
         save()
+        await updateBadge()
     }
 
     @discardableResult
@@ -198,6 +200,13 @@ public final class SessionStore {
             return
         }
         await session.registerPush(endpoint, pushID: settings.pushID(of: account), scopes: settings.scopes(of: account))
+    }
+
+    /// The Notifications switch, or the offer's Turn on or Not now: push and the badge follow it.
+    public func setNotifications(_ on: Bool) async {
+        if on { await alerts.turnOn() } else { await alerts.turnOff() }
+        await syncPush()
+        await updateBadge()
     }
 
     /// Every server registers again: the switch, a scope, the relay or its endpoint changed.

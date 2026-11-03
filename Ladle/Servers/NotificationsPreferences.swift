@@ -57,11 +57,7 @@ struct NotificationsPreferences: View {
     }
 
     private func switchTo(_ on: Bool) {
-        Task {
-            if on { await alerts.turnOn() } else { await alerts.turnOff() }
-            await store.syncPush()
-            await store.updateBadge()
-        }
+        Task { await store.setNotifications(on) }
     }
 
     private func sendTest() {

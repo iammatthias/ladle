@@ -47,7 +47,7 @@ struct RootView: View {
         .environment(\.openPreferences, OpenPreferencesAction { preferences = $0 })
         .environment(\.requestSignIn, SignInAction { connecting = ConnectRequest(record: $0) })
         .environment(\.liveSessions, SessionLookup(store.liveSession(for:)))
-        .environment(\.messageAlerts, store.alerts)
+        .environment(\.sessionStore, store)
         .onOpenURL { url in
             // An export handed over from Files or another app opens read-only.
             if url.isFileURL { readingExport = OpenedExport(url: url) } else { ApronLink(url).map(open) }
