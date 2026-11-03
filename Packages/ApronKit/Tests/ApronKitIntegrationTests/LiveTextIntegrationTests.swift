@@ -210,6 +210,38 @@ final class LiveTextIntegrationTests: XCTestCase {
         XCTAssertEqual(ada.store.message(message!.messageID)?.isTombstone, true)
     }
 
+    /// aprond lets one address hold 16 readers across every text; the 17th is told to try again
+    /// in 10 s, unmarked, since the limit is the reader's own. A text's 200 readers and the
+    /// server's 400 are checked first, and only many addresses could fill them.
+    func testAnAddressPastItsReadersIsToldToTryAgain() async throws {
+        let server = try await Aprond.start()
+        servers.append(server)
+        let ada = try await account(server, "ada@example.com")
+        let target = try await writeURL("/embed-terminal", as: ada)
+        let writer = StreamingPut(target)
+        writer.send("hello\r\n")
+        var url: URL?
+        try await waitFor("the command's message with its url") {
+            url = ada.timeline("general").last { $0.embedList.contains { $0.kind == "terminal" } }?.embedList.first?.url
+            return url != nil
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.httpMaximumConnectionsPerHost = 32
+        let crowd = URLSession(configuration: configuration)
+        var readers: [URLSession.AsyncBytes] = []
+        for _ in 0 ..< 16 {
+            let (bytes, response) = try await crowd.bytes(from: try XCTUnwrap(url))
+            XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+            readers.append(bytes)
+        }
+        var refusal: (any Error)?
+        do { for try await _ in LiveTextFetch.live(try XCTUnwrap(url)) {} } catch { refusal = error }
+        XCTAssertEqual(refusal as? LiveTextRefused, LiveTextRefused(status: 429, retryAfter: 10))
+        XCTAssertEqual(readers.count, 16)
+        crowd.invalidateAndCancel()
+        _ = await writer.finish()
+    }
+
     func testAnEndedTextsURLIsRefusedForGood() async throws {
         let server = try await Aprond.start()
         servers.append(server)
@@ -227,7 +259,7 @@ final class LiveTextIntegrationTests: XCTestCase {
         try await waitFor("finished", timeout: .seconds(10)) { ada.store.message(message!.messageID)?.embedList.first?.output != nil }
         var refusal: (any Error)?
         do { for try await _ in LiveTextFetch.live(url) {} } catch { refusal = error }
-        XCTAssertEqual(refusal as? LiveTextRefused, LiveTextRefused(status: 404))
+        XCTAssertEqual(refusal as? LiveTextRefused, LiveTextRefused(status: 404, mark: .ended))
         XCTAssertEqual(ada.store.message(message!.messageID)?.embedList.first?.output, "done\r\n")
     }
 

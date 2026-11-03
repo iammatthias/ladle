@@ -34,7 +34,18 @@ clone), which is only a worked example.
     apron-web's `live-text.ts`, `live-append.svelte.ts` and `terminal-feed.ts`: `LiveTextFollow`
     reads a `url` through `Environment.readLiveText` (`LiveTextFetch.live`, an ephemeral
     URLSession, chunks as they come), tries again after 1, 2, 4, 8, 15 s (never less than a
-    429's `Retry-After`), and stops at a definitive 4xx; `LiveTextDecoder` is the WHATWG UTF-8
+    429's `Retry-After`), and stops at a definitive 4xx. `LiveTextRefused.mark` reads
+    `Apron-Live-Refused` (aprond's `live_text.rs`, Cloudflare #73, #74): a 404 `ended` is final
+    (the text is over, or never was); a 429 `readers` (the text's 200 readers or the server's
+    400 are taken) is tried again at its `Retry-After` (10 s on both servers) without counting
+    as a failure; an unmarked 429 (aprond's 16 readers per address across every text,
+    Cloudflare's attempts per address) is a failure like a drop, its wait the backoff but never
+    under its `Retry-After`, which aprond also sets to 10 s. Meanwhile the card keeps what it
+    showed with its Live badge or "Writing…", and the message's finishing snapshot ends it as
+    ever. aprond answers no live read 403 since `reads_per_text` went; Cloudflare still sends one
+    when its edge has no client address, which the general 4xx rule ends. `LiveTextIntegrationTests`
+    gets the `ended` 404 and the address's 429 from aprond; a `readers` 429 would need 200
+    readers from at least 13 addresses, and aprond has no flag for these limits. `LiveTextDecoder` is the WHATWG UTF-8
     decode the server uses, carried across chunks; `LiveTextEdit` applies an append's backspace
     and form feed (#189); `LiveMarkdown.settle` is `settleMarkdown`; `TerminalFeed.keepLast` the
     256 KiB cut. A live embed has no `url` until its write starts (shazow/apron#106):

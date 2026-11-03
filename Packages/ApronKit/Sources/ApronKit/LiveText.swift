@@ -17,19 +17,38 @@ public typealias LiveTextRead = @Sendable (URL) -> AsyncThrowingStream<LiveTextE
 
 /// A `GET url` the server answered with a status other than OK.
 public struct LiveTextRefused: Error, Equatable, Sendable {
+    /// `Apron-Live-Refused`: the refusal is the text's or the server's, not this reader's.
+    public enum Mark: String, Sendable {
+        /// 404: the text is over, or never was. Final.
+        case ended
+        /// 429: the text, or every text together, has as many readers as it may; a place may
+        /// free by its `Retry-After`.
+        case readers
+    }
+
     public var status: Int
     /// A 429's `Retry-After`, in seconds.
     public var retryAfter: Int?
+    public var mark: Mark?
 
-    public init(status: Int, retryAfter: Int? = nil) {
+    public init(status: Int, retryAfter: Int? = nil, mark: Mark? = nil) {
         self.status = status
         self.retryAfter = retryAfter
+        self.mark = mark
     }
 
-    /// An answer trying again would not change, as apron-web's `definitive`: a 4xx other than
-    /// 408 and 429, such as an ended text's 404 or a spent read budget's 403. Each try may count
-    /// against the server's limits, so a reader that kept trying could lock itself out.
-    public var isDefinitive: Bool { (400..<500).contains(status) && status != 408 && status != 429 }
+    /// The answer's status and its `Retry-After` and `Apron-Live-Refused` headers.
+    init(_ response: HTTPURLResponse) {
+        self.init(status: response.statusCode,
+                  retryAfter: response.value(forHTTPHeaderField: "Retry-After").flatMap { Int($0) },
+                  mark: response.value(forHTTPHeaderField: "Apron-Live-Refused").flatMap(Mark.init))
+    }
+
+    /// An answer trying again would not change, as apron-web's `definitive`: an `ended` text,
+    /// or any 4xx other than 408 and 429, such as Cloudflare's 403 when its edge has no client
+    /// address. Each try may count against the server's limits, so a reader that kept trying
+    /// could lock itself out.
+    public var isDefinitive: Bool { mark == .ended || ((400..<500).contains(status) && status != 408 && status != 429) }
 }
 
 public enum LiveTextFollow {
@@ -40,8 +59,11 @@ public enum LiveTextFollow {
     /// Follows live text until it ends or the task is cancelled, as apron-web's
     /// `followLiveText`: after a failure or a drop it tries again, waiting longer each time
     /// (never less than a 429's `Retry-After`), and the new response replaces what was shown;
-    /// a definitive refusal ends it as the text's end does. `ended` is called once either way,
-    /// not on cancellation.
+    /// a definitive refusal ends it as the text's end does. A text full of `readers` is tried
+    /// again at its `Retry-After`, without waiting longer next time: the crowd, not this reader,
+    /// is the cause. An unmarked 429 (aprond's limit on one address's readers, Cloudflare's on
+    /// its attempts) is a failure like any other. `ended` is called once either way, not on
+    /// cancellation.
     @MainActor
     public static func run(_ url: URL, read: LiveTextRead, sleep: @Sendable (Duration) async throws -> Void,
                            started: () -> Void, bytes: (Data) -> Void, ended: () -> Void) async {
@@ -68,9 +90,14 @@ public enum LiveTextFollow {
                     ended()
                     return
                 }
-                failures = began ? 1 : failures + 1
-                var wait = retry[min(failures, retry.count) - 1]
-                if let seconds = refused?.retryAfter { wait = max(wait, .seconds(seconds)) }
+                var wait: Duration
+                if refused?.mark == .readers, let seconds = refused?.retryAfter {
+                    wait = .seconds(seconds)
+                } else {
+                    failures = began ? 1 : failures + 1
+                    wait = retry[min(failures, retry.count) - 1]
+                    if let seconds = refused?.retryAfter { wait = max(wait, .seconds(seconds)) }
+                }
                 do { try await sleep(wait) } catch { return }
             }
         }
@@ -359,8 +386,7 @@ public enum LiveTextFetch {
         func urlSession(_ session: URLSession, dataTask: URLSessionDataTask, didReceive response: URLResponse) async -> URLSession.ResponseDisposition {
             let http = response as? HTTPURLResponse
             guard let http, http.statusCode == 200 else {
-                let status = http?.statusCode ?? 0
-                continuation.finish(throwing: LiveTextRefused(status: status, retryAfter: http?.value(forHTTPHeaderField: "Retry-After").flatMap { Int($0) }))
+                continuation.finish(throwing: http.map { LiveTextRefused($0) } ?? LiveTextRefused(status: 0))
                 return .cancel
             }
             continuation.yield(.started)

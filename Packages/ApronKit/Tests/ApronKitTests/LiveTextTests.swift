@@ -101,10 +101,22 @@ final class LiveTextTests: XCTestCase {
 
     func testARefusalOtherThan408And429IsFinal() {
         XCTAssertTrue(LiveTextRefused(status: 404).isDefinitive)
-        XCTAssertTrue(LiveTextRefused(status: 403).isDefinitive)
+        XCTAssertTrue(LiveTextRefused(status: 404, mark: .ended).isDefinitive)
+        XCTAssertTrue(LiveTextRefused(status: 403).isDefinitive, "Cloudflare's edge without a client address")
+        XCTAssertFalse(LiveTextRefused(status: 429, retryAfter: 10, mark: .readers).isDefinitive)
         XCTAssertFalse(LiveTextRefused(status: 429).isDefinitive)
         XCTAssertFalse(LiveTextRefused(status: 408).isDefinitive)
         XCTAssertFalse(LiveTextRefused(status: 503).isDefinitive)
+    }
+
+    func testARefusalReadsItsRetryAfterAndMark() {
+        func refusal(_ status: Int, _ headers: [String: String]) -> LiveTextRefused {
+            LiveTextRefused(HTTPURLResponse(url: URL(string: "https://chat.example/live/1")!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: headers)!)
+        }
+        XCTAssertEqual(refusal(429, ["Retry-After": "10", "Apron-Live-Refused": "readers"]), LiveTextRefused(status: 429, retryAfter: 10, mark: .readers))
+        XCTAssertEqual(refusal(429, ["Retry-After": "10"]), LiveTextRefused(status: 429, retryAfter: 10), "an address's own limit is unmarked")
+        XCTAssertEqual(refusal(404, ["Apron-Live-Refused": "ended"]), LiveTextRefused(status: 404, mark: .ended))
+        XCTAssertEqual(refusal(404, ["Apron-Live-Refused": "elsewhere"]), LiveTextRefused(status: 404))
     }
 }
 
@@ -162,6 +174,23 @@ final class LiveTextFollowTests: XCTestCase {
         let calls = await follow(script)
         XCTAssertEqual(calls, ["start", "Here is ", "start", "Here is the plan", "end"])
         XCTAssertEqual(script.waits, [.seconds(1), .seconds(5), .seconds(1)], "a 429's Retry-After is the least wait; a drop after a start waits a second")
+    }
+
+    func testATextFullOfReadersIsTriedAtItsRetryAfterAndAnAddressBacksOff() async {
+        let script = Script([
+            [.failure(LiveTextRefused(status: 429, retryAfter: 10, mark: .readers))],
+            [.failure(LiveTextRefused(status: 429, retryAfter: 10, mark: .readers))],
+            [.failure(LiveTextRefused(status: 503))],
+            [.failure(LiveTextRefused(status: 429, retryAfter: 3))],
+            [.failure(LiveTextRefused(status: 429, retryAfter: 3))],
+            [.failure(LiveTextRefused(status: 429, retryAfter: 3))],
+            [.failure(LiveTextRefused(status: 404, mark: .ended))],
+        ])
+        let calls = await follow(script)
+        XCTAssertEqual(calls, ["end"])
+        XCTAssertEqual(script.asked, 7)
+        XCTAssertEqual(script.waits, [.seconds(10), .seconds(10), .seconds(1), .seconds(3), .seconds(4), .seconds(8)],
+                       "readers: their Retry-After, no longer each time; an address: the backoff, never under its Retry-After")
     }
 
     func testADefinitiveRefusalEndsAtOnce() async {
