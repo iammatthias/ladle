@@ -1314,7 +1314,8 @@ public final class ServerSession {
         var params: [String: JSONValue] = ["message_id": message.messageID.json, "room_id": .string(roomID)]
         params["body"] = message.body
         params["reply_to"] = message.replyTo.map { ["message_id": $0.json] }
-        params["ext"] = message.ext
+        // Only to a server that keeps `ext` (as apron-web's `hasCap('ext')`); elsewhere it was never stored.
+        if server?.has("ext") == true { params["ext"] = message.ext }
         return params
     }
 

@@ -489,7 +489,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | `ext:limits` write and upload pauses | #109 | has | `Kit/RateLimits.swift` (`LimitScope`), `Kit/ServerSession+Limits.swift` | As apron-web's `limitScope` and `limitHolds`; the category counts only with the capability. |
 | `retry_after` holds `history` and `message` | #109 | has | `Kit/ServerSession.swift` | |
 | Reaction, join, leave refused during a pause with a toast | #109 | has | `Kit/ServerSession+Limits.swift` (`heldBack`), `Kit/RateLimits.swift` (`userFacing`), `App/ErrorText.swift` | Refused without sending; the banner gives the server's words and "Try again in 18s". |
-| Only write `ext` to servers with `ext` | bh | partial | `Kit/ServerSession.swift` (`save`) | An edit resends the stored `ext` with no `ext` capability check. Ladle never writes new `ext`. |
+| Only write `ext` to servers with `ext` | bh | has | `Kit/ServerSession.swift` (`save`) | An edit or a move resends the stored `ext` only with capability `ext`, as the web's `hasCap('ext')`; elsewhere it is left out. Ladle never writes new `ext`. |
 
 ## 25. Keyboard shortcuts
 

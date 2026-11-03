@@ -1450,7 +1450,7 @@ final class ServerSessionTests: XCTestCase {
 
         let move = Task { try await session.move(adas, to: "general") }
         let sent = await frame(socket, 2)
-        XCTAssertEqual(sent, #"{"id":"c3","method":"message","params":{"body":{"text":"helo"},"ext":{"k":1},"message_id":"200","reply_to":{"message_id":"150"},"room_id":"general"}}"#)
+        XCTAssertEqual(sent, #"{"id":"c3","method":"message","params":{"body":{"text":"helo"},"message_id":"200","reply_to":{"message_id":"150"},"room_id":"general"}}"#)
         await socket.deliver(["id": "c3", "result": [:]])
         try await move.value
 
@@ -1461,7 +1461,7 @@ final class ServerSessionTests: XCTestCase {
     }
 
     func testEditSendsTheStoredExtAndReplyAgain() async throws {
-        let socket = try await signInWithRooms(["user_id": "mia"], capabilities: ["history", "edit", "rooms"])
+        let socket = try await signInWithRooms(["user_id": "mia"], capabilities: ["history", "edit", "rooms", "ext"])
         await socket.deliver(["method": "message", "params": [
             "message_id": "200", "log_id": "200", "room_id": "general", "from": ["user_id": "mia"],
             "body": ["text": "helo"], "reply_to": ["message_id": "150"], "ext": ["k": 1],
@@ -1471,6 +1471,21 @@ final class ServerSessionTests: XCTestCase {
         let edit = Task { try await session.edit(MessageEdit(original), text: "hello", mentions: []) }
         let sent = await frame(socket, 2)
         XCTAssertEqual(sent, #"{"id":"c3","method":"message","params":{"body":{"text":"hello"},"ext":{"k":1},"message_id":"200","reply_to":{"message_id":"150"},"room_id":"general"}}"#)
+        await socket.deliver(["id": "c3", "result": [:]])
+        try await edit.value
+    }
+
+    func testEditWritesNoExtToAServerWithoutIt() async throws {
+        let socket = try await signInWithRooms(["user_id": "mia"], capabilities: ["history", "edit", "rooms"])
+        await socket.deliver(["method": "message", "params": [
+            "message_id": "200", "log_id": "200", "room_id": "general", "from": ["user_id": "mia"],
+            "body": ["text": "helo"], "ext": ["k": 1],
+        ]])
+        await eventually("message installed") { session.store.message(LogID("200")!) != nil }
+        let original = try XCTUnwrap(session.store.message(LogID("200")!))
+        let edit = Task { try await session.edit(MessageEdit(original), text: "hello", mentions: []) }
+        let sent = await frame(socket, 2)
+        XCTAssertEqual(sent, #"{"id":"c3","method":"message","params":{"body":{"text":"hello"},"message_id":"200","room_id":"general"}}"#)
         await socket.deliver(["id": "c3", "result": [:]])
         try await edit.value
     }
