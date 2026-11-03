@@ -20,6 +20,20 @@ extension ServerSession {
         }
     }
 
+    /// What is new in the joined rooms and threads other than `pane`, as apron-web's
+    /// `countElsewhere` (#84): the phone's back button carries it, as a tag of unread messages,
+    /// or of mentions when any mention you.
+    public func newsElsewhere(than pane: String) -> (unread: Int, mentions: Int) {
+        var news = (unread: 0, mentions: 0)
+        for node in roomTree {
+            for roomID in [node.roomID] + node.threadIDs.filter(joinedRoomIDs.contains) where roomID != pane {
+                news.unread += unreadCount(in: roomID)
+                news.mentions += mentionCount(in: roomID)
+            }
+        }
+        return news
+    }
+
     /// The messages of a live `message` frame that notify: new messages from others, and edits
     /// that newly mention you. `before` is each message's snapshot before the frame was installed.
     func arrivals(_ messages: [MessageSnapshot], before: [LogID: MessageSnapshot]) -> [Arrival] {

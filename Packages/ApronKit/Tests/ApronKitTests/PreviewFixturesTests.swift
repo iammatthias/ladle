@@ -134,6 +134,17 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.roles(of: UserObject(["user_id": "zed", "roles": ["bot"]])!), ["bot"], "an unknown user's roles come from the object given")
     }
 
+    func testTheBackButtonCarriesWhatIsNewElsewhere() async throws {
+        let store = await PreviewFixtures.makeStore()
+        let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
+        let fromGeneral = home.newsElsewhere(than: PreviewFixtures.busyRoomID)
+        XCTAssertEqual(fromGeneral.unread, 3)
+        XCTAssertEqual(fromGeneral.mentions, 0, "general's own mention is not elsewhere")
+        let fromRelease = home.newsElsewhere(than: PreviewFixtures.releaseThreadID)
+        XCTAssertEqual(fromRelease.unread, 4, "general's 3 and the 1 elsewhere")
+        XCTAssertEqual(fromRelease.mentions, 1, "general's mention of you")
+    }
+
     func testTheReactionPickerNamesTheMessageItReactsTo() async throws {
         let store = await PreviewFixtures.makeStore()
         let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))

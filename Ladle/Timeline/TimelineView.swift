@@ -546,6 +546,19 @@ struct TimelineView: View {
 
     @ToolbarContentBuilder
     private var toolbar: some ToolbarContent {
+        // On iPhone, what is new elsewhere rides beside Back to the rooms list (apron-web #84).
+        if sizeClass == .compact {
+            ToolbarItem(placement: .topBarLeading) {
+                let news = session.newsElsewhere(than: roomID)
+                if news.mentions > 0 {
+                    UnreadCount(count: news.mentions, mentions: true)
+                        .accessibilityLabel("\(news.mentions) \(news.mentions == 1 ? "mention" : "mentions") in other rooms")
+                } else if news.unread > 0 {
+                    UnreadCount(count: news.unread)
+                        .accessibilityLabel("\(news.unread) new in other rooms")
+                }
+            }
+        }
         ToolbarItem(placement: .principal) {
             VStack(spacing: 0) {
                 // A thread's room above its title, a crumb back to it, as the web's `Parent › Thread`.
