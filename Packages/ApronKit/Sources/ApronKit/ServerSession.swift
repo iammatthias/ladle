@@ -623,12 +623,18 @@ public final class ServerSession {
         if rooms != nil { arrivals.listed = false }
         readPositions = positions.positions(server: record.id, user: identity.userID)
         let bearer = result["token"]?.stringValue ?? presented
-        if bearer != nil, store == ReplayStore() { await restoreKeptOnSignIn(identity) }
+        // Whatever this device kept of the account shows once it is `you`, so its own activity
+        // arriving meanwhile still counts as its own.
+        let restoresKept = bearer != nil && you == nil && store == ReplayStore()
         try tokens.setToken(bearer, for: record.id)
         resumable = bearer != nil
         you = identity
         chosenStatus = identity.json["status"]?.stringValue
         users.replace(with: identity)
+        if restoresKept, await restoreKeptOnSignIn(identity) {
+            you = identity
+            users.replace(with: identity)
+        }
         pendingEmail = nil
         pendingPage = nil
         pendingProposalState = nil
@@ -1088,7 +1094,8 @@ public final class ServerSession {
     /// changing nothing, once the session holds anything of its own.
     @discardableResult
     func adopt(_ restore: KeptRestore, as account: String? = nil) -> Bool {
-        guard you == nil, histories.isEmpty, store == ReplayStore(), (account ?? record.account?.userID) == restore.you.userID else { return false }
+        guard you == nil || (account != nil && you?.userID == account), histories.isEmpty, store == ReplayStore(),
+              (account ?? record.account?.userID) == restore.you.userID else { return false }
         you = restore.you
         for user in restore.users { users.merge(user) }
         joinedRoomIDs = restore.joined

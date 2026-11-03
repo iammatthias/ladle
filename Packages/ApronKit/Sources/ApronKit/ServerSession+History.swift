@@ -126,9 +126,9 @@ extension ServerSession {
 
     /// The account just signed in on a session that holds nothing yet, such as after a sign-out:
     /// shows what this device kept of it, as a launch would, so its next write keeps it.
-    func restoreKeptOnSignIn(_ identity: UserObject) async {
-        guard you == nil, keeping != nil, let plan = await keptPlan(of: identity.userID) else { return }
-        adopt(plan, as: identity.userID)
+    func restoreKeptOnSignIn(_ identity: UserObject) async -> Bool {
+        guard keeping != nil, let plan = await keptPlan(of: identity.userID) else { return false }
+        return adopt(plan, as: identity.userID)
     }
 
     /// What is written: every room with a record, each opened one with its stretch of records
