@@ -283,6 +283,14 @@ public final class ServerSession {
 
     /// Called when the account on `record` changes, so the owner can persist it.
     public var onRecordChange: (@MainActor (ServerRecord) -> Void)?
+    /// Each sign-in, after its result: `SessionStore` registers push (§4.9.1, on each connection).
+    @ObservationIgnored public var onSignedIn: (@MainActor () -> Void)?
+    /// This account's push registration on this server (§4.9.1), as the server answered it.
+    public internal(set) var push: PushState = .off
+    /// Messages from others that just arrived on this connection (`arrivals`), for `MessageAlerts`.
+    @ObservationIgnored public var onArrivals: (@MainActor ([Arrival]) -> Void)?
+    /// You read a room through a message, here or on another device: the account, room and message.
+    @ObservationIgnored public var onRead: (@MainActor (String, String, LogID) -> Void)?
 
     /// The previews of a draft's links that go out with it (`DraftLinkPreviews`), shared by
     /// every server's composer.
@@ -355,8 +363,9 @@ public final class ServerSession {
 
     /// Forgets the token and the account, and reconnects without an identity. The history kept
     /// here stays for when the account signs back in, unless `keepingHistory` is false (#199):
-    /// then it goes once signing out is done, only this account's.
+    /// then it goes once signing out is done, only this account's. Push is unregistered first.
     public func signOut(keepingHistory: Bool = true) async {
+        await unregisterPush()
         let forget = keepingHistory ? nil : you?.userID
         if forget == nil { await flushKept() }
         try? tokens.setToken(nil, for: record.id)
@@ -617,6 +626,7 @@ public final class ServerSession {
         if registered || result["token"]?.stringValue != nil { notices.removeAll(where: \.welcome) }
         // A connection starts attended (§4.5): an idle app says so at once.
         syncIdle()
+        onSignedIn?()
         if let rooms, let listing = try? await rooms.value { applyRoomList(listing) }
         await catchUp(on: connection)
         Task { await drainOutbox() }
@@ -759,7 +769,13 @@ public final class ServerSession {
             break
         }
         guard let records = Records(notification: notification) else { return }
+        let live = notification.method == "message" && status == .signedIn
+        let before = live ? Dictionary(records.messages.compactMap { message in store.message(message.messageID).map { (message.messageID, $0) } }) { $1 } : [:]
         install(records)
+        if live, let onArrivals {
+            let arrived = arrivals(records.messages, before: before)
+            if !arrived.isEmpty { onArrivals(arrived) }
+        }
         if notification.method == "room_update" { noteArrivals() }
         advanceLiveCheckpoints(records)
         for message in records.messages where message.logID == message.messageID { endTyping(message.from.userID, in: message.roomID) }
@@ -818,6 +834,9 @@ public final class ServerSession {
 
     /// Marks a room as on screen or not, so a catch-up after a reconnect pages it first.
     /// Leaving a room finishes the message typed live there, as Send would.
+    /// Whether a room's timeline is on screen.
+    public func isOnScreen(_ roomID: String) -> Bool { onScreen.contains(roomID) }
+
     public func show(_ roomID: String, _ shown: Bool) {
         if shown { onScreen.insert(roomID) } else { onScreen.remove(roomID) }
         if !shown, liveMessage?.roomID == roomID { finishLiveTyping() }
@@ -1364,6 +1383,7 @@ public final class ServerSession {
         guard let you, readPositions[roomID].map({ $0 < messageID }) ?? true else { return }
         readPositions[roomID] = messageID
         positions.advance(roomID, to: messageID, server: record.id, user: you.userID)
+        if let account = notifyAccount { onRead?(account, roomID, messageID) }
     }
 
     /// How far this user has read a room, as apron-web's `readPositions.through`: the furthest

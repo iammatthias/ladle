@@ -32,6 +32,8 @@ public final class SessionStore {
     public let attention: Attention
     /// Read Receipts on this device, for every server, kept beside `servers.json`.
     public let receiptSettings: ReceiptSettings
+    /// Message notifications and the app badge, for every server, kept beside `servers.json`.
+    public let alerts: MessageAlerts
     /// How long history is kept on this device, for every server, kept beside `servers.json`.
     public let historySettings: HistorySettings
     /// Where each server's history is kept (`History`, beside `servers.json`); nil keeps none.
@@ -45,7 +47,8 @@ public final class SessionStore {
     /// `serverStore` nil keeps the list, the read positions, the reminders and the drafts in memory
     /// only. A kept store sweeps staged files no draft holds.
     public init(serverStore: ServerStore?, tokens: any TokenStore, environment: ServerSession.Environment = .live,
-                notifier: any ReminderNotifier = SilentReminderNotifier(), historyFiles: (any HistoryFiles)? = nil) {
+                notifier: any ReminderNotifier = SilentReminderNotifier(), messageNotifier: (any MessageNotifier)? = nil,
+                historyFiles: (any HistoryFiles)? = nil) {
         self.serverStore = serverStore
         self.tokens = tokens
         historySettings = HistorySettings(directory: serverStore?.directory)
@@ -56,6 +59,8 @@ public final class SessionStore {
                               notifier: notifier)
         mediaSettings = MediaSettings(directory: serverStore?.directory)
         receiptSettings = ReceiptSettings(directory: serverStore?.directory)
+        alerts = MessageAlerts(settings: NotificationSettings(directory: serverStore?.directory),
+                               notifier: messageNotifier ?? RecordingMessageNotifier())
         linkPreviews = DraftLinkPreviews(fetch: environment.fetchLinkSite, now: environment.now)
         appearance = AppearanceSettings(directory: serverStore?.directory)
         hiddenDescriptions = HiddenDescriptions(directory: serverStore?.directory)
@@ -152,10 +157,60 @@ public final class SessionStore {
                                     environment: environment)
         session.onRecordChange = { [weak self] changed in self?.accountChanged(changed) }
         session.onInput = { [weak self] in self?.attention.input() }
+        session.onArrivals = { [weak self] arrivals in
+            guard let self else { return }
+            Task {
+                await self.alerts.arrived(arrivals)
+                await self.updateBadge()
+            }
+        }
+        session.onSignedIn = { [weak self, weak session] in
+            guard let self, let session else { return }
+            Task { await self.syncPush(session) }
+            if pushInBuild, alerts.isOn == false,
+               session.pushBlocker(inBuild: true, relay: alerts.settings.relay, endpoint: alerts.settings.endpoint) == nil {
+                alerts.offerAtSignIn()
+            }
+        }
+        session.onRead = { [weak self] account, roomID, messageID in
+            guard let self else { return }
+            Task {
+                await self.alerts.read(roomID, through: messageID, account: account)
+                await self.updateBadge()
+            }
+        }
         if attention.idle { session.setIdle(true, inputAt: attention.inputAt) }
         sessions[record.id] = session
         session.start()
         return session
+    }
+
+    /// This build can register for APNs (its `aps-environment` entitlement, docs/PUSH.md).
+    public var pushInBuild = false
+
+    /// Registers push for a session's account where it can alert while Ladle is closed, with
+    /// notifications on here; otherwise unregisters it.
+    public func syncPush(_ session: ServerSession) async {
+        let settings = alerts.settings
+        guard alerts.isOn, let account = session.notifyAccount, let endpoint = settings.endpoint,
+              session.pushBlocker(inBuild: pushInBuild, relay: settings.relay, endpoint: endpoint) == nil else {
+            await session.unregisterPush()
+            return
+        }
+        await session.registerPush(endpoint, pushID: settings.pushID(of: account), scopes: settings.scopes(of: account))
+    }
+
+    /// Every server registers again: the switch, a scope, the relay or its endpoint changed.
+    public func syncPush() async {
+        for session in sessions.values { await syncPush(session) }
+    }
+
+    /// Every server's unread messages from others (`ServerSession.unreadTotal`).
+    public var unreadTotal: Int { sessions.values.reduce(0) { $0 + $1.unreadTotal } }
+
+    /// Shows `unreadTotal` as the app badge, as apron-web does while it is in view.
+    public func updateBadge() async {
+        await alerts.setBadge(unreadTotal)
     }
 
     private func accountChanged(_ record: ServerRecord) {
