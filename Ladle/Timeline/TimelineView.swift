@@ -656,8 +656,12 @@ struct TimelineView: View {
                 Callout(title: session.serverName) { Text(message) }
             }
             if let state, state.isProblem {
-                ActionBanner(symbol: state.symbol, title: state.title(session.record), detail: state.detail) {
-                    if state.canRetry { Button(session.isDisconnected ? "Connect" : "Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
+                if !session.problemDismissed {
+                    ActionBanner(symbol: state.symbol, title: state.title(session.record), detail: state.detail) {
+                        if state.canRetry { Button(session.isDisconnected ? "Connect" : "Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
+                        Button("Dismiss", systemImage: "xmark") { session.problemDismissed = true }
+                            .labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
+                    }
                 }
             } else if let state {
                 Label(state.title(session.record), systemImage: state.symbol)

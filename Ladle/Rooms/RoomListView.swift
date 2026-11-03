@@ -500,8 +500,11 @@ struct RoomListView: View {
     /// The web's ProfileBar: you, your status in words (else your `@user_id`), and the gear that
     /// opens Preferences at Profile, for this server.
     @ViewBuilder
+                guard !session.problemDismissed else { return nil }
     private var profileBar: some View {
         if let you = session.you {
+                    Button("Dismiss", systemImage: "xmark") { session.problemDismissed = true }
+                        .labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
             let name = session.displayName(for: you)
             let line = heldAwayWords ?? session.profileLine
             let away = heldAwayWords ?? session.ownPresenceWords

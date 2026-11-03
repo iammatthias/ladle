@@ -181,6 +181,25 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertTrue(auth.contains(#""scheme":"token","token":"t1""#), auth)
     }
 
+    func testAClosedConnectionProblemStaysAwayUntilTheConnectionIsBack() async throws {
+        let socket = FakeTransport()
+        await socket.deliver(Self.greeting)
+        transports.queued.withLock { $0 = [socket] }
+        session.start()
+        await session.disconnect()
+        XCTAssertEqual(ConnectionState(session.status)?.isProblem, true)
+        session.problemDismissed = true
+        let again = FakeTransport()
+        await again.deliver(Self.greeting)
+        transports.queued.withLock { $0 = [again] }
+        session.start()
+        await eventually("connected") { session.status == .signedOut }
+        XCTAssertTrue(session.problemDismissed, "still away while not signed in")
+        try await signInAsGuest(on: again)
+        XCTAssertFalse(session.problemDismissed, "cleared: it shows again if the problem comes back")
+    }
+
+    // MARK: Sign-in
 
     func testResumePipelinesRoomListBehindTheTokenAndSavesTheRotatedOne() async throws {
         try tokens.setToken("t1", for: record.id)

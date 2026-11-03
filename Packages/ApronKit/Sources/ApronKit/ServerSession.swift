@@ -133,7 +133,12 @@ public final class ServerSession {
     }
 
     public private(set) var record: ServerRecord
-    public private(set) var status: Status = .offline
+    public private(set) var status: Status = .offline {
+        didSet { if status == .signedIn { problemDismissed = false } }
+    }
+    /// The connection problem's banner was closed with its ×: it stays away until the connection
+    /// is back, and shows again if the problem comes back after (apron-web's corner error).
+    public var problemDismissed = false
     /// The latest `server` frame (§3.1).
     public private(set) var server: ServerInfo?
     public private(set) var you: UserObject?
