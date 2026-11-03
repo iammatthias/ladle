@@ -8,6 +8,10 @@ struct ShotPins: Hashable {
     var floatingDay = false
     var pulse: Double?
     var scrollTo: String?
+    /// Where `scrollTo`'s row lands; a jump in the app lands at the center.
+    var scrollAnchor: UnitPoint = .center
+    /// A gap row in view waits for a tap, so the render shows the row and not the page it loads.
+    var gapWaits = false
     /// The attachment tile, by name, held open for renaming.
     var renaming: String?
 }

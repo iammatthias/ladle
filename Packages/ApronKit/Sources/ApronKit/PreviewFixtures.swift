@@ -732,3 +732,52 @@ public enum PreviewFixtures {
     /// no token.
     public static let demoWelcome = "Welcome to the Apron demo. Guests can read. **Sign in with a passkey** to post."
 }
+
+extension PreviewFixtures {
+    /// A server of its own with one room of 200 short messages, paged eight at a time, for the
+    /// timeline opened at an old one: the newest page loaded, then the window `holeLink`'s message
+    /// opens, so a gap row stands between the two spans a screen below it.
+    public static let holeID = UUID(uuidString: "6C61646C-0000-4000-8000-000000000005")!
+    public static let holeRoomID = "changelog"
+    public static let holeMessageCount = 200
+    /// Message `index` of the changelog, oldest first.
+    public static func holeMessageID(_ index: Int) -> LogID { LogID(message(-700_000 + index))! }
+    /// A link to the changelog's sixth message, far below its newest page.
+    public static let holeLink = ApronLink(server: URL(string: "wss://changelog.example/ws")!, room: holeRoomID, message: holeMessageID(5))
+    public static let holePageSize = 8
+    /// The hole the link leaves between its window (a page from the sixth message) and the newest
+    /// page: the positions after message 12 and before message 192.
+    public static let holeGap = LogSpan(holeMessageID(12).successor!, holeMessageID(192).predecessor!)
+
+    private static let changelog: [Line] = {
+        let words = ["Build is green again.", "Rolled the cache change back.", "Deploy went out at noon.", "Flaky test quarantined.",
+                     "Bumped the SDK.", "Fixed the reconnect loop on wake.", "Icons regenerated from the source files.", "Release notes drafted."]
+        let authors = ["dev", "ada", "bram", "chiara"]
+        return (0 ..< holeMessageCount).map { index in
+            line(-700_000 + index, authors[index % authors.count], "#\(1000 + index) \(words[index % words.count])")
+        }
+    }()
+
+    @MainActor
+    public static func makeHoleStore() async -> SessionStore {
+        let tokens = InMemoryTokenStore()
+        let script = PreviewServer.Script(
+            greeting: greeting, you: people["sam"]!,
+            roomList: ["joined": [room(holeRoomID, "changelog", members: ["sam", "dev", "ada", "bram", "chiara"], description: "What shipped, build by build")],
+                       "users": .array(people.keys.sorted().map { people[$0]! })],
+            histories: [holeRoomID: history(holeRoomID, changelog, more: true)], readCursors: [:])
+        let environment = ServerSession.Environment(
+            makeTransport: { _ in PreviewServer(script: script) }, sleep: { _ in try await Task.sleep(for: .seconds(3600)) }, jitter: { 1 },
+            pageSize: holePageSize)
+        let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment)
+        try? tokens.setToken("preview", for: holeID)
+        store.add(ServerRecord(id: holeID, url: holeLink.server!, label: "Changelog"))
+        if let session = store.session(for: holeID), let message = holeLink.message {
+            await until { session.status == .signedIn }
+            try? await session.open(holeRoomID)
+            // Revealed here, so the render's own reveal finds it shown and only scrolls.
+            _ = try? await session.reveal(message, in: holeRoomID)
+        }
+        return store
+    }
+}

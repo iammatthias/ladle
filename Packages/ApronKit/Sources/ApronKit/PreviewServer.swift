@@ -93,7 +93,7 @@ public actor PreviewServer: FrameTransport {
             deliver(["id": id, "error": ["code": -32001, "message": "Sign in to load older history"]])
         case "history":
             let roomID = params?["room_id"]?.stringValue ?? ""
-            deliver(["id": id, "result": script.histories[roomID] ?? ["messages": [], "more": false]])
+            deliver(["id": id, "result": Self.page(of: script.histories[roomID] ?? ["messages": [], "more": false], params: params)])
         case "command" where params?["body"]?["text"]?.stringValue == "/help":
             deliver(["method": "message", "params": [
                 "room_id": params?["room_id"] ?? "general", "from": ["user_id": "~private", "name": "System message to you"],
@@ -159,6 +159,36 @@ public actor PreviewServer: FrameTransport {
     public static let refusedText = "This one the server turns down"
 
     /// What apron-server-rust's `/help` lists for an account with no roles.
+    /// A scripted room's history within a request's bounds (§4.3.2): the script's result as
+    /// written while it fits the page, the newest page; else, or with `after` or `before`, the
+    /// records within the bounds, `limit` of them from the end the page starts at, and
+    /// `first_log_id`, `last_log_id` and `more` as a server sets them. `latest_log_id` and
+    /// `history_log_id` stay the script's.
+    static func page(of result: JSONValue, params: JSONValue?) -> JSONValue {
+        let after = LogID(params?["after"]), before = LogID(params?["before"])
+        let limit = params?["limit"]?.intValue ?? 50
+        guard var fields = result.objectValue,
+              after != nil || before != nil || (fields["messages"]?.arrayValue?.count ?? 0) > limit else { return result }
+        let kinds = ["rooms", "messages", "reactions", "memberships"]
+        var records: [(logID: LogID, kind: String, value: JSONValue)] = []
+        for kind in kinds {
+            for value in fields[kind]?.arrayValue ?? [] {
+                guard let logID = LogID(value["log_id"]) else { continue }
+                if let after, logID < after { continue }
+                if let before, logID > before { continue }
+                records.append((logID, kind, value))
+            }
+        }
+        records.sort { $0.logID < $1.logID }
+        let more = records.count > limit
+        if more { records = after != nil ? Array(records.prefix(limit)) : Array(records.suffix(limit)) }
+        for kind in kinds { fields[kind] = .array(records.filter { $0.kind == kind }.map(\.value)) }
+        fields["first_log_id"] = records.first?.logID.json
+        fields["last_log_id"] = records.last?.logID.json
+        fields["more"] = .bool(more)
+        return .object(fields)
+    }
+
     static let help = """
     - `/avatar`: with one image attached: set your avatar
     - `/help`: list the commands you can use here

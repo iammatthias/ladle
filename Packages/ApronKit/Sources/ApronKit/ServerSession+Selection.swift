@@ -108,6 +108,7 @@ extension ServerSession {
                 }
             },
             order: order,
+            holes: holes(in: roomID),
             calendar: calendar
         )
         return MessageLog.markdown(messages, options: options)

@@ -20,7 +20,7 @@ struct ShotsApp: App {
 enum Screen: String, CaseIterable {
     case firstRun = "first-run", servers, connect, connectScanned = "connect-scanned", rooms, timeline, mention, members, reaction, attachments, media, links, viewer, ipad
     case roomsFresh = "rooms-fresh", threadsSheet = "threads-sheet", threadsSheetThread = "threads-sheet-thread"
-    case textLimit = "text-limit", guestComposer = "guest-composer", guestHistoryEnd = "guest-history-end"
+    case textLimit = "text-limit", guestComposer = "guest-composer", guestHistoryEnd = "guest-history-end", timelineGap = "timeline-gap"
     case emoji, emojiPicker = "emoji-picker", emojiShortcode = "emoji-shortcode", commands
     case linkCards = "link-cards", composerLinkPreviews = "composer-link-previews", sentLinkPreview = "sent-link-preview", roomMention = "room-mention", selectText = "select-text"
     case reminder, reminderCustom = "reminder-custom"
@@ -113,6 +113,7 @@ enum Renderer {
         let store = await PreviewFixtures.makeStore()
         guard let home = store.session(for: PreviewFixtures.homeID) else { exit(1) }
         signIn = await PreviewFixtures.makeSignInStore()
+        hole = await PreviewFixtures.makeHoleStore()
         newer = await PreviewFixtures.makeNewerServerStore()
         starting = PreviewFixtures.makeStartingStore()
         notify = await PreviewFixtures.makeNotifyStore()
@@ -131,6 +132,7 @@ enum Renderer {
         shots.append((.guestHistoryEnd, .dark, true, nil))
         shots.append((.unseenReactionJump, .dark, true, nil))
         shots.append((.serversTwoAccounts, .dark, true, nil))
+        shots.append((.timelineGap, .dark, true, nil))
         // The busy room in each premade theme but Apron, which every other shot is in, and in the
         // custom CSS of the custom Appearance shot.
         for look in PremadeTheme.all.dropFirst().map(Look.premade) + [Look.custom] {
@@ -219,6 +221,8 @@ enum Renderer {
     static var newer = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
     /// A server that never answers (`PreviewFixtures.makeStartingStore`).
     static var starting = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
+    /// The changelog opened at an old message, with the gap row between its window and the newest page.
+    static var hole = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
     /// Notifications on with push on home (`PreviewFixtures.makeNotifyStore`).
     static var notify = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
     /// The offer to turn notifications on, after a mention (`PreviewFixtures.makeNotifyOfferStore`).
@@ -376,6 +380,17 @@ enum Renderer {
             AnyView(NavigationStack {
                 if let demo = store.session(for: PreviewFixtures.demoID) { TimelineView(session: demo, roomID: "lobby", reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
             })
+        case .timelineGap:
+            // The changelog opened by a link to its sixth message: the window from it, then the
+            // gap row, then the newest page. The link is the shot's `place`; the gap row is scrolled
+            // to the middle and waits for a tap, so the render shows it and not the page it loads.
+            AnyView(NavigationStack {
+                if let changelog = hole.session(for: PreviewFixtures.holeID) {
+                    TimelineView(session: changelog, roomID: PreviewFixtures.holeRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions,
+                                 drafts: Drafts(), place: .constant(PreviewFixtures.holeLink))
+                }
+            }
+            .environment(\.shotPins, ShotPins(scrollTo: TimelineItem.gapID(PreviewFixtures.holeGap), scrollAnchor: .center, gapWaits: true)))
         case .guestHistoryEnd:
             // The demo's news, paged back until the server asks the guest to sign in.
             AnyView(NavigationStack {

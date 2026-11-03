@@ -100,6 +100,24 @@ final class MessageLogTests: XCTestCase {
         XCTAssertEqual(log([upload, gone, starry]), "> **Ada Lovelace**\n>\n> _(attachment)_\n\n> **Ben**\n>\n> _(deleted)_\n\n> **\\*star\\***\n>\n> hi")
     }
 
+    func testSaysWhereMessagesBetweenTwoAreNotLoaded() {
+        let one = at(0, "ada", "One.")
+        let two = at(1, "ada", "Two.")
+        let five = at(5, "ada", "Five.")
+        let hole = LogSpan(LogID(at(2, "ada", "").messageID.text)!, LogID(at(4, "ada", "").messageID.text)!)
+        let options = MessageLog.Options(nameOf: nameOf, now: now, order: [one, two, five].map(\.messageID), holes: [hole], calendar: calendar)
+        XCTAssertEqual(MessageLog.markdown([one, two, five], options: options), [
+            "> **Ada Lovelace** · Friday, Oct 30, 2026 at 2:00\u{202F}PM", ">", "> One.", ">", "> Two.", "",
+            "_(messages not loaded)_", "",
+            "> **Ada Lovelace** · 2:05\u{202F}PM", ">", "> Five.",
+        ].joined(separator: "\n"), "a hole between two picked messages breaks the run, however many it holds")
+        XCTAssertEqual(MessageLog.markdown([one, five], options: options), [
+            "> **Ada Lovelace** · Friday, Oct 30, 2026 at 2:00\u{202F}PM", ">", "> One.", "",
+            "_(1 message omitted, and more not loaded)_", "",
+            "> **Ada Lovelace** · 2:05\u{202F}PM", ">", "> Five.",
+        ].joined(separator: "\n"))
+    }
+
     func testNotesAnEmptyMessageAndAReplyToADeletedOne() {
         let gone = at(0, "ben", "", id: timeless(1), body: .null, deleted: true)
         let reply = at(1, "ada", "What did it say?", id: timeless(2), replyTo: timeless(1))

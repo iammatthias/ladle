@@ -53,6 +53,8 @@ struct TimelineView: View {
     @State private var landingTarget: String?
     /// The reader dragged the timeline, which keeps it where they put it rather than landing.
     @State private var scrolledByHand = false
+    /// The hole a gap row in view paged older into by itself, until the row leaves the view.
+    @State private var autoFilledGap: LogSpan?
     @State private var sentCount = 0
     @State private var viewing: MediaRequest?
     @State private var selecting: SelectableBody?
@@ -187,8 +189,11 @@ struct TimelineView: View {
                 atBottom = bottom
             }
             .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.01) { ids in
-                let day = FloatingDay.day(of: items, visible: Set(ids))
+                let visible = Set(ids)
+                let shown = items
+                let day = FloatingDay.day(of: shown, visible: visible)
                 if day != floatingDay { floatingDay = day }
+                fillGapsInView(visible, of: shown)
             }
             .onScrollTargetVisibilityChange(idType: String.self, threshold: 0.5) { ids in rowsInView = Set(ids) }
             .accessibilityRotor("New Reactions") {
@@ -224,7 +229,7 @@ struct TimelineView: View {
                 guard let jumpTarget else { return }
                 // A message you just sent keeps its queued row's id while the room is on screen.
                 let target = items.first { $0.storedMessage?.messageID.text == jumpTarget }?.id ?? jumpTarget
-                withAnimation(Motion.slide(reduceMotion)) { proxy.scrollTo(target, anchor: .center) }
+                withAnimation(Motion.slide(reduceMotion)) { proxy.scrollTo(target, anchor: shotPins.scrollAnchor) }
                 self.jumpTarget = nil
             }
             .overlay(alignment: .bottom) {
@@ -240,7 +245,8 @@ struct TimelineView: View {
                             .padding(.horizontal, Tokens.Space.s4)
                             .transition(.opacity)
                     }
-                    if !atBottom, session.unreadCount(in: roomID) > 0 {
+                    // Also the way back from an old span, however much is unread beyond the hole.
+                    if !atBottom, session.unreadCount(in: roomID) > 0 || !session.holes(in: roomID).isEmpty {
                         JumpBar(count: session.unreadCount(in: roomID), mentions: session.mentionCount(in: roomID)) {
                             withAnimation(Motion.slide(reduceMotion)) { proxy.scrollTo("bottom", anchor: .bottom) }
                         }
@@ -783,7 +789,15 @@ struct TimelineView: View {
                            onClearReminder: { reminding.forget(message) },
                            onReact: { emoji in perform("Reacting…") { try await session.toggleReaction(emoji, on: message.messageID) } },
                            onAddReaction: { reacting = message },
-                           onJump: { jumpTarget = $0.text },
+                           onJump: { target in
+                               // A quoted message the timeline holds scrolls into view; one it
+                               // doesn't (older, or in a hole) is revealed as its link would be.
+                               if session.timeline(roomID).contains(where: { $0.messageID == target }) {
+                                   jumpTarget = target.text
+                               } else {
+                                   focus = ApronLink(server: session.record.url, room: roomID, message: target)
+                               }
+                           },
                            onProfile: { profile = ProfileRequest(user: message.from, roomID: roomID) },
                            seenBy: editing?.field.editing?.messageID == message.messageID ? [] : receipts[message.messageID] ?? [])
                     .allowsHitTesting(picking == nil)
@@ -831,7 +845,45 @@ struct TimelineView: View {
         case .renamed(let rename):
             SystemLine(text: MembershipLines.rename(rename.title, thread: session.store.room(roomID)?.parentRoomID != nil),
                        date: Date(timeIntervalSince1970: (Double(rename.logID.text) ?? 0) / 1000))
+        case .gap(let hole):
+            let loading: Fill? = if case .hole(hole, let side) = session.histories[roomID]?.loading { side } else { nil }
+            GapRow(loading: loading) { side in fill(hole, side) }
+                .padding(.horizontal, Tokens.Space.s4)
+                .padding(.top, Tokens.Space.s4)
         }
+    }
+
+    /// Loads one page into a hole from one side. Newer messages, read on from the span below, then
+    /// start at the top of the view, as the page a tap asked for; older ones come in under the gap
+    /// row, which the bottom anchor keeps where it is, as paging older does.
+    private func fill(_ hole: LogSpan, _ side: Fill) {
+        Task {
+            do { try await session.fill(hole, in: roomID, side) } catch {
+                problem = errorText(error)
+                return
+            }
+            if side == .newerFromBelow, let first = session.timeline(roomID).first(where: { $0.messageID >= hole.lower }) {
+                landingTarget = first.messageID.text
+            }
+        }
+    }
+
+    /// A gap row that comes into view beside the newer span's rows pages older messages into it
+    /// once, as the top of the timeline pages older when it comes into view; the next page waits
+    /// for a tap or for the row to leave the view and come back, so a gap that stays in view never
+    /// loads its whole hole unasked. Beside the older span's rows alone it waits for a tap.
+    private func fillGapsInView(_ visible: Set<String>, of items: [TimelineItem]) {
+        guard !shotPins.gapWaits else { return }
+        let shown = items.filter { visible.contains($0.id) }
+        let gaps = shown.compactMap { item -> LogSpan? in if case .gap(let hole) = item { hole } else { nil } }
+        guard let hole = gaps.first else {
+            autoFilledGap = nil
+            return
+        }
+        guard session.histories[roomID]?.loading == nil, autoFilledGap.map({ !($0.holds(hole.lower) && $0.holds(hole.upper)) }) ?? true,
+              shown.contains(where: { $0.storedMessage.map { $0.messageID > hole.upper } ?? false }) else { return }
+        autoFilledGap = hole
+        fill(hole, .olderFromAbove)
     }
 
     /// A queued message's menu (UX spec 3.8): Cancel Sending, or Retry and Delete once it failed.
@@ -1151,7 +1203,8 @@ private struct MembersPresentation: ViewModifier {
     }
 }
 
-/// The web's JumpBar: new messages below, and the way back to them.
+/// The web's JumpBar: new messages below, and the way back to them; with none counted, the way
+/// back from an old span to the latest.
 struct JumpBar: View {
     let count: Int
     let mentions: Int
@@ -1160,7 +1213,7 @@ struct JumpBar: View {
     var body: some View {
         Button(action: jump) {
             HStack(spacing: Tokens.Space.s3) {
-                Text(mentions > 0 ? "\(count) new, \(mentions) mention\(mentions == 1 ? "" : "s") of you" : "\(count) new message\(count == 1 ? "" : "s")")
+                Text(count == 0 ? "Latest messages" : mentions > 0 ? "\(count) new, \(mentions) mention\(mentions == 1 ? "" : "s") of you" : "\(count) new message\(count == 1 ? "" : "s")")
                     .foregroundStyle(Palette.inkMuted)
                 Text("Jump").fontWeight(.semibold).foregroundStyle(Palette.denim)
             }
@@ -1382,6 +1435,63 @@ struct ReadOnlyPrompt: View {
         }
         .padding(.horizontal, Tokens.Space.s4)
         .padding(.vertical, Tokens.Space.s2)
+    }
+}
+
+/// Between two loaded spans of a room (`TimelineItem.gap`): the messages of the hole are not
+/// loaded. Load Older pages down from the span above, Load Newer up from the span below; each
+/// is a 44 pt target and a VoiceOver action, and the one under way shows its spinner. The row is
+/// keyed by the hole's edges, so a fill from either side remakes it; what is loading lives in the
+/// session (`RoomHistory.loading`), never in row state. At accessibility sizes the buttons go
+/// under the words.
+struct GapRow: View {
+    let loading: Fill?
+    let fill: (Fill) -> Void
+    @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.fixedTypeSize) private var fixedTypeSize
+
+    var body: some View {
+        let stacked = (fixedTypeSize ?? typeSize).isAccessibilitySize
+        let layout = stacked ? AnyLayout(VStackLayout(alignment: .leading, spacing: Tokens.Space.s2)) : AnyLayout(HStackLayout(spacing: Tokens.Space.s2))
+        VStack(spacing: Tokens.Space.s2) {
+            Rectangle().fill(Palette.line).frame(height: 1)
+            layout {
+                Label("Messages not loaded", systemImage: "ellipsis.rectangle")
+                    .labelStyle(TightLabel())
+                    .apText(.sm, .medium)
+                    .foregroundStyle(Palette.inkMuted)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: 0) {
+                    button(.olderFromAbove, "Load Older", "arrow.up", loading: "Loading older messages")
+                    button(.newerFromBelow, "Load Newer", "arrow.down", loading: "Loading newer messages")
+                }
+                .fixedSize(horizontal: !stacked, vertical: false)
+            }
+            Rectangle().fill(Palette.line).frame(height: 1)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Messages not loaded here")
+        .accessibilityHint("Older messages are above this point and newer ones below it")
+        .accessibilityActions {
+            Button("Load Older Messages") { fill(.olderFromAbove) }
+            Button("Load Newer Messages") { fill(.newerFromBelow) }
+        }
+    }
+
+    private func button(_ side: Fill, _ title: String, _ symbol: String, loading spoken: String) -> some View {
+        Button { fill(side) } label: {
+            HStack(spacing: Tokens.Space.s1) {
+                if loading == side {
+                    ProgressView().controlSize(.small).tint(Palette.denim)
+                } else {
+                    Image(systemName: symbol).imageScale(.small)
+                }
+                Text(title)
+            }
+        }
+        .buttonStyle(GhostButtonStyle(tone: Palette.denim))
+        .disabled(loading != nil)
+        .accessibilityLabel(loading == side ? spoken : "\(title) Messages")
     }
 }
 

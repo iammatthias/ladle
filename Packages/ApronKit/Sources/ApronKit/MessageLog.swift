@@ -7,7 +7,8 @@ import Foundation
 /// sender within five minutes share a quote, as the timeline groups them. A reply opens with a
 /// one-line quote of what it answers (`> ↪ **Ada**: Deploy is green…`). A message with
 /// reactions heads a quote of its own, its header listing them, and so does the message after
-/// it. Where the log skips messages of `order`, a line between the quotes says how many. Bodies
+/// it. Where the log skips messages of `order`, a line between the quotes says how many, and
+/// where one of `holes` lies between two messages, that messages there are not loaded. Bodies
 /// are copied as written, with each uploaded image after as a Markdown image.
 public enum MessageLog {
     /// One emoji's reactions on a message: the names of those the app can name, and how many
@@ -36,6 +37,8 @@ public enum MessageLog {
         /// Every message's ID in the conversation, in order, so a gap between two in the log
         /// can say how many it leaves out.
         public var order: [LogID]?
+        /// The holes between the conversation's loaded spans: how many messages one holds is unknown.
+        public var holes: [LogSpan]
         /// Days, years and the formats' locale and time zone.
         public var calendar: Calendar
 
@@ -45,6 +48,7 @@ public enum MessageLog {
             now: Date = Date(),
             reactions: @escaping (MessageSnapshot) -> [Reaction]? = { _ in nil },
             order: [LogID]? = nil,
+            holes: [LogSpan] = [],
             calendar: Calendar = .autoupdatingCurrent
         ) {
             self.nameOf = nameOf
@@ -52,6 +56,7 @@ public enum MessageLog {
             self.now = now
             self.reactions = reactions
             self.order = order
+            self.holes = holes
             self.calendar = calendar
         }
     }
@@ -73,7 +78,7 @@ public enum MessageLog {
         let position = Dictionary((options.order ?? []).enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
         let format = Formats(options.calendar)
 
-        enum Run { case quote([String]), omitted(Int) }
+        enum Run { case quote([String]), omitted(Int, unloaded: Bool) }
         var runs: [Run] = []
         var previous: MessageSnapshot?
         var previousReacted = false
@@ -85,11 +90,13 @@ public enum MessageLog {
             let newDay = day != nil && day != lastDay
             let reacted = message.isTombstone ? "" : reactionLine(options.reactions(message))
             var omitted = 0
-            if let previous, let before = position[previous.messageID] {
-                omitted = (position[message.messageID] ?? 0) - before - 1
+            var unloaded = false
+            if let previous {
+                if let before = position[previous.messageID] { omitted = (position[message.messageID] ?? 0) - before - 1 }
+                unloaded = options.holes.contains { previous.messageID < $0.lower && $0.upper < message.messageID }
             }
-            if omitted > 0 { runs.append(.omitted(omitted)) }
-            if runs.isEmpty || !isGrouped(previous, message) || newDay || !reacted.isEmpty || previousReacted || omitted > 0 {
+            if omitted > 0 || unloaded { runs.append(.omitted(omitted, unloaded: unloaded)) }
+            if runs.isEmpty || !isGrouped(previous, message) || newDay || !reacted.isEmpty || previousReacted || omitted > 0 || unloaded {
                 // The first date carries its year whenever it is; later ones only when it isn't `now`'s.
                 let dayText = newDay ? date.map { format.day($0, now: lastDay == nil ? nil : options.now) } ?? "" : ""
                 let when = [dayText, date.map(format.time.string) ?? ""].filter { !$0.isEmpty }.joined(separator: " at ")
@@ -111,7 +118,12 @@ public enum MessageLog {
         return runs.map { run in
             switch run {
             case .quote(let lines): quoted(lines.joined(separator: "\n\n"))
-            case .omitted(let count): "_(\(count == 1 ? "1 message" : "\(count) messages") omitted)_"
+            case .omitted(let count, let unloaded):
+                switch (count, unloaded) {
+                case (0, _): "_(messages not loaded)_"
+                case (_, true): "_(\(count == 1 ? "1 message" : "\(count) messages") omitted, and more not loaded)_"
+                case (_, false): "_(\(count == 1 ? "1 message" : "\(count) messages") omitted)_"
+                }
             }
         }.joined(separator: "\n\n")
     }

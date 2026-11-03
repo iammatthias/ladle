@@ -23,6 +23,7 @@ final class TimelineTests: XCTestCase {
             case .thread(let roomID): "thread " + session.title(of: roomID)
             case .members(let line): session.words(line).text
             case .renamed(let rename): "renamed " + rename.title
+            case .gap(let hole): "gap \(hole.lower)…\(hole.upper)"
             }
         }
     }

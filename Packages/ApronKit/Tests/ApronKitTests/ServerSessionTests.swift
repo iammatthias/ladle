@@ -925,6 +925,19 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.newLine(in: "general", after: LogID("101")!), LogID("102"))
     }
 
+    func testTheTimelineShowsAGapRowBetweenTwoSpansAndStartsTheDayAgainAfterIt() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        try await revealHundred(on: socket, records: ["100", "101"])
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        XCTAssertEqual(session.timelineItems("general", lineBefore: nil, calendar: utc).map(\.id),
+                       ["day-0.0", "100", "101", "gap-102", "day-0.0", "104", "105", "106"])
+        XCTAssertEqual(session.markdownLog(of: [LogID("101")!, LogID("104")!], in: "general", calendar: utc).components(separatedBy: "\n\n")[1],
+                       "_(messages not loaded)_")
+    }
+
     func testAGuestsFillFromAboveRefusedGoesOnFromBelow() async throws {
         session.start()
         let socket = await transport(0)

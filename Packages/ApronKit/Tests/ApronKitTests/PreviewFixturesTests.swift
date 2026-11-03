@@ -138,6 +138,28 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.roles(of: UserObject(["user_id": "zed", "roles": ["bot"]])!), ["bot"], "an unknown user's roles come from the object given")
     }
 
+    func testTheChangelogOpensAtAnOldMessageWithAGapRowAndThePreviewServerPagesWithinBounds() async throws {
+        let store = await PreviewFixtures.makeHoleStore()
+        let changelog = try XCTUnwrap(store.session(for: PreviewFixtures.holeID))
+        XCTAssertEqual(changelog.timeline(PreviewFixtures.holeRoomID).count, 16, "the newest page of eight and the window of eight")
+        XCTAssertTrue(changelog.canLoadOlder(PreviewFixtures.holeRoomID))
+        let shown = try await changelog.reveal(PreviewFixtures.holeLink.message!, in: PreviewFixtures.holeRoomID)
+        XCTAssertTrue(shown, "shown already: the render's own reveal only scrolls")
+        XCTAssertEqual(changelog.timeline(PreviewFixtures.holeRoomID).count, 16)
+        XCTAssertEqual(changelog.holes(in: PreviewFixtures.holeRoomID), [PreviewFixtures.holeGap])
+        XCTAssertEqual(changelog.timelineItems(PreviewFixtures.holeRoomID, lineBefore: nil).contains { $0.id == TimelineItem.gapID(PreviewFixtures.holeGap) }, true)
+
+        let scripted: JSONValue = ["messages": [["message_id": "10", "log_id": "10"], ["message_id": "20", "log_id": "20"], ["message_id": "30", "log_id": "30"]],
+                                   "reactions": [["log_id": "25", "message_id": "20"]], "more": true, "latest_log_id": "30", "history_log_id": "1"]
+        XCTAssertEqual(PreviewServer.page(of: scripted, params: nil), scripted, "no bounds: the script's newest page as written")
+        XCTAssertEqual(PreviewServer.page(of: scripted, params: ["before": "29", "limit": 2]),
+                       ["messages": [["message_id": "20", "log_id": "20"]], "reactions": [["log_id": "25", "message_id": "20"]], "rooms": [], "memberships": [],
+                        "first_log_id": "20", "last_log_id": "25", "more": true, "latest_log_id": "30", "history_log_id": "1"])
+        XCTAssertEqual(PreviewServer.page(of: scripted, params: ["after": "11", "before": "29", "limit": 5]),
+                       ["messages": [["message_id": "20", "log_id": "20"]], "reactions": [["log_id": "25", "message_id": "20"]], "rooms": [], "memberships": [],
+                        "first_log_id": "20", "last_log_id": "25", "more": false, "latest_log_id": "30", "history_log_id": "1"])
+    }
+
     func testTheBackButtonCarriesWhatIsNewElsewhere() async throws {
         let store = await PreviewFixtures.makeStore()
         let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))

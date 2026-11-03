@@ -1,7 +1,8 @@
 import Foundation
 
 /// What a timeline shows, in order: day dividers, messages, the New line, a card per thread at
-/// the point the thread was created, join and leave lines, rename lines, and queued messages last.
+/// the point the thread was created, join and leave lines, rename lines, a gap row where a hole
+/// lies between two loaded spans, and queued messages last.
 public enum TimelineItem: Identifiable, Sendable {
     /// `continues` is true when the previous row is the same author within five minutes.
     /// `pending` is the outbox item behind the row: a message still sending or not sent, whose
@@ -15,6 +16,8 @@ public enum TimelineItem: Identifiable, Sendable {
     /// Consecutive membership records netted out (`MembershipLines`).
     case members(MembershipLine)
     case renamed(RoomRename)
+    /// The positions between two loaded spans, whose records are not loaded (`ServerSession.fill`).
+    case gap(LogSpan)
 
     public var id: String {
         switch self {
@@ -24,8 +27,13 @@ public enum TimelineItem: Identifiable, Sendable {
         case .thread(let roomID): "thread-" + roomID
         case .members(let line): "members-" + line.firstLogID.text
         case .renamed(let rename): "renamed-" + rename.logID.text
+        case .gap(let hole): Self.gapID(hole)
         }
     }
+
+    /// A gap row's id: its hole's lower edge, which a fill from either side moves, so the row is
+    /// remade as the hole shrinks.
+    public static func gapID(_ hole: LogSpan) -> String { "gap-" + hole.lower.text }
 
     /// The message the row shows when the server holds it: nil for a row that is still this
     /// device's own reading of a queued message, which has nothing to react to, reply to or copy a
@@ -73,25 +81,29 @@ extension ServerSession {
     /// `log_id`. Membership records and renames sit at their `log_id`s among the messages and
     /// cards, each after a day pill when the day changes. Records with nothing else between them
     /// (a day pill counts) make one line, netted per user; one that nets to nothing leaves no line
-    /// and does not break a sender's run. Baseline records are skipped.
+    /// and does not break a sender's run. Baseline records are skipped. A gap row sits at each hole
+    /// between loaded spans, and the day pill comes again after it, since the day's run is broken.
     public func timelineItems(_ roomID: String, lineBefore: LogID?, calendar: Calendar = .current) -> [TimelineItem] {
         enum Event {
+            case gap(LogSpan)
             case thread(String)
             case rename(RoomRename)
             case membership(MembershipRecord)
             /// At one position a card goes first, then a rename, then a membership, as on the web.
             var rank: Int {
                 switch self {
+                case .gap: -1
                 case .thread: 0
                 case .rename: 1
                 case .membership: 2
                 }
             }
         }
+        let gaps = holes(in: roomID).map { ($0.lower, Event.gap($0)) }
         let threads = threadIDs(in: roomID).compactMap { id in (LogID(id) ?? store.room(id)?.logID).map { ($0, Event.thread(id)) } }
         let renames = store.renames(of: roomID).map { ($0.logID, Event.rename($0)) }
         let memberships = store.membershipLog(of: roomID).filter { !$0.isBaseline }.map { ($0.logID, Event.membership($0)) }
-        let events = (threads + renames + memberships).sorted { $0.0 < $1.0 || ($0.0 == $1.0 && $0.1.rank < $1.1.rank) }
+        let events = (gaps + threads + renames + memberships).sorted { $0.0 < $1.0 || ($0.0 == $1.0 && $0.1.rank < $1.1.rank) }
 
         var items: [TimelineItem] = []
         var previous: MessageSnapshot?
@@ -144,6 +156,11 @@ extension ServerSession {
                     push(day: start)
                     items.append(.thread(roomID: id))
                     previous = nil
+                case .gap(let hole):
+                    closeRun()
+                    items.append(.gap(hole))
+                    previous = nil
+                    day = nil
                 }
             }
         }

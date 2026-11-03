@@ -197,22 +197,44 @@ clone), which is only a worked example.
       `JoinedCatchUp`, `catchUpTogether`): one `history` without `room_id` from the oldest
       checkpoint, at most five pages, falling back to room by room on `unsupported` (remembered
       per session), an error or the cap. A second `open` while the first page loads waits for
-      it. `reveal(_:in:)` pages back 200 changes at a time until the timeline holds a message a
-      link names, the loaded history reaches past it, or the floor stops it, so the timeline
-      stays one unbroken run. A page arriving after an older one leaves paging where it is.
-      `page` asks the device first while a restored room's kept log reaches below what
-      `store` shows (`keptCoverage`), then the server. Why paging stopped is `HistoryEnd`
-      (`historyEnd(of:)`: `reachedStart`, `retentionFloor`, `signInForOlder`), the one typed
-      edge `canLoadOlder`, `hasOlder`, `reachesStart`, `replyWords` and `thread(startedFrom:)`
-      read. A guest's page back refused `denied` (aprond's `--limit.guest-history-depth`,
+      it. What a room holds is `RoomHistory.coverage`, a `Coverage` (`Coverage.swift`): the
+      `LogSpan`s of its log loaded, ascending and disjoint in one flat array, touching spans
+      merged, the holes between them read off the neighbours (`holes(in:)`). `olderBefore` is the
+      oldest span's lower edge − 1 and `checkpoint` the newest span's upper edge; a page is
+      applied by its request's bounds (`PageRequest`, `receive`: forward from `after` it holds
+      `after` through `last_log_id`, or through `before` (else the head) with `more: false`; back
+      from `before` it holds `first_log_id` through there, and its `more` is the room's only at
+      the oldest edge). A page the coverage already holds changes nothing. `reveal(_:in:)`, as a
+      link, a search hit, a notification or a reply quote opens a message the timeline lacks, sends
+      one window from the message on, `after` it and `before` the span above (§4.3.2: with both
+      bounds the slice runs forward and `more: false` means nothing else lies between; aprond's
+      `window()` and the Cloudflare reference's docs/limits.md agree), so the page either meets
+      that span or leaves a hole, which the timeline shows as a gap row (`TimelineItem.gap`).
+      `fill(_:in:_:)` loads one page into a hole from either side (`Fill.olderFromAbove`: `before`
+      its upper edge; `.newerFromBelow`: `after` its lower and `before` its upper), `loading` names
+      the page under way (`HistoryLoad`), and the spans merge when they meet. A window loads the
+      records from the message on, so an edit, delete or reaction of it logged in the hole above
+      shows only once the hole is filled (`testAWindowShowsAMessageAsItWasUntilTheHoleAboveItIsFilled`
+      pins it). `reveal` is false for a message whose position is held without it, below the floor
+      or the room's start, or newer than the checkpoint. `page` asks the device first while a kept
+      span holds the position a page starts from (`keptCoverage`), then the server. Why paging
+      stopped at the bottom is `HistoryEnd` (`historyEnd(of:)`: `reachedStart`, `retentionFloor`,
+      `signInForOlder`), the one typed edge `canLoadOlder`, `hasOlder`, `reachesStart`,
+      `replyWords` (also "+" while a hole remains) and `thread(startedFrom:)` read. `newLine` knows
+      the New line only while the log between where you read and the first unread message is
+      loaded (`isComplete`); `unreadCount` counts loaded messages, so across a hole it is a floor,
+      not the total. `landAtDivider` pages the newest span down, into the hole below it first. A
+      guest's page back refused `denied` (aprond's `--limit.guest-history-depth`,
       Cloudflare's #76; the server's words are "Sign in to load older history", and no other
       refusal answers `before` alone that way) sets `signInForOlder` without throwing, so the
       timeline shows `OlderHistoryPrompt` at its top, not an error, and asks no more of that room
       while the account is a guest: a sign-in that keeps the session's rooms (a guest's passkey
       becoming an account) pages on from there, and another account starts over
-      (`resetChatState`); an account's `denied` stays an error. A `history` refused with `retry_after`
-      holds back every `history` until the wait is over (`LimitScope.history`), unless the
-      request layer waited it out (Waits).
+      (`resetChatState`); an account's `denied` stays an error. Neither server counts a page
+      bounded on both sides against the depth, so a guest's fill from above refused `denied` goes
+      on from below, and a guest's link into deep history loads its window. A `history` refused
+      with `retry_after` holds back every `history` until the wait is over (`LimitScope.history`),
+      unless the request layer waited it out (Waits).
     - Threads: a thread's record is in its own log (§4.3.1), not its room's, so a member of the
       room who has not joined it learns of it from `room_update` `updated` while connected, and
       otherwise only from `room_list {parent_room_id, filter: not_joined}` (§4.2.1). `open` and
@@ -460,7 +482,8 @@ clone), which is only a worked example.
     wide line ("Several people are typing…") and the phone subtitle ("3 people are typing…").
   - `Timeline` (`Timeline.swift`): what a room's timeline shows, in order (`TimelineItem`: day
     pills, messages, the New line, thread cards at the thread's creation position, join and
-    leave lines and rename lines at their `log_id`s, as apron-web's `buildRoomTimeline`, and queued
+    leave lines and rename lines at their `log_id`s, as apron-web's `buildRoomTimeline`, a gap
+    row at each hole between loaded spans, after which the day pill comes again, and queued
     messages last), mention counts, member sections. A queued message is a `.message` item too,
     with its `PendingMessage` beside it: until the server's snapshot is in the store the snapshot
     is this device's reading of it (`PendingMessage.snapshot`: from `you`, dated when it was
@@ -540,7 +563,8 @@ clone), which is only a worked example.
   - `MessageLog` (`MessageLog.swift`): apron-web's `messageLog` (#164, #168, #172), messages as a
     Markdown log for the pasteboard: a quote per sender's run, dated and timed by `message_id`
     in the `Options.calendar`'s locale and time zone, reply lines, reactions, `_(N messages
-    omitted)_` gaps against `order`, and uploaded images. apron-web's HTML copy is not ported:
+    omitted)_` gaps against `order` (`_(messages not loaded)_` across one of `holes`), and
+    uploaded images. apron-web's HTML copy is not ported:
     the app puts the Markdown on the pasteboard as text.
   - Select mode (`MessageSelection.swift`, `ServerSession+Selection.swift`), as apron-web's
     `selection.svelte.ts` (#14, #54, #95): `MessageSelection` is the picked ids in one pane
@@ -563,7 +587,7 @@ clone), which is only a worked example.
     itself, a user, or a place the user can't see (no room record, or private and not joined).
     A loaded message still in the linked room shows its sender, room and three lines; anything
     else shows as its room: title, lock, member count. Nothing is fetched for a card: no request
-    names one message, and `reveal` pages history. `PlaceCard.previews` is apron-web's
+    names one message, and `reveal` loads a window of history. `PlaceCard.previews` is apron-web's
     `previewedByCard` (#155): an embed whose `url` reads as the same place as a card is hidden.
   - `LinkSites` and `DraftLinkPreviews` (`LinkSites.swift`, `DraftLinkPreviews.swift`), as
     apron-web's `link-sites.ts` and `link-previews.ts` (#11, #122), their tests ported with literal
@@ -627,16 +651,23 @@ clone), which is only a worked example.
     `History/<server id>.jsonl` is read once and replaced), only while `resumable`. The file is an archive
     (`Archive`, apron-web's ARCHIVE.md: header, listing, one record per line in `log_id` order;
     keys in code point order, where the web writes them as received) whose header carries
-    `ladle_kept.rooms`, each opened room's `KeptSync` (checkpoint, where its kept run starts,
-    whether the server has older, floor, when it was last caught up). `ServerSession.kept` is a
+    `ladle_kept.rooms`, each opened room's `KeptSync` (the `spans` of its log the device holds,
+    the restored ones and this session's coverage as one (`keptSpans`), whether the server has
+    older below the oldest, floor, when it was last caught up; `checkpoint` and `start` name the
+    newest span's edges for a build from before spans, which reads that span). The listing's
+    `history_log_id` is the newest span's start, so to any other reader the older spans' records
+    are references (ARCHIVE.md §3.1) and the file stays a valid archive; `ladle_kept.spans` says
+    which are whole. `ServerSession.kept` is a
     second `ReplayStore` that every `install` also applies, so it holds `store` and what the
-    device keeps below it; it is what is written, two seconds after a change and in `suspend`.
+    device keeps beyond it; it is what is written, two seconds after a change and in `suspend`.
     `HistoryRetention` is apron-web's `RETENTIONS` (30 days by default; `off` keeps a day, 150 per
     room, as the web's kept view) and `HistorySettings` keeps the choice in
     `history-settings.json`; `SessionStore.setRetention` rewrites every server's at once.
     `KeptRestore` plans a launch as apron-web's `restoredState`: a room not caught up since the
-    cutoff starts over, a kept run starts no lower than the cutoff (by `log_id` where positions
-    are times, `LogID.isTimeLike`), and the newest 50 entries show (`KeptRestore.window`).
+    cutoff starts over, a kept span below the cutoff goes and one across it starts there (by
+    `log_id` where positions are times, `LogID.isTimeLike`), and the newest span's newest 50
+    entries show (`KeptRestore.window`); the rest of it and every older span stay kept for the
+    device to page from and for search.
     `start` reads it off the main actor and `adopt`s it before `run` resumes the token, so the
     sign-in's catch-up goes on from each kept checkpoint. Each account's stays across
     sign-outs (#199): a sign-out, a refused token and another account (`resetChatState`) only
@@ -652,7 +683,9 @@ clone), which is only a worked example.
   - Export and archive (`Archive.swift`, `ArchiveServer.swift`, `ServerSession+Archive.swift`), as
     apron-web's `archive.ts`, `archive-server.ts` and `/archive` (#135, #171):
     `ServerSession.exportArchive(includingPrivate:)` writes what `kept` holds, each opened room
-    from where its stretch starts, the rest listed with `history_log_id: null`; without private
+    from where its newest span starts (a span loaded around an old message stays out: an
+    archive's stretch runs whole to the room's latest), the rest listed with `history_log_id:
+    null`; without private
     rooms (#171) it leaves them, their threads, their records and anyone known only from them out
     (`ArchiveSource.hiddenRooms`). `Archive.fileName` is `apron-<host>-<day>.jsonl` in UTC.
     `ArchiveServer` is a `FrameTransport` serving one `Archive` read-only (guest only,
@@ -1035,7 +1068,7 @@ plus `LadleShots/ShotsApp.swift`. It seeds `PreviewFixtures` (and a fetched prev
 (compact width) in dark and light: the first run (no servers), the server list, Connect, Connect after a scanned sign-in, the room list, the busy room (opened at its New line), the
 mention list, the member list and the reaction picker, the composer with attachments, its PDF being renamed in place (`ladle-staged-rename`), the editor on Sam's two photos with their tiles, the first renamed, and his reply's line with its × (`ladle-edit-embeds`), a room
 of uploads (image, video, file, audio, pending), the media viewer, the composer over the text
-limit, a read-only guest's sign-in prompt on the demo server, the demo's news paged back until the server asks the guest to sign in (`ladle-guest-history-end`, and at AX3, where an `ActionBanner` puts its actions under its words), custom emoji in text, a
+limit, a read-only guest's sign-in prompt on the demo server, the demo's news paged back until the server asks the guest to sign in (`ladle-guest-history-end`, and at AX3, where an `ActionBanner` puts its actions under its words), the changelog (`PreviewFixtures.makeHoleStore`: 200 messages on a server of its own, paged eight at a time) opened by a link to its sixth message, the linked message highlighted and the gap row between its page and the newest at the foot (`ladle-timeline-gap`, and at AX3, where the row's buttons go under its words), custom emoji in text, a
 description and reactions with a right-to-left line (the kitchen room), the reaction picker
 with the custom emoji, the composer's `:` list (`:pa`), `:smi` with the custom `:smilingpan:` first, the standard emoji and the first row highlighted (`ladle-emoji-standard`), its command list (`/inv`, answered by
 `PreviewServer`'s `/help`), link cards, a sender-built GitHub card as others see it (`ladle-sent-link-preview`), the composer's link previews for a pull request and a Wikipedia article (`ladle-composer-link-previews`), a room chip and Apron link chips for a message, a room, a thread, a user and another server (the Icon sketches thread), the `#` room
