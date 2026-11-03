@@ -378,7 +378,7 @@ struct TimelineView: View {
             ProfileCardView(session: session, request: request) { id, name in draft.wrappedValue.field.mention(id, named: name) }
         }
         .sheet(item: $reacting) { message in
-            ReactionPicker(session: session) { emoji in
+            ReactionPicker(session: session, caption: session.reactCaption(for: message)) { emoji in
                 reacting = nil
                 perform { try await session.toggleReaction(emoji, on: message.messageID) }
             }

@@ -134,6 +134,18 @@ final class PreviewFixturesTests: XCTestCase {
         XCTAssertEqual(home.roles(of: UserObject(["user_id": "zed", "roles": ["bot"]])!), ["bot"], "an unknown user's roles come from the object given")
     }
 
+    func testTheReactionPickerNamesTheMessageItReactsTo() async throws {
+        let store = await PreviewFixtures.makeStore()
+        let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
+        let messages = home.timeline(PreviewFixtures.busyRoomID)
+        let last = try XCTUnwrap(messages.last)
+        let caption = home.reactCaption(for: last)
+        XCTAssertEqual(caption.lead, "React to \u{2068}Dev\u{2069}")
+        XCTAssertEqual(caption.text, "Load test plan for Friday")
+        let photos = try XCTUnwrap(home.timeline(PreviewFixtures.mediaRoomID).first { MessageText.snippet($0.body).isEmpty })
+        XCTAssertEqual(home.reactCaption(for: photos).text, "Attachment", "no text: what it carries")
+    }
+
     func testTheComposerShotsLinksBuildTheCardTheSentMessageShows() async throws {
         let store = await PreviewFixtures.makeStore()
         let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))

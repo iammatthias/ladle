@@ -56,3 +56,13 @@ extension MessageText {
         return text.prefix(max - 1).trimmingCharacters(in: .whitespacesAndNewlines) + "…"
     }
 }
+
+extension ServerSession {
+    /// What the reaction picker names above itself, as apron-web's ("React to Ada" and the
+    /// message's first line), since new messages can scroll the message away under the sheet.
+    public func reactCaption(for message: MessageSnapshot) -> (lead: String, text: String) {
+        let text = MessageText.snippet(message.body)
+        return ("React to \(TextDirection.isolated(displayName(for: message.from)))",
+                text.isEmpty ? MessageText.embedsLabel(message.body) ?? "Empty message" : text)
+    }
+}

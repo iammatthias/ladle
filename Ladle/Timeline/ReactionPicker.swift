@@ -9,6 +9,8 @@ import UIKit
 struct ReactionPicker: View {
     static let quick = ["👍", "❤️", "😂", "🎉", "👀", "🙏"]
     var session: ServerSession?
+    /// The message it reacts to, named in the title and its first line under it ("React to Ada").
+    var caption: (lead: String, text: String)?
     let pick: (String) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -16,6 +18,14 @@ struct ReactionPicker: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: Tokens.Space.s4) {
+                    if let caption {
+                        // The message's first line, under the title that names its sender.
+                        Text(caption.text)
+                            .apText(.ui).foregroundStyle(Palette.inkMuted).lineLimit(1)
+                            .padding(.leading, Tokens.Space.s3)
+                            .overlay(alignment: .leading) { Capsule().fill(Palette.line).frame(width: 3) }
+                            .accessibilityLabel("Message: \(caption.text)")
+                    }
                     if let catalog = session?.emojiCatalog {
                         ForEach(Array(Self.groups(catalog).enumerated()), id: \.offset) { _, group in
                             Text(group.title).apText(.sm, .semibold).foregroundStyle(Palette.inkMuted)
@@ -53,7 +63,7 @@ struct ReactionPicker: View {
             }
             .background(Palette.chrome)
             .task { await session?.loadEmojiCatalog() }
-            .navigationTitle("Add Reaction")
+            .navigationTitle(caption?.lead ?? "Add Reaction")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }

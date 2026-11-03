@@ -395,7 +395,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Reaction chips with count, yours highlighted | bh | has | `Timeline/MessageRow.swift` (`ReactionBar`) | |
 | Tap a chip to toggle | bh | has | `Timeline/MessageRow.swift` | |
 | Who reacted, on long press | #90 | has | `Timeline/MessageRow.swift` (chip `contextMenu`) | |
-| Picker names the message it reacts to ("React to Ada") | bh | missing | `Timeline/ReactionPicker.swift` | The sheet is titled "Add Reaction" and does not name the message. |
+| Picker names the message it reacts to ("React to Ada") | bh | has | `Timeline/ReactionPicker.swift`, `Kit/MessageText+Plain.swift` (`reactCaption`) | The sheet's title is "React to Ada", and the message's first line (else what it carries, else "Empty message") stands under it with a bar, since the sheet covers the message. The pick goes on that message whatever arrives meanwhile. |
 | ❤ and ❤️ as one chip | #144 | has | `Kit/ReactionEntry.swift` | |
 | Tombstones show no reactions | bh | has | `Kit/ServerSession.swift` (`timeline` drops tombstones) | |
 | Custom emoji in text, descriptions, welcome (`ext:emoji`) | bh | has | `Timeline/CustomEmojiViews.swift`, `Kit/CustomEmoji.swift` | |

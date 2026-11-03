@@ -300,7 +300,8 @@ enum Renderer {
         case .members:
             AnyView(NavigationStack { MemberList(session: home, roomID: PreviewFixtures.busyRoomID) })
         case .reaction:
-            AnyView(ReactionPicker { _ in })
+            // Named for the message it reacts to, the busy room's last.
+            AnyView(ReactionPicker(session: home, caption: home.timeline(PreviewFixtures.busyRoomID).last.map(home.reactCaption(for:))) { _ in })
         case .attachments:
             AnyView(NavigationStack {
                 TimelineView(session: home, roomID: PreviewFixtures.mediaRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: kept(home, PreviewFixtures.mediaRoomID, ComposerDraft(field: DraftField(text: "Both sides of mine"), files: staged)))
@@ -335,7 +336,7 @@ enum Renderer {
         case .emoji:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) })
         case .emojiPicker:
-            AnyView(ReactionPicker(session: home) { _ in })
+            AnyView(ReactionPicker(session: home, caption: home.timeline(PreviewFixtures.busyRoomID).last.map(home.reactCaption(for:))) { _ in })
         case .emojiShortcode:
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.emojiRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: kept(home, PreviewFixtures.emojiRoomID, ComposerDraft(field: DraftField(text: "Lunch :pa")))) })
         case .commands:
