@@ -50,6 +50,9 @@ public enum ArchiveStretch: Hashable, Sendable {
     /// `null`: none of the room's log, only its listing.
     case none
     case from(LogID)
+    /// What a kept log writes: the records of each span, ascending, the newest span's start the
+    /// listed `history_log_id`. To a reader without `ladle_kept` the older spans are references.
+    case spans([LogSpan])
 
     /// Whether a record at `logID` is in the stretch.
     public func holds(_ logID: LogID) -> Bool {
@@ -57,6 +60,7 @@ public enum ArchiveStretch: Hashable, Sendable {
         case .fromOldest: true
         case .none: false
         case .from(let start): logID >= start
+        case .spans(let spans): spans.contains { $0.holds(logID) }
         }
     }
 
@@ -65,6 +69,7 @@ public enum ArchiveStretch: Hashable, Sendable {
         case .fromOldest: nil
         case .none: .null
         case .from(let start): start.json
+        case .spans(let spans): spans.last?.lower.json
         }
     }
 }

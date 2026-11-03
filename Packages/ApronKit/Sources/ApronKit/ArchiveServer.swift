@@ -72,6 +72,7 @@ public actor ArchiveServer: FrameTransport {
             case .fromOldest: all.first { if case .room = $0 { false } else { true } }?.logID
             case .none: nil
             case .from(let start): start
+            case .spans(let spans): spans.last?.lower
             }
             let bound = start ?? last.successor!
             served[id] = Served(listed: listed, record: record, log: all.filter { $0.logID >= bound }, bound: bound, latest: last)

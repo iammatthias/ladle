@@ -40,7 +40,9 @@ extension Archive {
 extension ServerSession {
     /// The archive of what this session holds of the server (apron-web's `exportArchive`): the
     /// rooms it has records of and their parents, each opened one with its unbroken stretch of
-    /// records, the rest listed without one, and the messages its stretches reply to. Without
+    /// records (the newest span the device holds, loaded or kept; a span loaded around an old
+    /// message stays out, since an archive's stretch runs whole to the room's latest, ARCHIVE.md
+    /// §3.1), the rest listed without one, and the messages its stretches reply to. Without
     /// `includingPrivate` (apron-web #171), private rooms, the threads in them, their records and
     /// anyone known only from them are left out. Statuses aren't kept: they are about now.
     public func exportArchive(includingPrivate: Bool, now: Date = Date()) -> ArchiveExport {
@@ -70,7 +72,7 @@ extension ServerSession {
         let paged = server?.has("history") ?? true
         let rooms: [(id: String, stretch: ArchiveStretch)] = listed.sorted(by: codePointLess).map { id in
             guard paged else { return (id, .fromOldest) }
-            guard let history = histories[id], let start = keptCoverage[id]?.start ?? history.olderBefore?.successor ?? (history.more ? nil : kept.messages(in: id).map(\.logID).min()) else {
+            guard let history = histories[id], let start = keptSpans(of: id, history).coverage.newest?.lower else {
                 return (id, histories[id] == nil ? .none : .fromOldest)
             }
             let floor = kept.floor(of: id)

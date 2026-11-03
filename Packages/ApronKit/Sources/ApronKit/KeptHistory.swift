@@ -208,37 +208,47 @@ public final class InMemoryHistoryFiles: HistoryFiles, @unchecked Sendable {
     public func sizes() -> [KeptAccount: Int] { lock.withLock { files.mapValues(\.count) } }
 }
 
-/// How a kept room goes on: from its checkpoint, with its kept log reaching down to `start`
-/// (nil: to the start of the room's log, when `older` is false), and whether the server has
-/// older below that. Kept under the archive header's `ladle_kept` key.
+/// How a kept room goes on: the spans of its log the device holds (the newest ends at its
+/// checkpoint; the holes between them are the server's), and whether the server has older below
+/// the oldest. Kept under the archive header's `ladle_kept` key as `spans`, with `checkpoint`
+/// and `start` (the newest span's edges) for a build from before spans, which reads that span.
 public struct KeptSync: Hashable, Sendable {
-    public var checkpoint: LogID?
-    public var start: LogID?
+    public var spans: [LogSpan]
     public var older: Bool
     public var floor: LogID?
     /// When the room was last caught up, on this device.
     public var caughtUpAt: Date?
 
+    public var checkpoint: LogID? { spans.last?.upper }
+    public var coverage: Coverage { Coverage(spans) }
+
     var json: JSONValue {
-        var fields: [String: JSONValue] = ["older": .bool(older)]
+        var fields: [String: JSONValue] = ["older": .bool(older), "spans": .array(spans.map { [$0.lower.json, $0.upper.json] })]
         fields["checkpoint"] = checkpoint?.json
-        fields["start"] = start?.json
+        fields["start"] = spans.last?.lower.json
         fields["floor"] = floor?.json
         fields["caught_up_at"] = caughtUpAt.map { .number(String(Int64(($0.timeIntervalSince1970 * 1000).rounded()))) }
         return .object(fields)
     }
 
-    init(checkpoint: LogID?, start: LogID?, older: Bool, floor: LogID?, caughtUpAt: Date?) {
-        self.checkpoint = checkpoint
-        self.start = start
+    init(spans: [LogSpan], older: Bool, floor: LogID?, caughtUpAt: Date?) {
+        self.spans = Coverage(spans).spans
         self.older = older
         self.floor = floor
         self.caughtUpAt = caughtUpAt
     }
 
     init(json: JSONValue) {
-        checkpoint = LogID(json["checkpoint"])
-        start = LogID(json["start"])
+        var coverage = Coverage()
+        for pair in json["spans"]?.arrayValue ?? [] {
+            if let edges = pair.arrayValue, edges.count == 2, let lower = LogID(edges[0]), let upper = LogID(edges[1]) {
+                coverage.insert(LogSpan(lower, upper))
+            }
+        }
+        if json["spans"] == nil, let checkpoint = LogID(json["checkpoint"]) {
+            coverage.insert(LogSpan(LogID(json["start"]) ?? checkpoint, checkpoint))
+        }
+        spans = coverage.spans
         older = json["older"]?.boolValue ?? false
         floor = LogID(json["floor"])
         caughtUpAt = json["caught_up_at"]?.doubleValue.map { Date(timeIntervalSince1970: $0 / 1000) }
@@ -286,8 +296,10 @@ public struct KeptRestore: Sendable {
                 // Not caught up since before the cutoff: paging forward from there would fetch everything since.
                 if (sync.caughtUpAt ?? checkpoint.date) < cutoff { continue }
                 let bound = LogID(time: cutoff)
-                if sync.start.map({ $0 < bound }) ?? true {
-                    sync.start = bound
+                if let oldest = sync.spans.first, oldest.lower < bound {
+                    var coverage = sync.coverage
+                    coverage.dropBelow(bound)
+                    sync.spans = coverage.spans
                     sync.older = true
                 }
             }
@@ -296,7 +308,7 @@ public struct KeptRestore: Sendable {
 
         func holds(_ roomID: String?, _ logID: LogID) -> Bool {
             guard let roomID, let sync = planned[roomID] else { return false }
-            return sync.start.map { logID >= $0 } ?? true
+            return sync.spans.contains { $0.holds(logID) }
         }
         var records = Records()
         let homes = Dictionary(archive.records.messages.map { ($0.messageID, $0.roomID) }, uniquingKeysWith: { $1 })
@@ -309,15 +321,18 @@ public struct KeptRestore: Sendable {
         kept.apply(records)
         for (roomID, sync) in planned { if let floor = sync.floor { kept.raiseFloor(of: roomID, to: floor) } }
 
+        // The newest span's newest entries show; the rest of it, and every older span, stay
+        // kept for the device to page from.
         rooms = [:]
         for (roomID, sync) in planned {
-            let log = kept.logEntries(of: roomID)
-            let (page, below) = LogEntry.slice(log, limit: Self.window)
             var history = RoomHistory()
-            if let checkpoint = sync.checkpoint {
-                let lower = page.first?.logID ?? sync.start ?? checkpoint
-                history.coverage.insert(LogSpan(min(lower, checkpoint), checkpoint))
-                history.more = page.first != nil ? below || sync.older : sync.older
+            var page: ArraySlice<LogEntry> = []
+            if let newest = sync.spans.last {
+                let log = kept.logEntries(of: roomID).filter { newest.holds($0.logID) }
+                let below: Bool
+                (page, below) = LogEntry.slice(log, limit: Self.window)
+                history.coverage.insert(LogSpan(page.first?.logID ?? newest.lower, newest.upper))
+                history.more = below || sync.spans.count > 1 || sync.older
             }
             if history.olderBefore == nil { history.more = false }
             rooms[roomID] = (history, Array(page), sync)

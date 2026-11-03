@@ -213,7 +213,7 @@ final class KeptRestoreTests: XCTestCase {
         XCTAssertEqual(restore.kept.messages(in: "stale"), [])
         XCTAssertEqual(restore.kept.messages(in: "fresh").map(\.messageID.text), [ms(daysAgo: 2)])
         let fresh = try XCTUnwrap(restore.rooms["fresh"])
-        XCTAssertEqual(fresh.sync.start, LogID(ms(daysAgo: 30)))
+        XCTAssertEqual(fresh.sync.spans, [LogSpan(LogID(ms(daysAgo: 30))!, LogID(ms(daysAgo: 1))!)])
         XCTAssertTrue(fresh.sync.older, "older pages below the cutoff come from the server")
         XCTAssertEqual(fresh.history.checkpoint, LogID(ms(daysAgo: 1)))
         XCTAssertTrue(fresh.history.more)
@@ -237,6 +237,37 @@ final class KeptRestoreTests: XCTestCase {
         XCTAssertEqual(room.window.map(\.logID.text), Array(ids.suffix(50)))
         XCTAssertEqual(room.history.olderBefore, LogID("1010"))
         XCTAssertEqual(restore.kept.messages(in: "general").count, 60)
+    }
+
+    private func span(_ lower: String, _ upper: String) -> LogSpan { LogSpan(LogID(lower)!, LogID(upper)!) }
+
+    func testSpansComeBackAsWrittenAndAFileFromBeforeSpansReadsItsRunAsOne() throws {
+        let ids = (1001 ... 1020).map(String.init) + (1041 ... 1060).map(String.init)
+        let data = kept(["general": ["spans": [["1001", "1020"], ["1041", "1060"]], "older": true]], messages: ids.map { ("general", $0) })
+        let restore = try XCTUnwrap(KeptRestore(data: data, account: "ada", retention: .forever, now: now))
+        let room = try XCTUnwrap(restore.rooms["general"])
+        XCTAssertEqual(room.sync.spans, [span("1001", "1020"), span("1041", "1060")])
+        XCTAssertEqual(room.sync.checkpoint, LogID("1060"))
+        XCTAssertEqual(room.window.map(\.logID.text), (1041 ... 1060).map(String.init), "the newest span's newest entries, never across the hole")
+        XCTAssertEqual(room.history.coverage.spans, [span("1041", "1060")])
+        XCTAssertTrue(room.history.more, "the hole below is the server's")
+        XCTAssertEqual(restore.kept.messages(in: "general").count, 40)
+
+        let old = KeptSync(json: ["checkpoint": "1060", "start": "1001", "older": false])
+        XCTAssertEqual(old.spans, [span("1001", "1060")])
+        XCTAssertEqual(KeptSync(spans: [span("1041", "1060"), span("1001", "1020")], older: true, floor: nil, caughtUpAt: nil).json,
+                       ["spans": [["1001", "1020"], ["1041", "1060"]], "older": true, "checkpoint": "1060", "start": "1041"])
+    }
+
+    func testTheCutoffDropsAKeptSpanBelowItWhole() throws {
+        let data = kept(["general": ["spans": [[.string(ms(daysAgo: 50)), .string(ms(daysAgo: 45))], [.string(ms(daysAgo: 3)), .string(ms(daysAgo: 1))]],
+                                     "older": false, "caught_up_at": .number(String(Int64(now.timeIntervalSince1970 * 1000)))]],
+                        messages: [("general", ms(daysAgo: 47)), ("general", ms(daysAgo: 2))])
+        let restore = try XCTUnwrap(KeptRestore(data: data, account: "ada", retention: .month, now: now))
+        let room = try XCTUnwrap(restore.rooms["general"])
+        XCTAssertEqual(room.sync.spans, [span(ms(daysAgo: 3), ms(daysAgo: 1))])
+        XCTAssertTrue(room.sync.older)
+        XCTAssertEqual(restore.kept.messages(in: "general").map(\.messageID.text), [ms(daysAgo: 2)])
     }
 }
 
@@ -467,7 +498,51 @@ final class KeptHistorySessionTests: XCTestCase {
         XCTAssertEqual(settings.used, "under 1 MB")
         settings.update(.off)
         let source = try XCTUnwrap(first.keptSource(now: Date()))
-        XCTAssertEqual(source.rooms.map(\.stretch), [.from(LogID("1001")!)], "positions that are not times have no age to cut at")
+        XCTAssertEqual(source.rooms.map(\.stretch), [.spans([LogSpan(LogID("1001")!, LogID("1060")!)])], "positions that are not times have no age to cut at")
+    }
+
+    func testAHoleIsKeptAsSpansAndComesBackToPageFromTheDevice() async throws {
+        let first = try await keptSession()
+        let socket = transports.made.withLock { $0[0] }
+        let reveal = Task { try await first.reveal(LogID("960")!, in: "general") }
+        let window = await frame(socket, 4)
+        XCTAssertEqual(window, #"{"id":"c5","method":"history","params":{"after":"960","before":"1000","limit":3,"room_id":"general"}}"#)
+        await socket.deliver(["id": "c5", "result": ["messages": [message(960), message(961), message(962)], "first_log_id": "960", "last_log_id": "962",
+                                                      "more": true, "latest_log_id": "1060", "history_log_id": "950"]])
+        let shown = try await reveal.value
+        XCTAssertTrue(shown)
+        await first.flushKept()
+        let text = try XCTUnwrap(files.read(ada).flatMap { String(data: $0, encoding: .utf8) })
+        let archive = try Archive(text: text)
+        XCTAssertEqual(archive.header["ladle_kept"]?["rooms"]?["general"]?["spans"], [["960", "962"], ["1001", "1060"]])
+        XCTAssertEqual(archive.header["ladle_kept"]?["rooms"]?["general"]?["checkpoint"], "1060")
+        XCTAssertEqual(archive.header["ladle_kept"]?["rooms"]?["general"]?["start"], "1001", "a build from before spans reads the newest span")
+        XCTAssertEqual(archive.rooms.first?.stretch, .from(LogID("1001")!), "to any other reader the window's records are references")
+        XCTAssertEqual(archive.records.messages.map(\.messageID.text).prefix(4), ["960", "961", "962", "1001"], "the window's records are written all the same")
+        XCTAssertEqual(first.exportArchive(includingPrivate: true).messages, 60, "an export is the newest span alone")
+        await first.stop()
+
+        let second = FakeTransport()
+        transports.queued.withLock { $0 = [second] }
+        let again = session(first.record)
+        again.start()
+        await eventually("restored") { again.timeline("general").count == 50 }
+        XCTAssertEqual(again.histories["general"]?.coverage.spans, [LogSpan(LogID("1011")!, LogID("1060")!)], "the newest span's newest 50 show")
+        XCTAssertEqual(again.holes(in: "general"), [], "the older span waits on the device, not in the timeline")
+        XCTAssertEqual(again.keptCoverage["general"]?.spans, [LogSpan(LogID("960")!, LogID("962")!), LogSpan(LogID("1001")!, LogID("1060")!)])
+        XCTAssertEqual(again.store.message(LogID("961")!), nil)
+        XCTAssertEqual(again.kept.message(LogID("961")!)?.messageID, LogID("961"), "kept for the device to page and search")
+
+        let revealed = try await again.reveal(LogID("961")!, in: "general")
+        XCTAssertTrue(revealed, "the kept span holds it: no request")
+        XCTAssertEqual(again.timeline("general").map(\.messageID.text).prefix(3), ["961", "962", "1011"])
+        XCTAssertEqual(again.histories["general"]?.coverage.spans, [LogSpan(LogID("961")!, LogID("962")!), LogSpan(LogID("1011")!, LogID("1060")!)],
+                       "the device page ran to the kept span's end, with a hole above")
+        XCTAssertEqual(again.holes(in: "general"), [LogSpan(LogID("963")!, LogID("1010")!)])
+        try await again.fill(LogSpan(LogID("963")!, LogID("1010")!), in: "general", .olderFromAbove)
+        XCTAssertEqual(again.holes(in: "general"), [LogSpan(LogID("963")!, LogID("1007")!)], "a page down the newest kept span comes from the device")
+        let sent = await second.sentLog.count
+        XCTAssertEqual(sent, 0, "nothing asked of the server, which has not even greeted")
     }
 }
 

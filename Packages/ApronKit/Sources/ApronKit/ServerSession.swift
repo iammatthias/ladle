@@ -246,8 +246,9 @@ public final class ServerSession {
     /// Everything this session holds or has kept of the server's history: `store` and what the
     /// device holds below what `store` shows. What a kept log and an export are written from.
     public internal(set) var kept = ReplayStore()
-    /// Each restored room's kept sync, while its kept log reaches below what `store` shows:
-    /// older pages come from the device until it runs out (`page`).
+    /// Each restored room's kept sync: the spans the device holds beyond what `store` shows, which
+    /// a page starting inside one reads from the device (`page`); what this session loads is in
+    /// `histories`, and a kept write takes both (`keptSpans`).
     @ObservationIgnored var keptCoverage: [String: KeptSync] = [:]
     /// When each room was last caught up, as kept.
     @ObservationIgnored var caughtUp: [String: Date] = [:]
@@ -1009,19 +1010,23 @@ public final class ServerSession {
         return shown()
     }
 
-    /// One page by its bounds, from what the device keeps while its kept log reaches there, then
-    /// from the server (apron-web's `olderPage`), applied to the room's coverage.
+    /// One page by its bounds, from what the device keeps while a kept span holds the position the
+    /// page starts from (`after`, else `before`), then from the server (apron-web's `olderPage`),
+    /// applied to the room's coverage. A device page says more lies in its direction while the
+    /// kept span has more, or anything lies beyond the span: another kept span, or the server's
+    /// older records.
     private func page(_ roomID: String, _ request: PageRequest) async throws {
-        if request.after == nil, let before = request.before, let cover = keptCoverage[roomID] {
-            let log = kept.logEntries(of: roomID).filter { entry in cover.start.map { entry.logID >= $0 } ?? true }
-            let (slice, more) = LogEntry.slice(log, before: before, limit: request.limit)
-            if !more { keptCoverage[roomID] = nil }
-            if let first = slice.first {
+        if let cover = keptCoverage[roomID], let anchor = request.after ?? request.before, let span = cover.spans.first(where: { $0.holds(anchor) }) {
+            let log = kept.logEntries(of: roomID).filter { span.holds($0.logID) }
+            let before = min(request.before ?? span.upper, span.upper)
+            let (slice, more) = LogEntry.slice(log, after: request.after, before: before, limit: request.limit)
+            if let first = slice.first, let last = slice.last {
                 store.apply(Records(entries: slice))
-                histories[roomID]?.receive(HistoryPage(firstLogID: first.logID, more: more || cover.older), for: request)
+                let beyond = request.after == nil ? cover.spans.first != span || cover.older : request.before.map { $0 > span.upper } ?? true
+                histories[roomID]?.receive(HistoryPage(firstLogID: first.logID, lastLogID: last.logID, more: more || beyond), for: request)
                 return
             }
-            guard cover.older else {
+            if request.after == nil, cover.spans.first == span, !cover.older {
                 histories[roomID]?.more = false
                 return
             }
@@ -1875,8 +1880,9 @@ struct HistoryPage {
     var latestLogID: LogID?
     var floor: LogID?
 
-    init(firstLogID: LogID?, more: Bool) {
+    init(firstLogID: LogID?, lastLogID: LogID? = nil, more: Bool) {
         self.firstLogID = firstLogID
+        self.lastLogID = lastLogID
         self.more = more
     }
 

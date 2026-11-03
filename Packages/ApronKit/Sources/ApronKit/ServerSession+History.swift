@@ -131,9 +131,26 @@ extension ServerSession {
         return adopt(plan, as: identity.userID)
     }
 
-    /// What is written: every room with a record, each opened one with its stretch of records
-    /// from where its kept log starts, clamped at the retention (by `log_id`, where positions are
-    /// times) and, under Don't keep, at its newest 150 messages; and how each goes on.
+    /// What the device holds of a room's log: the spans restored from the kept file and those this
+    /// session loaded, as one coverage, and whether the server has older below the oldest.
+    func keptSpans(of roomID: String, _ history: RoomHistory) -> (coverage: Coverage, older: Bool) {
+        var coverage = keptCoverage[roomID]?.coverage ?? Coverage()
+        let keptOldest = coverage.oldest?.lower
+        for span in history.coverage.spans { coverage.insert(span) }
+        let older: Bool
+        if let keptOldest, let loadedOldest = history.coverage.oldest?.lower, loadedOldest > keptOldest {
+            older = keptCoverage[roomID]?.older ?? history.more
+        } else {
+            older = history.more
+        }
+        return (coverage, older)
+    }
+
+    /// What is written: every room with a record, each opened one with the records of its kept
+    /// spans, clamped at the retention (by `log_id`, where positions are times) and, under Don't
+    /// keep, at its newest 150 messages; and how each goes on. The listing's `history_log_id` is
+    /// the newest span's start, so to any other reader the older spans are references (ARCHIVE.md
+    /// §3.1), and `ladle_kept.spans` says which of them are whole.
     func keptSource(now: Date) -> ArchiveSource? {
         guard let you else { return nil }
         let rule = (keeping?.settings.retention ?? .forever).rule
@@ -145,22 +162,21 @@ extension ServerSession {
                 rooms.append((roomID, .none))
                 continue
             }
-            var start = keptCoverage[roomID].map { $0.start } ?? history.olderBefore?.successor
-            var older = keptCoverage[roomID]?.older ?? history.more
-            if let cutoff, history.checkpoint?.isTimeLike ?? cutoff.isTimeLike, start.map({ $0 < cutoff }) ?? true {
-                start = cutoff
+            var (coverage, older) = keptSpans(of: roomID, history)
+            if let cutoff, history.checkpoint?.isTimeLike ?? cutoff.isTimeLike, let oldest = coverage.oldest, oldest.lower < cutoff {
+                coverage.dropBelow(cutoff)
                 older = true
             }
             if let cap = rule.perRoom {
-                let messages = kept.messages(in: roomID).filter { message in start.map { message.logID >= $0 } ?? true }
+                let messages = kept.messages(in: roomID).filter { coverage.holds($0.logID) }
                 if messages.count > cap {
-                    start = messages.map(\.logID).sorted()[messages.count - cap]
+                    coverage.dropBelow(messages.map(\.logID).sorted()[messages.count - cap])
                     older = true
                 }
             }
             if history.isLive { caughtUp[roomID] = now }
-            rooms.append((roomID, start.map(ArchiveStretch.from) ?? .fromOldest))
-            let sync = KeptSync(checkpoint: history.checkpoint, start: start, older: older, floor: kept.floor(of: roomID), caughtUpAt: caughtUp[roomID])
+            rooms.append((roomID, coverage.isEmpty ? .fromOldest : .spans(coverage.spans)))
+            let sync = KeptSync(spans: coverage.spans, older: older, floor: kept.floor(of: roomID), caughtUpAt: caughtUp[roomID])
             syncs[roomID] = sync.json
         }
         var media = [MediaGate.httpOrigin(of: record.url)].compactMap(\.self)
