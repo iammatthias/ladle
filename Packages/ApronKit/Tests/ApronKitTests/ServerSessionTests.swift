@@ -938,6 +938,38 @@ final class ServerSessionTests: XCTestCase {
                        "_(messages not loaded)_")
     }
 
+    func testAFloorThatDropsTheOldestSpanWholeReopensTheNextSpansBottomEdge() async throws {
+        session.start()
+        let socket = await transport(0)
+        await eventually("signed out") { session.status == .signedOut }
+        let signIn = Task { try await session.signIn(.guest(name: nil)) }
+        _ = await frames(socket, count: 2)
+        await socket.deliver(["id": "c1", "result": ["you": ["user_id": "ada", "name": "Ada"], "token": "t1"]])
+        await socket.deliver(["id": "c2", "result": ["joined": [["room_id": "general", "log_id": "90", "title": "General", "latest_log_id": "106", "history_log_id": "90"]]]])
+        _ = try await signIn.value
+        try await openGeneral(on: socket, floor: "90")
+        let reveal = Task { try await session.reveal(LogID("100")!, in: "general") }
+        _ = await frame(socket, 4)
+        await socket.deliver(["id": "c5", "result": ["messages": [message("100", "a")], "first_log_id": "100", "last_log_id": "100", "more": true,
+                                                      "latest_log_id": "106", "history_log_id": "90"]])
+        let shown = try await reveal.value
+        XCTAssertTrue(shown)
+        let older = Task { try await session.loadOlder("general") }
+        let page = await frame(socket, 5)
+        XCTAssertEqual(page, #"{"id":"c6","method":"history","params":{"before":"99","limit":3,"room_id":"general"}}"#)
+        await socket.deliver(["id": "c6", "result": ["messages": [], "more": false, "latest_log_id": "106", "history_log_id": "90"]])
+        try await older.value
+        XCTAssertEqual(session.historyEnd(of: "general"), .reachedStart, "the window's span reaches the room's start")
+        XCTAssertEqual(session.histories["general"]?.coverage.spans, [LogSpan(LogID("99")!, LogID("100")!), LogSpan(LogID("104")!, LogID("106")!)])
+
+        await socket.deliver(["method": "room_update", "params": ["joined": [["room_id": "general", "log_id": "90", "latest_log_id": "106", "history_log_id": "102"]]]])
+        await eventually("floor raised") { session.store.floor(of: "general") == LogID("102") }
+        XCTAssertEqual(session.histories["general"]?.coverage.spans, [LogSpan(LogID("104")!, LogID("106")!)])
+        XCTAssertEqual(session.histories["general"]?.olderBefore, LogID("103"))
+        XCTAssertNil(session.historyEnd(of: "general"), "102 and 103 may still hold records")
+        XCTAssertTrue(session.canLoadOlder("general"))
+    }
+
     func testAGuestsFillFromAboveRefusedGoesOnFromBelow() async throws {
         session.start()
         let socket = await transport(0)

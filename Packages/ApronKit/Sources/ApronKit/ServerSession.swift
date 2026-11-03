@@ -850,7 +850,13 @@ public final class ServerSession {
     private func raiseFloor(of roomID: String, to floor: LogID) {
         store.raiseFloor(of: roomID, to: floor)
         kept.raiseFloor(of: roomID, to: floor)
-        histories[roomID]?.coverage.dropBelow(floor)
+        guard var history = histories[roomID] else { return }
+        let oldest = history.coverage.oldest
+        history.coverage.dropBelow(floor)
+        // The oldest span went whole: what it knew of the room's start no longer speaks for the
+        // next span's lower edge, below which records above the floor may remain.
+        if let oldest, oldest.upper < floor, !history.coverage.isEmpty { history.more = true }
+        histories[roomID] = history
     }
 
     private func applyRoomList(_ result: JSONValue) {
