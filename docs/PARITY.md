@@ -201,7 +201,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Sort online, idle, dnd, unknown, offline, none | bh | has | `Kit/Timeline.swift` (`MemberSection.rank`) | By name (then `user_id`) within each; your own invisible sorts as offline. The composer's `@` list follows the same order. |
 | Offline members dimmed | #101 | has | `Timeline/MemberList.swift` | |
 | `member_count` with a truncated list says so | bh | has | `Kit/Records.swift` (`RoomDelivery.memberCount`), `Kit/ReplayStore.swift` (`memberCount(of:)`), `Kit/Timeline.swift` (`memberTotal`, `memberListNote`), `Timeline/MemberList.swift` | The bar counts the total; "Showing 3 of 1204: the most recently active" over the list. A complete listing clears the count. Place cards count the total too. |
-| Role badges, names first, "BOT +2" overflow | #39, #77, #131 | partial | `Design/People.swift` (`RoleBadges`) | Badges that don't fit are dropped. No "+2" count on the last one. |
+| Role badges, names first, "BOT +2" overflow | #39, #77, #131 | has | `Design/People.swift` (`RoleBadges`) | As many as fit, each role once; the last shown ends with how many it stands for ("DEPLOY +2"), with the edge of a badge behind it, as the web's stacked overflow. VoiceOver reads every role. Shot `ladle-role-overflow`. Where the web narrows the last badge to fit, Ladle shows one fewer. |
 | `@user_id` beside a name only when another user shares it | #82 | has | `Kit/UserDirectory.swift` | |
 | One entry per user after a `user_id` change, aliases | #81, #83 | has | `Kit/UserDirectory.swift` (`rename`) | |
 | Initials on a hue hashed from `user_id` | bh | has | `Design/People.swift` (`Avatar`) | |

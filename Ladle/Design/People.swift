@@ -200,21 +200,36 @@ struct Avatar: View {
 struct RoleBadges: View {
     let roles: [String]
 
+    /// Each role once, blank ones left out, as the web's `shown`.
+    private var shown: [String] {
+        var seen = Set<String>()
+        return roles.filter { !$0.trimmingCharacters(in: .whitespaces).isEmpty && seen.insert($0).inserted }
+    }
+
     var body: some View {
+        let shown = shown
+        // As many as fit, names first; the last one shown ends with how many it stands for
+        // ("BOT +2"), as the web's stacked overflow (#131).
         ViewThatFits(in: .horizontal) {
-            ForEach(Array(stride(from: roles.count, to: 0, by: -1)), id: \.self) { count in
-                HStack(spacing: 4) { ForEach(roles.prefix(count), id: \.self, content: badge) }
+            ForEach(Array(stride(from: shown.count, to: 0, by: -1)), id: \.self) { count in
+                HStack(spacing: 4) {
+                    ForEach(Array(shown.prefix(count).enumerated()), id: \.element) { index, role in
+                        badge(role, more: index == count - 1 ? shown.count - count : 0)
+                    }
+                }
             }
             EmptyView()
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(roles.joined(separator: ", "))
+        .accessibilityLabel(shown.joined(separator: ", "))
     }
 
-    private func badge(_ role: String) -> some View {
+    private func badge(_ role: String, more: Int) -> some View {
         let tone = role == "admin" ? Palette.accent : role == "bot" ? Palette.denim : nil
-        return Text(role)
-            .textCase(.uppercase)
+        return HStack(spacing: 3) {
+            Text(role).textCase(.uppercase)
+            if more > 0 { Text("+\(more)").monospacedDigit().foregroundStyle(Palette.inkMuted) }
+        }
             .tracking(0.3)
             .apText(.caps, .semibold)
             .lineLimit(1)
@@ -222,6 +237,13 @@ struct RoleBadges: View {
             .padding(.horizontal, 5)
             .frame(height: 16)
             .overlay(RoundedRectangle(cornerRadius: Tokens.Radius.sm).strokeBorder(tone?.opacity(0.55) ?? Palette.lineStrong))
+            // Stacked: the edge of the badges behind it shows under its trailing side.
+            .background(alignment: .trailing) {
+                if more > 0 {
+                    RoundedRectangle(cornerRadius: Tokens.Radius.sm).strokeBorder(Palette.line)
+                        .offset(x: 2, y: 2)
+                }
+            }
             .fixedSize()
     }
 }

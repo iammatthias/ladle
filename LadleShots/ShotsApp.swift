@@ -48,7 +48,7 @@ enum Screen: String, CaseIterable {
     case liveTextFinished = "live-text-finished", liveText = "live-text", liveTextWaiting = "live-text-waiting", terminalViewer = "terminal-viewer"
     case readReceipts = "read-receipts", profileReceipts = "profile-receipts"
     case roomsNewerServer = "rooms-newer-server", serverPaneNewer = "server-pane-newer"
-    case roomsStarting = "rooms-starting", roomStarting = "room-starting", timelineFirstPage = "timeline-first-page"
+    case roomsStarting = "rooms-starting", roomStarting = "room-starting", timelineFirstPage = "timeline-first-page", roleOverflow = "role-overflow"
     case notifications, notifyOffer = "notify-offer", notifyOfferTimeline = "notify-offer-timeline"
     // Last of the phone shots: Browse Rooms lists the garden and the book club into home's store,
     // which the `#` list would then offer.
@@ -240,6 +240,23 @@ enum Renderer {
         case .roomStarting:
             // The iPad detail while that first visit connects: placeholder messages and "Connecting…".
             AnyView(starting.session(for: PreviewFixtures.startingID).map { slow in RoomLoading(label: slow.startingWords).background(Palette.timeline) })
+        case .roleOverflow:
+            // Four roles beside a name in narrower and narrower rows: those that don't fit stack behind the last shown, "+N".
+            AnyView(VStack(alignment: .leading, spacing: Tokens.Space.s4) {
+                ForEach([360, 240, 170, 120], id: \.self) { width in
+                    HStack(spacing: Tokens.Space.s2) {
+                        Text("Dev").apText(.body, .semibold).foregroundStyle(Palette.ink).layoutPriority(1)
+                        RoleBadges(roles: ["bot", "deploy", "nightly", "release"])
+                        Spacer(minLength: 0)
+                    }
+                    .frame(width: CGFloat(width), alignment: .leading)
+                    .overlay(alignment: .trailing) { Rectangle().fill(Palette.line).frame(width: 1) }
+                }
+                Spacer()
+            }
+            .padding(Tokens.Space.s4)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(Palette.timeline))
         case .timelineFirstPage:
             // A room whose first page has not come: placeholder rows and "Loading messages…".
             AnyView(starting.session(for: PreviewFixtures.startingID).map { slow in
@@ -574,7 +591,7 @@ enum Renderer {
             // Eun-ji's mention of Sam as it arrives, its ring a third of the way out.
             AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
                 .environment(\.shotPins, ShotPins(pulse: 0.35, scrollTo: "1793092500000")))
-        case .connectPasskey, .connectPasskeyCreate, .connectPasskeyUnavailable, .connectExternalCode, .youSignIn, .youAddEmail, .roomsHeld, .roomsNudge, .roomsNewerServer, .serverPaneNewer, .roomsStarting, .roomStarting, .timelineFirstPage, .notifications, .notifyOffer, .notifyOfferTimeline:
+        case .connectPasskey, .connectPasskeyCreate, .connectPasskeyUnavailable, .connectExternalCode, .youSignIn, .youAddEmail, .roomsHeld, .roomsNudge, .roomsNewerServer, .serverPaneNewer, .roomsStarting, .roomStarting, .timelineFirstPage, .roleOverflow, .notifications, .notifyOffer, .notifyOfferTimeline:
             // Drawn by `view` from the sign-in store.
             AnyView(EmptyView())
         case .welcome:
