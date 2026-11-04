@@ -151,8 +151,9 @@ struct TimelineView: View {
                     }
                     let shown = held ? [] : items
                     let receipts = session.receipts(in: roomID, shown: shown.compactMap(\.storedMessage))
+                    let joins = session.mentionJoins(shown)
                     ForEach(shown) { item in
-                        row(item, receipts: receipts).id(item.id)
+                        row(item, receipts: receipts, join: joins[item.id] ?? []).id(item.id)
                     }
                     ForEach(Array((held ? [] : session.notices(in: roomID)).enumerated()), id: \.offset) { _, notice in
                         let menu = NoticeMenu(notice, in: session)
@@ -770,7 +771,7 @@ struct TimelineView: View {
     }
 
     @ViewBuilder
-    private func row(_ item: TimelineItem, receipts: [LogID: [Reader]]) -> some View {
+    private func row(_ item: TimelineItem, receipts: [LogID: [Reader]], join: MentionJoin) -> some View {
         switch item {
         case .message(let message, let continues, let pending):
             // A queued message's row and the logged message's are one view: the same branch, the
@@ -785,6 +786,7 @@ struct TimelineView: View {
                 MessageRow(session: session, message: message, continues: continues, pending: pending,
                            highlighted: highlighted == message.messageID || picking?.contains(message.messageID) == true,
                            pulsing: pulsing.contains(message.messageID),
+                           mentionJoin: join,
                            reminderDue: reminding.reminder(on: message)?.due,
                            onClearReminder: { reminding.forget(message) },
                            onReact: { emoji in perform("Reacting…") { try await session.toggleReaction(emoji, on: message.messageID) } },

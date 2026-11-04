@@ -6,6 +6,8 @@ import SwiftUI
 /// an accent bar, as the web marks it. One a link opened to is highlighted on `hover`, as the
 /// web's `ap-msg-highlighted`. One with a reminder has an accent edge and says when it is due.
 /// One `pulsing` because a mention of you just arrived rings once, as the web's `ap-msg-pinged`.
+/// Where it meets the sender's next message that mentions you (`mentionJoin`, #210), the two are
+/// one highlight: their corners there square and the bar running straight through.
 struct MessageRow: View {
     let session: ServerSession
     let message: MessageSnapshot
@@ -16,6 +18,7 @@ struct MessageRow: View {
     var pending: ServerSession.PendingMessage? = nil
     var highlighted = false
     var pulsing = false
+    var mentionJoin: MentionJoin = []
     var reminderDue: Date?
     var onClearReminder: () -> Void = {}
     var onReact: (String) -> Void = { _ in }
@@ -82,7 +85,7 @@ struct MessageRow: View {
         .padding(.vertical, Tokens.Space.s1)
         .padding(.horizontal, Tokens.Space.s2)
         .opacity(pending?.state == .sending ? Tokens.Opacity.dim : 1)
-        .background(highlighted ? Palette.hover : row.mentionsYou ? Palette.accentSoft : .clear, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
+        .background(highlighted ? Palette.hover : row.mentionsYou ? Palette.accentSoft : .clear, in: ground)
         .overlay {
             if reminderDue != nil {
                 RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.accent, lineWidth: 1.5).accessibilityHidden(true)
@@ -95,7 +98,9 @@ struct MessageRow: View {
         }
         .overlay(alignment: .leading) {
             if row.mentionsYou {
-                Capsule().fill(Palette.accent).frame(width: 3).padding(.vertical, Tokens.Space.s1)
+                bar.fill(Palette.accent).frame(width: 3)
+                    .padding(.top, mentionJoin.contains(.above) ? 0 : Tokens.Space.s1)
+                    .padding(.bottom, mentionJoin.contains(.below) ? 0 : Tokens.Space.s1)
                     .accessibilityHidden(true)
             }
         }
@@ -108,6 +113,20 @@ struct MessageRow: View {
         .task(id: row.liveAppend.map(ObjectIdentifier.init)) {
             if let live = row.liveAppend { await session.follow(live) }
         }
+    }
+
+    /// The row's ground, square where it joins the next or the last.
+    private var ground: UnevenRoundedRectangle {
+        let top = mentionJoin.contains(.above) ? 0 : Tokens.Radius.md
+        let bottom = mentionJoin.contains(.below) ? 0 : Tokens.Radius.md
+        return UnevenRoundedRectangle(topLeadingRadius: top, bottomLeadingRadius: bottom, bottomTrailingRadius: bottom, topTrailingRadius: top)
+    }
+
+    /// The mention's accent bar, its ends round unless it runs on into a joined row.
+    private var bar: UnevenRoundedRectangle {
+        let top: CGFloat = mentionJoin.contains(.above) ? 0 : 1.5
+        let bottom: CGFloat = mentionJoin.contains(.below) ? 0 : 1.5
+        return UnevenRoundedRectangle(topLeadingRadius: top, bottomLeadingRadius: bottom, bottomTrailingRadius: bottom, topTrailingRadius: top)
     }
 
     private func head(_ row: MessageRowModel) -> some View {

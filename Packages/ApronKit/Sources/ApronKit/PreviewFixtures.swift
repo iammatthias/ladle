@@ -780,4 +780,36 @@ extension PreviewFixtures {
         }
         return store
     }
+
+    /// A server of its own with one room, standup, where Eun-ji mentions you twice in a row, then
+    /// thanks you: the two mentions joined into one highlight (#210), and Bram's mention after
+    /// them highlighted alone.
+    public static let mentionRunID = UUID(uuidString: "6C61646C-0000-4000-8000-000000000006")!
+    public static let mentionRunRoomID = "standup"
+
+    @MainActor
+    public static func makeMentionRunStore() async -> SessionStore {
+        let tokens = InMemoryTokenStore()
+        let script = PreviewServer.Script(
+            greeting: greeting, you: people["sam"]!,
+            roomList: ["joined": [room(mentionRunRoomID, "standup", members: ["sam", "eunji", "bram", "ada"], description: "Daily notes")],
+                       "users": .array(people.keys.sorted().map { people[$0]! })],
+            histories: [mentionRunRoomID: history(mentionRunRoomID, [
+                line(30, "ada", "Standup moved to 10 today."),
+                line(31, "eunji", "@Sam the icon PR is ready for a look.", mentions: ["sam"]),
+                line(32, "eunji", "@Sam and could you check the 20 pt export before you cut the build? The stroke looked thin on my phone.", mentions: ["sam"]),
+                line(33, "eunji", "Thanks!"),
+                line(34, "bram", "@Sam lunch after?", mentions: ["sam"]),
+            ])], readCursors: [:])
+        let environment = ServerSession.Environment(
+            makeTransport: { _ in PreviewServer(script: script) }, sleep: { _ in try await Task.sleep(for: .seconds(3600)) }, jitter: { 1 })
+        let store = SessionStore(serverStore: nil, tokens: tokens, environment: environment)
+        try? tokens.setToken("preview", for: mentionRunID)
+        store.add(ServerRecord(id: mentionRunID, url: URL(string: "wss://standup.example/ws")!, label: "Standup"))
+        if let session = store.session(for: mentionRunID) {
+            await until { session.status == .signedIn }
+            try? await session.open(mentionRunRoomID)
+        }
+        return store
+    }
 }

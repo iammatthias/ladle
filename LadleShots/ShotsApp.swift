@@ -44,7 +44,7 @@ enum Screen: String, CaseIterable {
     case roomsReconnecting = "rooms-reconnecting", ipadCatchingUp = "ipad-catching-up"
     case commandFailed = "command-failed"
     case emojiStandard = "emoji-standard"
-    case floatingDay = "floating-day", mentionPulse = "mention-pulse", welcome
+    case floatingDay = "floating-day", mentionPulse = "mention-pulse", mentionRun = "mention-run", welcome
     case connectPasskey = "connect-passkey", connectPasskeyCreate = "connect-passkey-create", connectPasskeyUnavailable = "connect-passkey-unavailable"
     case connectExternalCode = "connect-external-code", youSignIn = "you-signin", youAddEmail = "you-add-email", roomsHeld = "rooms-held", roomsNudge = "rooms-nudge"
     case liveTextFinished = "live-text-finished", liveText = "live-text", liveTextWaiting = "live-text-waiting", terminalViewer = "terminal-viewer"
@@ -114,6 +114,7 @@ enum Renderer {
         guard let home = store.session(for: PreviewFixtures.homeID) else { exit(1) }
         signIn = await PreviewFixtures.makeSignInStore()
         hole = await PreviewFixtures.makeHoleStore()
+        mentionRun = await PreviewFixtures.makeMentionRunStore()
         newer = await PreviewFixtures.makeNewerServerStore()
         starting = PreviewFixtures.makeStartingStore()
         notify = await PreviewFixtures.makeNotifyStore()
@@ -223,6 +224,7 @@ enum Renderer {
     static var starting = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
     /// The changelog opened at an old message, with the gap row between its window and the newest page.
     static var hole = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
+    static var mentionRun = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
     /// Notifications on with push on home (`PreviewFixtures.makeNotifyStore`).
     static var notify = SessionStore(serverStore: nil, tokens: InMemoryTokenStore())
     /// The offer to turn notifications on, after a mention (`PreviewFixtures.makeNotifyOfferStore`).
@@ -648,6 +650,14 @@ enum Renderer {
         case .connectPasskey, .connectPasskeyCreate, .connectPasskeyUnavailable, .connectExternalCode, .youSignIn, .youAddEmail, .roomsHeld, .roomsNudge, .roomsNewerServer, .serverPaneNewer, .roomsStarting, .roomStarting, .timelineFirstPage, .roleOverflow, .notifications, .notifyOffer, .notifyOfferTimeline, .roomsUnseenReactions, .unseenReactionJump:
             // Drawn by `view` from the sign-in store.
             AnyView(EmptyView())
+        case .mentionRun:
+            // Eun-ji's two mentions of Sam in a row as one highlight (#210), her thanks after, and
+            // Bram's mention on its own.
+            AnyView(NavigationStack {
+                if let standup = mentionRun.session(for: PreviewFixtures.mentionRunID) {
+                    TimelineView(session: standup, roomID: PreviewFixtures.mentionRunRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts())
+                }
+            })
         case .welcome:
             // The demo's welcome before `auth`, in its first room, help.
             AnyView(NavigationStack {

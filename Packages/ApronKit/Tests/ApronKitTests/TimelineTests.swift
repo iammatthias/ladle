@@ -90,4 +90,21 @@ final class TimelineTests: XCTestCase {
                         ["1793088060000#1", "IMG_4022.jpg", "Sam", "", "https://home.example/files/embed_11/s11"],
                         ["1793088180000#0", "dansk-pot.jpg", "Chiara", "A red enamel pot on a wooden table", "https://home.example/files/embed_1/s1"]])
     }
+
+    /// apron-web #210: one sender's grouped messages that mention you draw one highlight.
+    func testGroupedMentionsOfYouFromOneSenderJoin() async throws {
+        let store = await PreviewFixtures.makeMentionRunStore()
+        let session = try XCTUnwrap(store.session(for: PreviewFixtures.mentionRunID))
+        let items = session.timelineItems(PreviewFixtures.mentionRunRoomID, lineBefore: nil, calendar: utc)
+        XCTAssertEqual(names(items, in: session).dropFirst(), ["ada", "eunji", "eunji+", "eunji+", "bram"])
+        let joins = session.mentionJoins(items)
+        let rows = items.compactMap { item -> String? in
+            guard case .message(let message, _, _) = item else { return nil }
+            let join = joins[item.id] ?? []
+            return (session.mentionsYou(message) ? "@" : "") + (join.contains(.above) ? "^" : "") + (join.contains(.below) ? "v" : "")
+        }
+        XCTAssertEqual(rows, ["", "@v", "@^", "", "@"], "Eun-ji's two join; her thanks and Bram's mention stand alone")
+        let lined = session.timelineItems(PreviewFixtures.mentionRunRoomID, lineBefore: LogID(items.compactMap(\.storedMessage)[2].messageID.text), calendar: utc)
+        XCTAssertTrue(session.mentionJoins(lined).isEmpty, "a New line between them keeps them apart")
+    }
 }

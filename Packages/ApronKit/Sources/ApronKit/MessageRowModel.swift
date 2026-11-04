@@ -64,7 +64,7 @@ public struct MessageRowModel {
         localFiles = Dictionary(uniqueKeysWithValues: zip(uploads, pending?.attachments ?? []).map { ($0.offset, $1) })
         name = session.displayName(for: message.from)
         roles = session.roles(of: message.from)
-        mentionsYou = session.you.map { message.mentions($0.userID) && message.from.userID != $0.userID } ?? false
+        mentionsYou = session.mentionsYou(message)
         let names = Dictionary(message.mentionIDs.map { id in
             (id, session.users.user(id).flatMap(UserObject.init).map(session.displayName(for:)) ?? id)
         }, uniquingKeysWith: { first, _ in first })

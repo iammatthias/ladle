@@ -346,6 +346,36 @@ extension ServerSession {
     }
 }
 
+/// Where a row that mentions you meets its neighbor in one highlight, as apron-web's joined
+/// mention runs (#210): one sender's grouped messages that both mention you share their edge.
+public struct MentionJoin: OptionSet, Hashable, Sendable {
+    public let rawValue: UInt8
+    public init(rawValue: UInt8) { self.rawValue = rawValue }
+    public static let above = MentionJoin(rawValue: 1 << 0)
+    public static let below = MentionJoin(rawValue: 1 << 1)
+}
+
+extension ServerSession {
+    /// The message mentions you: `body.mentions` lists you, and someone else sent it (#181).
+    public func mentionsYou(_ message: MessageSnapshot) -> Bool {
+        you.map { message.mentions($0.userID) && message.from.userID != $0.userID } ?? false
+    }
+
+    /// Each joined row's joins, by item id: a message that mentions you and the next item, a
+    /// message continuing its sender's run that mentions you too. As the web's `+` and `:has(+)`,
+    /// only adjacent rows join, so a New line between them keeps them apart.
+    public func mentionJoins(_ items: [TimelineItem]) -> [String: MentionJoin] {
+        var joins: [String: MentionJoin] = [:]
+        for (upper, lower) in zip(items, items.dropFirst()) {
+            guard case .message(let first, _, _) = upper, case .message(let second, true, _) = lower,
+                  mentionsYou(second), mentionsYou(first) else { continue }
+            joins[upper.id, default: []].insert(.below)
+            joins[lower.id, default: []].insert(.above)
+        }
+        return joins
+    }
+}
+
 /// An image upload in a room, as the media viewer pages through them.
 public struct MediaItem: Identifiable, Hashable, Sendable {
     public let id: String
