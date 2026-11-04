@@ -19,13 +19,14 @@ extension View {
     /// apron-web's "Sign in with this link?" dialog: which server, what it replaces, the warning
     /// that a link from someone else signs in to their account, and, where an account is signed
     /// in on that server, Add It beside Sign In, since a link doesn't say which it is for.
-    func signInLinkDialog(_ asked: Binding<AskedLink?>, outcome: Binding<String?>, store: SessionStore) -> some View {
-        confirmationDialog(asked.wrappedValue?.prompt.title ?? "", isPresented: Binding { asked.wrappedValue != nil } set: { if !$0 { asked.wrappedValue = nil } },
+    /// A link asked about while another is being used shows once that one ends (`LinkWork`).
+    func signInLinkDialog(_ asked: Binding<AskedLink?>, outcome: Binding<String?>, links: LinkWork) -> some View {
+        confirmationDialog(asked.wrappedValue?.prompt.title ?? "", isPresented: Binding { asked.wrappedValue != nil && !links.isBusy } set: { if !$0 { asked.wrappedValue = nil } },
                            titleVisibility: .visible, presenting: asked.wrappedValue) { link in
             let prompt = link.prompt
             if prompt.adds {
                 Button("Add It") {
-                    Task {
+                    links.run {
                         do {
                             try await link.session.approveAddition(link: link.token, proposal: nil)
                             outcome.wrappedValue = "Added · sign in with it anywhere"
@@ -36,7 +37,7 @@ extension View {
                 }
             }
             Button("Sign In", role: prompt.adds || link.session.you != nil ? .destructive : nil) {
-                Task {
+                links.run {
                     do {
                         try await link.session.signIn(link: link.token, proposal: nil)
                     } catch {

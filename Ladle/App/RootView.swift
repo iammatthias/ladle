@@ -22,6 +22,7 @@ struct RootView: View {
     @State private var restored = false
     /// A sign-in link of no proposal here, waiting for the user to confirm it (§4.11.2).
     @State private var askedLink: AskedLink?
+    @State private var links = LinkWork()
     /// What became of a sign-in link: added, or why it didn't work.
     @State private var linkOutcome: String?
     /// A link to a server with several saved accounts, waiting for the user to pick one.
@@ -53,7 +54,7 @@ struct RootView: View {
             })
         }
         .sheet(item: $preferences) { PreferencesView(store: store, request: $0) }
-        .signInLinkDialog($askedLink, outcome: $linkOutcome, store: store)
+        .signInLinkDialog($askedLink, outcome: $linkOutcome, links: links)
         .alert(linkOutcome ?? "", isPresented: Binding { linkOutcome != nil } set: { if !$0 { linkOutcome = nil } }) {
             Button("OK", role: .cancel) {}
         }
@@ -161,7 +162,7 @@ struct RootView: View {
             // This device's own proposal: it continues the sign-in or addition it started (§4.11.2).
             guard let session = store.session(for: proposal.server) else { return }
             show(proposal.server, nil)
-            Task {
+            links.run {
                 do {
                     if proposal.kind == .addition {
                         try await session.approveAddition(link: token, proposal: proposal)
