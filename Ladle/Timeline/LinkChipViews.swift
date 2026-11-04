@@ -5,20 +5,21 @@ import SwiftUI
 /// its kind's icon (a message bubble, a hash, a corner arrow, a globe for another server; a
 /// user's reads as a mention, with none), its label, and its detail, `styled` colouring the
 /// words. Another server's ends with an arrow, since opening it leaves this server.
-/// `LinkChipRenderer` draws the chip behind them.
+/// `ChipRenderer` draws the chip behind them.
 enum LinkChipText {
     /// One part of the chip. `number` tells this chip from the next for the renderer.
     static func part(_ part: LinkChipPart, _ written: AttributedSubstring, number: Int) -> Text {
         let chip = part.chip
-        let mark = LinkChipMark(number: number, elsewhere: chip.kind == .elsewhere)
+        let elsewhere = chip.kind == .elsewhere
+        let mark = ChipMark(number: number, ground: elsewhere ? .elsewhere : .place)
         let edge = Text("\u{202F}")
         var text = Text(AttributedString(written))
         if !part.isDetail, let symbol = symbol(chip.kind) {
-            let icon = Text(Image(systemName: symbol)).foregroundStyle(mark.elsewhere ? Palette.ink : Palette.denim)
+            let icon = Text(Image(systemName: symbol)).foregroundStyle(elsewhere ? Palette.ink : Palette.denim)
             text = Text("\(edge)\u{2060}\(icon)\u{2060}\(edge)\u{2060}\(text)")
         }
         if part.isDetail || chip.detail == nil {
-            let arrow = mark.elsewhere ? Text("\u{2060}\u{00A0}\u{2197}").foregroundStyle(Palette.inkMuted) : Text("")
+            let arrow = elsewhere ? Text("\u{2060}\u{00A0}\u{2197}").foregroundStyle(Palette.inkMuted) : Text("")
             text = Text("\(text)\(arrow)\u{2060}\(edge)")
         }
         return text.customAttribute(mark)
@@ -35,21 +36,48 @@ enum LinkChipText {
     }
 }
 
-/// Which link chip a run of laid-out text belongs to.
-struct LinkChipMark: TextAttribute {
-    let number: Int
-    let elsewhere: Bool
+/// A mention (`MentionKey`) in a line of `Text`, as apron-web's `ap-mention`: its words with
+/// `padding` at each side (6 px on the web, #210), `styled` colouring them and `ChipRenderer`
+/// drawing the ground, accent for you and denim-soft for anyone else, with the web's small radius.
+@MainActor
+enum MentionChipText {
+    static func chip(_ mention: MentionChip, _ written: AttributedSubstring, number: Int, padding: CGFloat) -> Text {
+        let edge = Text(Image(uiImage: spacer(width: padding)))
+        return Text("\(edge)\u{2060}\(Text(AttributedString(written)))\u{2060}\(edge)")
+            .customAttribute(ChipMark(number: number, ground: mention.isYou ? .mentionYou : .mention))
+    }
+
+    /// A clear image `width` wide: a run of `Text` has no padding, but holds an image.
+    private static func spacer(width: CGFloat) -> UIImage {
+        let key = (width * 4).rounded() / 4
+        if let made = spacers[key] { return made }
+        let made = UIGraphicsImageRenderer(size: CGSize(width: key, height: 1)).image { _ in }
+        spacers[key] = made
+        return made
+    }
+
+    private static var spacers: [CGFloat: UIImage] = [:]
 }
 
-/// Draws each link chip behind its words, a piece per line it wraps onto (the web's
-/// `box-decoration-break: clone`): denim-soft for a place on this server, a `line-strong` outline
-/// for one on another server.
-struct LinkChipRenderer: TextRenderer {
+/// Which chip a run of laid-out text belongs to, and the ground drawn behind it.
+struct ChipMark: TextAttribute {
+    enum Ground: Hashable { case place, elsewhere, mention, mentionYou }
+    let number: Int
+    let ground: Ground
+}
+
+/// Draws each chip behind its words, a piece per line it wraps onto (the web's
+/// `box-decoration-break: clone`): denim-soft for a place on this server or a mention, a
+/// `line-strong` outline for a place on another server, accent for a mention of you. A link
+/// chip's ground is its words' height; a mention's is `mentionHeight`, centered on them.
+struct ChipRenderer: TextRenderer {
+    var mentionHeight: CGFloat
+
     func draw(layout: Text.Layout, in ctx: inout GraphicsContext) {
         for line in layout {
-            var pieces: [(mark: LinkChipMark, rect: CGRect)] = []
+            var pieces: [(mark: ChipMark, rect: CGRect)] = []
             for run in line {
-                guard let mark = run[LinkChipMark.self] else { continue }
+                guard let mark = run[ChipMark.self] else { continue }
                 let rect = run.typographicBounds.rect
                 if let last = pieces.last, last.mark.number == mark.number {
                     pieces[pieces.count - 1].rect = last.rect.union(rect)
@@ -59,10 +87,15 @@ struct LinkChipRenderer: TextRenderer {
             }
             for piece in pieces {
                 let shape = RoundedRectangle(cornerRadius: Tokens.Radius.sm)
-                if piece.mark.elsewhere {
+                switch piece.mark.ground {
+                case .elsewhere:
                     ctx.stroke(shape.path(in: piece.rect.insetBy(dx: 0.5, dy: 0.5)), with: .color(Palette.lineStrong), lineWidth: 1)
-                } else {
+                case .place:
                     ctx.fill(shape.path(in: piece.rect), with: .color(Palette.denimSoft))
+                case .mention, .mentionYou:
+                    let rect = piece.rect
+                    let ground = CGRect(x: rect.minX, y: rect.midY - mentionHeight / 2, width: rect.width, height: mentionHeight)
+                    ctx.fill(shape.path(in: ground), with: .color(piece.mark.ground == .mentionYou ? Palette.accent : Palette.denimSoft))
                 }
             }
             ctx.draw(line)

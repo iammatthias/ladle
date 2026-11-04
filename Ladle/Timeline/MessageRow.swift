@@ -217,7 +217,8 @@ struct MessageRow: View {
 /// on-accent on accent, and a role (`RoleMentionKey`) in denim on denim-soft with a dotted denim
 /// rule under it in place of the web's ring, which a run of `Text` cannot draw: it opens nothing.
 /// An Apron link drawn as a chip (`LinkChipKey`) is denim, its detail lighter, and one to another
-/// server ink, its detail muted; `LinkChipText` adds the icon and `LinkChipRenderer` the ground.
+/// server ink, its detail muted; `LinkChipText` adds the icon and `ChipRenderer` the ground.
+/// A mention gets only its ink here; `MentionChipText` pads it and `ChipRenderer` draws its ground.
 func styled(_ text: AttributedString) -> AttributedString {
     var out = text
     for run in out.runs {
@@ -240,7 +241,6 @@ func styled(_ text: AttributedString) -> AttributedString {
     }
     for run in out.runs {
         guard let chip = run[MentionKey.self] else { continue }
-        out[run.range].backgroundColor = chip.isYou ? Palette.accent : Palette.denimSoft
         out[run.range].foregroundColor = chip.isYou ? Palette.onAccent : Palette.denim
         out[run.range].inlinePresentationIntent = .stronglyEmphasized
     }

@@ -53,13 +53,22 @@ struct EmojiText: View {
     var body: some View {
         let (line, chips) = drawn()
         if chips > 0 {
-            line.textRenderer(LinkChipRenderer())
+            line.textRenderer(ChipRenderer(mentionHeight: mentionHeight))
         } else {
             line
         }
     }
 
-    /// The line, read by VoiceOver as its words, and how many link chips it holds.
+    /// The scale Dynamic Type gives this role.
+    private var scale: CGFloat { ScaledRole.size(role, at: fixed ?? dynamic) / role.size }
+
+    /// A mention's ground, as the web's `button.ap-mention` since #210: `--leading-ui` tall with
+    /// 1 px above and below, so it stays inside a body line; in a title, the title's own leading.
+    private var mentionHeight: CGFloat {
+        ((role == .title || role == .display ? role.leading : Tokens.Leading.ui) + 2) * scale
+    }
+
+    /// The line, read by VoiceOver as its words, and how many chips (links and mentions) it holds.
     private func drawn() -> (Text, Int) {
         let size = ScaledRole.size(role, at: fixed ?? dynamic)
         let font = UIFont.systemFont(ofSize: size)
@@ -67,8 +76,14 @@ struct EmojiText: View {
         var out = Text("")
         var spoken = ""
         var chips = 0
-        for (key, chip, range) in text.runs[CustomEmojiKey.self, LinkChipKey.self] {
+        for (key, chip, mention, range) in text.runs[CustomEmojiKey.self, LinkChipKey.self, MentionKey.self] {
             let written = text[range]
+            if let mention {
+                chips += 1
+                spoken += String(written.characters)
+                out = Text("\(out)\(MentionChipText.chip(mention, written, number: chips, padding: 6 * scale))")
+                continue
+            }
             if let chip {
                 if !chip.isDetail {
                     chips += 1
