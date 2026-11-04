@@ -58,7 +58,7 @@ struct MediaAskTile: View {
         .accessibilityAction { settings.loadOnce(ask.url) }
         .accessibilityActions {
             if let origin = ask.origin {
-                Button("Always Load from \(ask.host)") { settings.trust(origin) }
+                Button("Always Load from \(ask.host)") { settings.trust(origin, held: ask.held) }
                 Button("Block \(ask.host)") { settings.block(origin) }
             }
         }
@@ -67,7 +67,7 @@ struct MediaAskTile: View {
     @ViewBuilder private var actions: some View {
         Button("Load", systemImage: "arrow.down.circle") { settings.loadOnce(ask.url) }
         if let origin = ask.origin {
-            Button("Always Load from \(ask.host)", systemImage: "checkmark.shield") { settings.trust(origin) }
+            Button("Always Load from \(ask.host)", systemImage: "checkmark.shield") { settings.trust(origin, held: ask.held) }
             Divider()
             Button("Block \(ask.host)", systemImage: "hand.raised", role: .destructive) { settings.block(origin) }
         }

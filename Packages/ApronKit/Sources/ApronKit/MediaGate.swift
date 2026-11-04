@@ -31,6 +31,8 @@ public struct MediaAsk: Hashable, Sendable {
     public var url: URL
     public var host: String
     public var origin: String?
+    /// Asked on an export's gate held to its own sites (`MediaSettings.gate(heldToServer:)`).
+    public var held = false
 
     public init(url: URL, host: String, origin: String?) {
         self.url = url
@@ -73,9 +75,12 @@ public struct MediaGate: Hashable, Sendable {
     /// The hosts of the viewer's blocked sites (`blockableHost`), matched whatever the scheme or
     /// port, and every host under them (blocking `tracker.example` blocks `a.tracker.example`).
     public var blockedHosts: Set<String>
+    /// Held to the server's own sites, as an export's is until Always Load there.
+    public var held: Bool
 
     public init(serverURL: URL, server: ServerInfo?, policy: MediaPolicy = .trusted, viewerOrigins: some Sequence<String> = [String](),
-                loadedOnce: Set<URL> = [], blocked: some Sequence<String> = [String]()) {
+                loadedOnce: Set<URL> = [], blocked: some Sequence<String> = [String](), held: Bool = false) {
+        self.held = held
         origin = Self.httpOrigin(of: serverURL)
         serverOrigins = Set(MediaLimits(server: server)?.origins ?? [])
         self.policy = policy
@@ -94,7 +99,9 @@ public struct MediaGate: Hashable, Sendable {
         case .avatar:
             return policy == .any && url.scheme?.lowercased() == "https" ? .load(url) : .hidden
         case .timeline:
-            return policy == .any || loadedOnce.contains(url) ? .load(url) : .ask(MediaAsk(url))
+            var ask = MediaAsk(url)
+            ask.held = held
+            return policy == .any || loadedOnce.contains(url) ? .load(url) : .ask(ask)
         }
     }
 

@@ -263,7 +263,7 @@ final class MediaGateTests: XCTestCase {
         settings.block("https://tracker.example")
         let archive = ServerSession.archiveURL
         let held = settings.gate(serverURL: archive, server: nil, heldToServer: true)
-        XCTAssertEqual(held.decide(URL(string: "https://cdn.example/a.png")!), .ask(MediaAsk(URL(string: "https://cdn.example/a.png")!)),
+        XCTAssertEqual(held.decide(URL(string: "https://cdn.example/a.png")!), .ask(heldAsk("https://cdn.example/a.png")),
                        "neither Any Site nor the trusted sites")
         XCTAssertEqual(held.decide(URL(string: "https://tracker.example/t.gif")!), .hidden)
         XCTAssertEqual(held.decide(URL(string: "https://a.tracker.example/t.gif")!), .hidden, "and the hosts under it")
@@ -272,8 +272,35 @@ final class MediaGateTests: XCTestCase {
                        .load(URL(string: "https://cdn.example/a.png")!))
         XCTAssertEqual(settings.policy, .any, "blocking there keeps the policy chosen")
         let reader = ServerSession.reading(try Archive(text: #"{"apron_archive":1}"#), withImages: false, mediaSettings: settings)
-        XCTAssertEqual(reader.mediaGate.decide(URL(string: "https://elsewhere.example/a.png")!), .ask(MediaAsk(URL(string: "https://elsewhere.example/a.png")!)))
+        XCTAssertEqual(reader.mediaGate.decide(URL(string: "https://elsewhere.example/a.png")!), .ask(heldAsk("https://elsewhere.example/a.png")))
         XCTAssertEqual(reader.mediaGate.decide(URL(string: "https://tracker.example/t.gif")!), .hidden)
+    }
+
+    private func heldAsk(_ url: String) -> MediaAsk {
+        var ask = MediaAsk(URL(string: url)!)
+        ask.held = true
+        return ask
+    }
+
+    /// After apron-web's `media-settings.svelte.test.ts` (#209): Always Load on an export's page
+    /// lets it load from the trusted sites too, never any site, and saves the policy chosen.
+    @MainActor
+    func testAlwaysLoadInAnExportLoadsItFromTheTrustedSitesTooUntilTheNextExportOpens() throws {
+        let settings = MediaSettings()
+        settings.update(policy: .any, origins: ["https://cdn.example"])
+        let reader = ServerSession.reading(try Archive(text: #"{"apron_archive":1}"#), withImages: false, mediaSettings: settings)
+        guard case .ask(let ask) = reader.mediaGate.decide(URL(string: "https://photos.example/a.png")!) else { return XCTFail("asked") }
+        XCTAssertTrue(ask.held)
+        settings.trust(ask.origin!, held: ask.held)
+        XCTAssertEqual(reader.mediaGate.decide(URL(string: "https://photos.example/a.png")!), .load(URL(string: "https://photos.example/a.png")!))
+        XCTAssertEqual(reader.mediaGate.decide(URL(string: "https://cdn.example/b.png")!), .load(URL(string: "https://cdn.example/b.png")!),
+                       "every trusted site")
+        XCTAssertEqual(reader.mediaGate.decide(URL(string: "https://elsewhere.example/c.png")!), .ask(MediaAsk(URL(string: "https://elsewhere.example/c.png")!)),
+                       "not Any Site")
+        XCTAssertEqual(settings.policy, .any, "the policy saved stays the one chosen")
+        let next = ServerSession.reading(try Archive(text: #"{"apron_archive":1}"#), withImages: false, mediaSettings: settings)
+        XCTAssertEqual(next.mediaGate.decide(URL(string: "https://cdn.example/b.png")!), .ask(heldAsk("https://cdn.example/b.png")),
+                       "another export opens held")
     }
 
     func testTheMostSpecificPatternGivesAFilesLimits() throws {

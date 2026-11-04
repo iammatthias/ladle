@@ -36,10 +36,22 @@ public final class MediaSettings {
         save()
     }
 
-    /// Always Load: the site joins the trusted sites, whatever the policy.
-    public func trust(_ origin: String) {
+    /// Whether Always Load was chosen in the export open now, as apron-web's `trust` ends its
+    /// page's `limit` (#209): the export then loads from the trusted sites too, never any site.
+    public private(set) var exportHoldLifted = false
+
+    /// Always Load: the site joins the trusted sites, whatever the policy; chosen on an export's
+    /// held media (`held`), that export loads from the trusted sites from then on. The policy saved
+    /// stays the one chosen.
+    public func trust(_ origin: String, held: Bool = false) {
+        if held { exportHoldLifted = true }
         guard let parsed = Self.parseOrigins(origin).first, !origins.contains(parsed) else { return }
         update(policy: policy, origins: origins + [parsed])
+    }
+
+    /// An export opens held to its own sites, as the web's `limit` on loading its page.
+    public func holdExport() {
+        exportHoldLifted = false
     }
 
     /// Adds every site `text` names (`parseOrigins`); returns whether any was new.
@@ -82,11 +94,12 @@ public final class MediaSettings {
     }
 
     /// The gate for a server under these choices. `heldToServer` keeps it to the server's own
-    /// origins, as an export's is, whatever the policy and trusted sites say; the blocked sites
-    /// and Load still hold.
+    /// origins, as an export's is, whatever the policy and trusted sites say, until Always Load
+    /// there adds the trusted sites (`exportHoldLifted`); the blocked sites and Load still hold.
     public func gate(serverURL: URL, server: ServerInfo?, heldToServer: Bool = false) -> MediaGate {
-        MediaGate(serverURL: serverURL, server: server, policy: heldToServer ? .trusted : policy, viewerOrigins: heldToServer ? [] : origins,
-                  loadedOnce: loadedOnce, blocked: blocked)
+        let held = heldToServer && !exportHoldLifted
+        return MediaGate(serverURL: serverURL, server: server, policy: heldToServer ? .trusted : policy, viewerOrigins: held ? [] : origins,
+                         loadedOnce: loadedOnce, blocked: blocked, held: held)
     }
 
     /// The `https:` origins `text` names, each once, in order, as apron-web's `parseMediaOrigins`:

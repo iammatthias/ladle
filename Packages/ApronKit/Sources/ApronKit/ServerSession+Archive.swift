@@ -118,6 +118,7 @@ extension ServerSession {
         environment.makeTransport = { _ in ArchiveServer(archive: archive, withImages: withImages) }
         let host = URL(string: archive.server)?.host(percentEncoded: false)
         let record = ServerRecord(url: archiveURL, label: host.map { "Export from \($0)" } ?? "Export")
+        mediaSettings.holdExport()
         return ServerSession(record: record, tokens: InMemoryTokenStore(), mediaSettings: mediaSettings, environment: environment)
     }
 
