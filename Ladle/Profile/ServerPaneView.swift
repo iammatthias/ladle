@@ -12,7 +12,6 @@ struct ServerPaneView: View {
     var onEditProfile: () -> Void = {}
     var onConnect: () -> Void = {}
     var onAddAccount: () -> Void = {}
-    @State private var copied = false
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -56,11 +55,10 @@ struct ServerPaneView: View {
                     Text("Address").apText(.sm, .semibold).foregroundStyle(Palette.inkMuted)
                     HStack(spacing: Tokens.Space.s1) {
                         Text(pane.address).apText(.ui).monospaced().foregroundStyle(Palette.ink).textSelection(.enabled).lineLimit(2)
-                        Button(copied ? "Copied the address" : "Copy the address", systemImage: copied ? "checkmark" : "doc.on.doc") { copy(pane.address) }
-                            .labelStyle(.iconOnly)
-                            .foregroundStyle(Palette.inkMuted)
-                            .buttonStyle(.borderless)
-                            .frame(minWidth: Tokens.Size.touchTarget, minHeight: Tokens.Size.touchTarget)
+                        CopyButton(label: "Copy the address", copiedLabel: "Copied the address") {
+                            UIPasteboard.general.string = pane.address
+                            return true
+                        }
                     }
                     if let version = pane.protocolVersion { Text(version).apText(.sm).foregroundStyle(Palette.inkMuted) }
                 }
@@ -109,15 +107,6 @@ struct ServerPaneView: View {
         case .ok: Palette.ok
         case .warn: Palette.warn
         case .danger: Palette.danger
-        }
-    }
-
-    private func copy(_ address: String) {
-        UIPasteboard.general.string = address
-        copied = true
-        Task {
-            try? await Task.sleep(for: .seconds(1.5))
-            copied = false
         }
     }
 }

@@ -54,6 +54,31 @@ struct ReactionNewsBadge: View {
     }
 }
 
+/// The web's CopyButton (#207): a copy icon that, once `copy` says it copied, shows a check and
+/// says `copiedLabel` for 1.5 s (`CopyFeedback`); a copy that fails takes Copied away.
+struct CopyButton: View {
+    let label: String
+    var copiedLabel = "Copied"
+    let copy: () -> Bool
+    @State private var feedback = CopyFeedback()
+
+    var body: some View {
+        Button { feedback.finish(copy()) } label: {
+            Image(systemName: feedback.copied ? "checkmark" : "doc.on.doc")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(Palette.inkMuted)
+                .touchTarget()
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(feedback.copied ? copiedLabel : label)
+        .task(id: feedback.generation) {
+            guard feedback.copied else { return }
+            try? await Task.sleep(for: CopyFeedback.shown)
+            if !Task.isCancelled { feedback.expire() }
+        }
+    }
+}
+
 /// A private room's lock (§4.2.4). Muted beside a room's name, as the web's `ap-lock`; in the
 /// private color on a private thread's card, so that color never shows without it.
 struct Lock: View {

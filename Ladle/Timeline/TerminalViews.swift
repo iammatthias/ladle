@@ -8,19 +8,23 @@ import UIKit
 /// says "Waiting to stream…". While the embed has `url` it is live
 /// under a Live badge, the screen following `url` (`ServerSession.follow`); then "Ended", and
 /// once a snapshot carries `output`, that, as "Finished". A tap on the screen, or Expand, opens
-/// it full screen in `TerminalViewer`. It only reads: nothing typed reaches it.
+/// it full screen in `TerminalViewer`. Copy in its header copies the screen's plain text, and
+/// while it has a `url` from the server, Open shows the stream on terminal.apron.chat in the
+/// browser (`TerminalPage`), a link the app never reads. It only reads: nothing typed reaches it.
 struct TerminalEmbedView: View {
     let session: ServerSession
     let embed: Embed
     @State private var expanded = false
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         let live = session.liveText(of: embed)
         let screen = live?.screen ?? FinishedTerminals.screen(embed.output ?? "")
         let isLive = live?.isLive == true
         let status = Self.status(embed: embed, live: live)
+        let page = session.terminalPage(of: embed)
         VStack(alignment: .leading, spacing: 0) {
-            header(isLive: isLive, status: status)
+            header(screen: screen, page: page, isLive: isLive, status: status)
             TerminalScreenView(screen: screen, rows: screen.shownRowCount, fit: .inline)
                 .padding(.horizontal, Tokens.Space.s2)
                 .padding(.bottom, Tokens.Space.s2)
@@ -33,6 +37,10 @@ struct TerminalEmbedView: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(title), \(isLive ? "Live" : status)")
         .accessibilityValue(screen.plainText)
+        .accessibilityAction(named: "Copy Terminal Text") { _ = copy(screen) }
+        .accessibilityActions {
+            if let page { Button("Open Terminal in Browser") { openURL(page) } }
+        }
         .accessibilityAction(named: "Expand Terminal") { expanded = true }
         .task(id: live.map(ObjectIdentifier.init)) {
             if let live { await session.follow(live) }
@@ -53,16 +61,35 @@ struct TerminalEmbedView: View {
         return embed.isWaitingForWriter ? "Waiting to stream…" : "Unavailable"
     }
 
-    private func header(isLive: Bool, status: String) -> some View {
+    /// Copies what the screen shows; with nothing on it, copies nothing.
+    private func copy(_ screen: TerminalScreen) -> Bool {
+        let text = screen.plainText
+        guard !text.isEmpty else { return false }
+        UIPasteboard.general.string = text
+        return true
+    }
+
+    private func header(screen: TerminalScreen, page: URL?, isLive: Bool, status: String) -> some View {
         HStack(spacing: Tokens.Space.s2) {
             Label(title, systemImage: "terminal")
                 .apText(.sm, .semibold).foregroundStyle(Palette.ink).lineLimit(1)
             if isLive {
                 LiveBadge()
             } else {
-                Text(status).apText(.xs).foregroundStyle(Palette.inkMuted)
+                Text(status).apText(.xs).foregroundStyle(Palette.inkMuted).lineLimit(1)
             }
             Spacer(minLength: 0)
+            CopyButton(label: "Copy Terminal Text") { copy(screen) }
+            if let page {
+                Link(destination: page) {
+                    Image(systemName: "arrow.up.right.square")
+                        .font(.footnote.weight(.semibold))
+                        .foregroundStyle(Palette.inkMuted)
+                        .touchTarget()
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Open Terminal in Browser")
+            }
             Button { expanded = true } label: {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
                     .font(.footnote.weight(.semibold))
