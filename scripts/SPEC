@@ -1,4 +1,4 @@
 # The shazow/apron commit Ladle implements. scripts/sync-fixtures.sh reads the replay fixtures and
 # tests/fixtures/terminal.json at this commit with `git archive`, so the copies depend on the pin and not on the clone's checkout.
 # Move it after reviewing the spec changes in between, then run scripts/sync-fixtures.sh.
-apron 23636cc4dec5f1b8ef00c0c4768c7f383db4001e
+apron 6ac69cc170c172ba470ebb619c1042eaf722a1a6
