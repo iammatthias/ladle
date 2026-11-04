@@ -202,7 +202,7 @@ struct TerminalScreenView: View {
     }
 
     /// One row as styled runs: cells of one style join into one run.
-    static func attributed(_ row: [TerminalCell], face: Face) -> AttributedString {
+    static func attributed(_ row: TerminalLine, face: Face) -> AttributedString {
         var out = AttributedString()
         var run = ""
         var style: TerminalStyle?

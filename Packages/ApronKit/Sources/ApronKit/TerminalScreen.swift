@@ -13,12 +13,12 @@ public struct TerminalScreen: Sendable {
 
     /// The lines kept above the screen, at most `scrollbackLimit`. A message's screen keeps none;
     /// the full-screen viewer keeps `viewerScrollback`.
-    public private(set) var scrollback: [[TerminalCell]] = []
+    public private(set) var scrollback: [TerminalLine] = []
     public let scrollbackLimit: Int
     public static let viewerScrollback = 5000
 
-    private var main: [[TerminalCell]]
-    private var alternate: [[TerminalCell]]?
+    private var main: [TerminalLine]
+    private var alternate: [TerminalLine]?
     private var cursor = Position()
     private var saved = Position()
     private var mainSaved = Position()
@@ -68,7 +68,7 @@ public struct TerminalScreen: Sendable {
     }
 
     /// The rows on screen now.
-    public var screen: [[TerminalCell]] { alternate ?? main }
+    public var screen: [TerminalLine] { alternate ?? main }
 
     public var isAlternate: Bool { alternate != nil }
 
@@ -81,14 +81,20 @@ public struct TerminalScreen: Sendable {
         return 1
     }
 
-    /// The text a terminal would show, scrollback first, trailing blanks and blank last rows
-    /// dropped: what VoiceOver reads and what Copy takes.
+    /// What the screen shows as plain text, scrollback first, as apron-web's `bufferText`: the
+    /// escapes already acted on, a line that wrapped joined to the one before it, the blanks at
+    /// each line's end and the blank lines at the foot dropped. What VoiceOver reads and Copy takes.
     public var plainText: String {
-        let rows = scrollback + Array(screen.prefix(shownRowCount))
-        var lines = rows.map { row in
-            String(row.filter { !$0.isContinuation }.map(\.text).joined()).replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)
+        let rows = scrollback + screen
+        var lines: [String] = []
+        for (index, row) in rows.enumerated() {
+            let text = row.filter { !$0.isContinuation }.map(\.text).joined()
+            // A line that goes on into the next keeps the spaces written at its end.
+            let continues = index + 1 < rows.count && rows[index + 1].isWrapped
+            let kept = continues ? text : text.replacingOccurrences(of: "\\s+$", with: "", options: .regularExpression)
+            if row.isWrapped, !lines.isEmpty { lines[lines.count - 1] += kept } else { lines.append(kept) }
         }
-        while lines.last?.isEmpty == true { lines.removeLast() }
+        while let last = lines.last, last.allSatisfy(\.isWhitespace) { lines.removeLast() }
         return lines.joined(separator: "\n")
     }
 
@@ -141,6 +147,7 @@ public struct TerminalScreen: Sendable {
             cursor.column = min(Self.columns - 1, (cursor.column / 8 + 1) * 8)
         case 0x0A, 0x0B, 0x0C:
             lineFeed()
+            rows[cursor.row].isWrapped = false
             cursor.column = 0
         case 0x0D:
             pendingWrap = false
@@ -192,17 +199,14 @@ public struct TerminalScreen: Sendable {
             return
         }
         if pendingWrap {
-            if autowrap {
-                lineFeed()
-                cursor.column = 0
-            }
+            if autowrap { wrap() }
             pendingWrap = false
         }
         if width == 2 && cursor.column == Self.columns - 1 {
             if autowrap {
-                put(TerminalCell(text: " ", style: style), at: cursor.column)
-                lineFeed()
-                cursor.column = 0
+                // An empty cell, as xterm leaves: not a space the text holds.
+                put(TerminalCell(text: "", style: style), at: cursor.column)
+                wrap()
             } else {
                 return
             }
@@ -218,6 +222,13 @@ public struct TerminalScreen: Sendable {
         }
     }
 
+    /// Goes on to the next line, which continues this one.
+    private mutating func wrap() {
+        lineFeed()
+        cursor.column = 0
+        rows[cursor.row].isWrapped = true
+    }
+
     /// A combining mark, a joiner or a variation selector joins the character before it.
     private mutating func appendToPrevious(_ scalar: Unicode.Scalar) {
         var column = pendingWrap ? cursor.column : cursor.column - 1
@@ -228,7 +239,7 @@ public struct TerminalScreen: Sendable {
     }
 
     /// The screen being written: the alternate one while a program uses it.
-    private var rows: [[TerminalCell]] {
+    private var rows: [TerminalLine] {
         get { alternate ?? main }
         _modify {
             if alternate != nil { yield &alternate! } else { yield &main }
@@ -264,8 +275,8 @@ public struct TerminalScreen: Sendable {
         if cursor.row == top { scrollDown(1) } else if cursor.row > 0 { cursor.row -= 1 }
     }
 
-    private func blankLine() -> [TerminalCell] {
-        Array(repeating: TerminalCell(text: " ", style: style.erased), count: Self.columns)
+    private func blankLine() -> TerminalLine {
+        TerminalLine(cells: Array(repeating: TerminalCell(text: " ", style: style.erased), count: Self.columns))
     }
 
     private mutating func scrollUp(_ count: Int) {
@@ -416,6 +427,7 @@ public struct TerminalScreen: Sendable {
         guard from < to else { return }
         let blank = TerminalCell(text: " ", style: style.erased)
         for column in from..<to { rows[row][column] = blank }
+        if from == 0, to == Self.columns { rows[row].isWrapped = false }
     }
 
     private mutating func deleteCharacters(_ count: Int) {
@@ -424,8 +436,8 @@ public struct TerminalScreen: Sendable {
         let count = min(count, Self.columns - column)
         let blank = TerminalCell(text: " ", style: style.erased)
         do {
-            rows[row].removeSubrange(column..<(column + count))
-            rows[row].append(contentsOf: Array(repeating: blank, count: count))
+            rows[row].cells.removeSubrange(column..<(column + count))
+            rows[row].cells.append(contentsOf: Array(repeating: blank, count: count))
         }
     }
 
@@ -435,8 +447,8 @@ public struct TerminalScreen: Sendable {
         let count = min(count, Self.columns - column)
         let blank = TerminalCell(text: " ", style: style.erased)
         do {
-            rows[row].insert(contentsOf: Array(repeating: blank, count: count), at: column)
-            rows[row].removeLast(count)
+            rows[row].cells.insert(contentsOf: Array(repeating: blank, count: count), at: column)
+            rows[row].cells.removeLast(count)
         }
     }
 
@@ -532,8 +544,8 @@ public struct TerminalScreen: Sendable {
         }
     }
 
-    private static func blankScreen() -> [[TerminalCell]] {
-        Array(repeating: Array(repeating: TerminalCell(text: " ", style: TerminalStyle()), count: columns), count: rows)
+    private static func blankScreen() -> [TerminalLine] {
+        Array(repeating: TerminalLine(cells: Array(repeating: TerminalCell(text: " ", style: TerminalStyle()), count: columns)), count: rows)
     }
 
     /// DEC Special Graphics (`ESC ( 0`): the line drawing set.
@@ -545,6 +557,21 @@ public struct TerminalScreen: Sendable {
         ]
         return Dictionary(uniqueKeysWithValues: pairs.map { ($0.0.unicodeScalars.first!, $0.1.unicodeScalars.first!) })
     }()
+}
+
+/// One row of cells, and whether it goes on from the row above: text that reached the last column
+/// and wrapped here, as xterm's `isWrapped`, so its plain text joins that row's.
+public struct TerminalLine: Hashable, Sendable, RandomAccessCollection, MutableCollection {
+    public var cells: [TerminalCell]
+    public var isWrapped = false
+
+    public var startIndex: Int { cells.startIndex }
+    public var endIndex: Int { cells.endIndex }
+
+    public subscript(position: Int) -> TerminalCell {
+        get { cells[position] }
+        set { cells[position] = newValue }
+    }
 }
 
 /// One cell: its text (a character with any marks joined to it), the style it was written in,

@@ -71,8 +71,36 @@ final class TerminalScreenTests: XCTestCase {
 
     func testTheEightiethColumnWrapsOnTheNextCharacter() {
         let full = String(repeating: "a", count: 80)
-        XCTAssertEqual(lines(full + "b"), [full, "b"])
+        let wrapped = TerminalScreen.showing(full + "b")
+        XCTAssertEqual(cell(wrapped, 0, 79).text, "a")
+        XCTAssertEqual(cell(wrapped, 1, 0).text, "b")
+        XCTAssertEqual(wrapped.plainText, full + "b", "a line that wrapped reads as one")
         XCTAssertEqual(lines(full + "\r\nb"), [full, "b"], "a line feed at the edge makes no blank line")
+    }
+
+    // After apron-web's `a screen’s text` (terminal-screen.test.ts, #207): what Copy takes.
+
+    func testItsTextIsWhatItShowsWithTheEscapesActedOnAndAWrappedLineJoined() {
+        XCTAssertEqual(TerminalScreen().plainText, "", "nothing on screen, no text")
+        let long = String(repeating: "x", count: TerminalScreen.columns) + "yz"
+        let output = "\u{1B}[1;32m$ make\u{1B}[0m   \r\nprogress 10%\rprogress 100%\r\n\u{1B}[38;2;255;0;0m\(long)\u{1B}[0m\r\n\r\n"
+        XCTAssertEqual(TerminalScreen.showing(output).plainText, "$ make\nprogress 100%\n\(long)")
+    }
+
+    func testAWideCharacterThatWrappedJoinsWithoutTheEmptyCellItLeft() {
+        let line = String(repeating: "x", count: TerminalScreen.columns - 1) + "字字"
+        XCTAssertEqual(TerminalScreen.showing(line + "\r\n").plainText, line)
+    }
+
+    func testTheSpacesWrittenAtTheEndOfALineThatWrapsAreKept() {
+        let line = String(repeating: "x", count: TerminalScreen.columns - 2) + "  b"
+        XCTAssertEqual(TerminalScreen.showing(line + "\n").plainText, line)
+    }
+
+    func testALineRewrittenAfterALineFeedOrEraseNoLongerJoins() {
+        let full = String(repeating: "a", count: 80)
+        XCTAssertEqual(lines(full + "b\u{1B}[2K\rc"), [full, "c"], "erasing the whole line ends the wrap")
+        XCTAssertEqual(lines(full + "b\u{1B}[A\r\nc"), [full, "c"], "a line feed onto it ends the wrap")
     }
 
     func testRowsShowDownToTheLastWrittenUnlessAProgramTookTheScreen() {
