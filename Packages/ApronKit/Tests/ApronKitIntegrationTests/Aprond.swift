@@ -70,9 +70,11 @@ final class Aprond: @unchecked Sendable {
         process.standardError = stderr
         process.standardOutput = FileHandle.nullDevice
         let log = log
+        // At end of file the handler is called again and again with no data until it is cleared:
+        // left set, every stopped server kept a thread spinning, and enough of them starved the run.
         stderr.fileHandleForReading.readabilityHandler = { handle in
-            let text = String(decoding: handle.availableData, as: UTF8.self)
-            log.append(text)
+            let data = handle.availableData
+            if data.isEmpty { handle.readabilityHandler = nil } else { log.append(String(decoding: data, as: UTF8.self)) }
         }
         try process.run()
     }
