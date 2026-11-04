@@ -26,6 +26,7 @@ extension View {
             let prompt = link.prompt
             if prompt.adds {
                 Button("Add It") {
+                    asked.wrappedValue = nil
                     links.run {
                         do {
                             try await link.session.approveAddition(link: link.token, proposal: nil)
@@ -37,6 +38,7 @@ extension View {
                 }
             }
             Button("Sign In", role: prompt.adds || link.session.you != nil ? .destructive : nil) {
+                asked.wrappedValue = nil
                 links.run {
                     do {
                         try await link.session.signIn(link: link.token, proposal: nil)
