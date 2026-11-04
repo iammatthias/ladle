@@ -45,6 +45,7 @@ final class MessageBlocksTests: XCTestCase {
     func testATypedLineBreakStaysInItsParagraphAndParagraphsStayApart() {
         XCTAssertEqual(md("Deploy plan\nWe cut at 14:00"), "<p>Deploy plan\nWe cut at 14:00</p>")
         XCTAssertEqual(md("one\n\ntwo"), "<p>one</p><p>two</p>")
+        XCTAssertEqual(md("one\ntwo\n\nthree"), "<p>one\ntwo</p><p>three</p>", "a blank line typed in the composer splits paragraphs (#208)")
         XCTAssertEqual(md("```\na\nb\n```"), "<pre>a\nb</pre>")
         XCTAssertEqual(md("hard  \nbreak"), "<p>hard\nbreak</p>")
     }

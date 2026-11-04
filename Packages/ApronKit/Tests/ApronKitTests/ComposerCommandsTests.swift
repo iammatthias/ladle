@@ -194,4 +194,12 @@ final class ComposerCommandsTests: XCTestCase {
         _ = try await submit("//x").value
         await expectSent(3, #"{"id":"q-c4","method":"message","params":{"body":{"format":"markdown","text":"//x"},"room_id":"general"}}"#)
     }
+
+    /// apron-web #208 lost the blank line its contenteditable field wrote as `<div><br></div>`.
+    /// Ladle's field holds a String, and the message goes out exactly as typed.
+    func testABlankLineTypedInTheComposerIsSentAsTyped() async throws {
+        try await signIn()
+        _ = try await submit("one\ntwo\n\nthree").value
+        await expectSent(2, #"{"id":"q-c3","method":"message","params":{"body":{"format":"markdown","text":"one\ntwo\n\nthree"},"room_id":"general"}}"#)
+    }
 }

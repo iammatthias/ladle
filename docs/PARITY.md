@@ -293,6 +293,7 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 |---|---|---|---|---|
 | Enter sends, Shift+Enter new line (hardware keyboard) | bh | has | `Timeline/ComposerView.swift` (`onKeyPress`) | |
 | Enter makes a new line on a phone keyboard | #60 | has | `Timeline/ComposerView.swift` | |
+| A blank line typed in the composer reaches the message, so paragraphs stay apart | #208 | has | `Kit/DraftField.swift` (`sentText`), `Kit/ComposerCommands.swift` | The web's bug was its contenteditable field reading `<div><br></div>` back as no line. Ladle's field holds a `String`, and `sentText` trims only the ends, so "one\ntwo\n\nthree" goes out as typed (`ComposerCommandsTests`) and renders as two paragraphs (`MessageBlocksTests`). Nothing to fix. |
 | Focus stays after Send | #97 | has | `Timeline/ComposerView.swift` | |
 | One-line placeholder with the room name | bh | has | `Timeline/ComposerView.swift` (`placeholder`) | |
 | `@` mention picker over members, then recent senders | bh | has | `Kit/DraftField.swift`, `Timeline/ComposerView.swift` | |
