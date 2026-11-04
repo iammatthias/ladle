@@ -2135,6 +2135,25 @@ extension ServerSessionTests {
         XCTAssertEqual(all.count, 5, "nothing more once stopped")
     }
 
+    /// After apron-web's typing per room (#209): typing ends where it shows once you type
+    /// elsewhere or leave the room, not when it runs out.
+    func testTypingInAnotherRoomOrLeavingTheRoomEndsItThereAtOnce() async throws {
+        let socket = queueTransport(capabilities: ["history", "rooms", "activity"])
+        session.start()
+        try await signInAsGuest(on: socket)
+        session.composerChanged(in: "general")
+        session.composerChanged(in: "random")
+        let switched = await frames(socket, count: 5)
+        XCTAssertEqual(Array(switched[2...]), [Self.typing15, Self.typing0, #"{"method":"activity","params":{"room_id":"random","typing":15}}"#])
+        session.show("random", true)
+        session.show("random", false)
+        let left = await frames(socket, count: 6)
+        XCTAssertEqual(left[5], #"{"method":"activity","params":{"room_id":"random","typing":0}}"#)
+        try await Task.sleep(for: .milliseconds(250))
+        let all = await socket.sentLog
+        XCTAssertEqual(all.count, 6, "no zero again once the idle time passes")
+    }
+
     func testAMessageEndsTypingWithoutAZero() async throws {
         let socket = queueTransport(capabilities: ["history", "rooms", "activity"])
         session.start()

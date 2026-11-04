@@ -47,9 +47,16 @@ extension ServerSession {
         guard status == .signedIn, server?.has("activity") == true, mayWrite, liveMessage?.roomID != roomID else { return }
         let times = environment.typing
         let now = ContinuousClock.now
-        if typingSentAt[roomID].map({ now - $0 >= times.refresh }) ?? true {
-            typingSentAt[roomID] = now
-            Task { await notify("activity", ["room_id": .string(roomID), "typing": .number(String(times.seconds))]) }
+        // Typing somewhere else now: it ends where it was, rather than show there until it runs out (apron-web #209).
+        let elsewhere = typingSentAt.keys.filter { $0 != roomID }.sorted(by: codePointLess)
+        for other in elsewhere { forgetOwnTyping(in: other) }
+        let starts = typingSentAt[roomID].map { now - $0 >= times.refresh } ?? true
+        if starts { typingSentAt[roomID] = now }
+        if starts || !elsewhere.isEmpty {
+            Task {
+                for other in elsewhere { await notify("activity", ["room_id": .string(other), "typing": 0]) }
+                if starts { await notify("activity", ["room_id": .string(roomID), "typing": .number(String(times.seconds))]) }
+            }
         }
         typingIdle[roomID]?.cancel()
         typingIdle[roomID] = Task { [weak self] in
@@ -61,9 +68,15 @@ extension ServerSession {
 
     /// Sends `typing: 0` for `roomID` if this user was last said to be typing there.
     func stoppedTyping(in roomID: String) async {
-        typingIdle[roomID] = nil
-        guard typingSentAt.removeValue(forKey: roomID) != nil else { return }
+        guard forgetOwnTyping(in: roomID) else { return }
         await notify("activity", ["room_id": .string(roomID), "typing": 0])
+    }
+
+    /// Forgets that this user is typing in `roomID`; true if they were said to be.
+    @discardableResult
+    private func forgetOwnTyping(in roomID: String) -> Bool {
+        typingIdle.removeValue(forKey: roomID)?.cancel()
+        return typingSentAt.removeValue(forKey: roomID) != nil
     }
 
     /// A message ends this user's typing for everyone (§4.6), so no `typing: 0` follows it.

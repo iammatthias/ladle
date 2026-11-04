@@ -893,13 +893,15 @@ public final class ServerSession {
     // MARK: History
 
     /// Marks a room as on screen or not, so a catch-up after a reconnect pages it first.
-    /// Leaving a room finishes the message typed live there, as Send would.
+    /// Leaving a room finishes the message typed live there, as Send would, and ends your typing there.
     /// Whether a room's timeline is on screen.
     public func isOnScreen(_ roomID: String) -> Bool { onScreen.contains(roomID) }
 
     public func show(_ roomID: String, _ shown: Bool) {
         if shown { onScreen.insert(roomID) } else { onScreen.remove(roomID) }
         if !shown, liveMessage?.roomID == roomID { finishLiveTyping() }
+        // Typing ends where it shows once you go elsewhere (apron-web #209).
+        if !shown, typingSentAt[roomID] != nil { Task { await stoppedTyping(in: roomID) } }
         if !shown { dropHandoffs(in: roomID) }
     }
 
