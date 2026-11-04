@@ -123,6 +123,13 @@ extension ServerSession {
     /// `KEPT`.
     static let keptLiveTexts = 16
 
+    /// Open for a `terminal` embed: terminal.apron.chat's page for its stream (`TerminalPage`),
+    /// while it has a `url` from this server's origin, the one the card reads, finished or not.
+    public func terminalPage(of embed: Embed) -> URL? {
+        guard embed.kind == "terminal", let url = embed.url, MediaGate.origin(of: url) == mediaGate.origin else { return nil }
+        return TerminalPage.url(stream: url, title: embed.title)
+    }
+
     /// The live text of a `terminal` or `append` embed, or nil when it is finished, has no
     /// `url`, or its `url` is not on the chat server's own origin (§4.8.5: clients should not
     /// connect to live text elsewhere). Nothing is read until a view `follow`s it.
