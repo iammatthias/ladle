@@ -77,7 +77,7 @@ struct RoomFormSheet: View {
             .navigationTitle(heading)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() }.disabled(saving) }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(saving ? (mode == .edit ? "Saving…" : "Starting…") : (mode == .edit ? "Save" : kind == .thread ? "Start" : "Create")) { save() }
                         .disabled(saving)
@@ -86,6 +86,7 @@ struct RoomFormSheet: View {
             .onAppear { titleFocused = true }
         }
         .presentationDetents([.medium, .large])
+        .interactiveDismissDisabled(saving)
     }
 
     private func save() {
