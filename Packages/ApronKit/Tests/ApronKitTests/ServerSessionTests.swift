@@ -1253,6 +1253,68 @@ final class ServerSessionTests: XCTestCase {
                        "not asked across rooms again")
     }
 
+    /// history-recovery-failure.json's rate-limited variant, through a reconnect's catch-up: a page
+    /// refused with `retry_after` keeps what the pages before it recovered, and the room goes on
+    /// from there once the wait is over, not from the start.
+    func testACatchUpRefusedForAWaitKeepsWhatItRecoveredAndGoesOnFromThereOnceItIsOver() async throws {
+        let second = try await reconnectWithTwoRoomsOpen(heads: ("112", "130"))
+        let first = await frame(second, 2)
+        XCTAssertEqual(first, #"{"id":"c9","method":"history","params":{"after":"107","limit":200,"room_id":"general"}}"#)
+        await second.deliver(["id": "c9", "result": [
+            "messages": [message("107", "g"), message("108", "h"), message("109", "i")], "first_log_id": "107", "last_log_id": "109",
+            "more": true, "latest_log_id": "112", "history_log_id": "101",
+        ]])
+        let refused = await frame(second, 3)
+        XCTAssertEqual(refused, #"{"id":"c10","method":"history","params":{"after":"110","limit":200,"room_id":"general"}}"#)
+        await second.deliver(["id": "c10", "error": ["code": -32002, "message": "Too Many Requests", "data": ["retry_after": 3600]]])
+        await eventually("the wait") { clock.recorded.last == .seconds(3600) }
+        await second.deliver(["method": "message", "params": message("113", "live")])
+        await eventually("live message") { session.timeline("general").count == 7 }
+        XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["104", "105", "106", "107", "108", "109", "113"])
+        XCTAssertEqual(session.histories["general"]?.checkpoint, LogID("109"), "where the pages reached, not the live record")
+        XCTAssertTrue(session.isCatchingUp("general"))
+        let held = await second.sentLog.count
+        XCTAssertEqual(held, 4, "the thread listings wait too")
+
+        clock.release()
+        let resumed = await frame(second, 4)
+        XCTAssertEqual(resumed, #"{"id":"c11","method":"history","params":{"after":"110","limit":200,"room_id":"general"}}"#,
+                       "on from the checkpoint, not a rebuild")
+        await second.deliver(["id": "c11", "result": [
+            "messages": [message("110", "j"), message("111", "k"), message("112", "l"), message("113", "live")],
+            "first_log_id": "110", "last_log_id": "113", "more": false, "latest_log_id": "113", "history_log_id": "101",
+        ]])
+        await eventually("caught up") { !session.isCatchingUp("general") }
+        XCTAssertEqual(session.timeline("general").map(\.messageID.text), ["104", "105", "106", "107", "108", "109", "110", "111", "112", "113"])
+        XCTAssertEqual(session.histories["general"]?.checkpoint, LogID("113"))
+    }
+
+    func testRoomsHeldBackByTheWaitGoOnOnceItIsOver() async throws {
+        let second = try await reconnectWithTwoRoomsOpen(heads: ("108", "131"))
+        let together = await frame(second, 2)
+        XCTAssertEqual(together, #"{"id":"c9","method":"history","params":{"after":"107","limit":200}}"#)
+        await second.deliver(["id": "c9", "error": ["code": -32002, "message": "Too Many Requests", "data": ["retry_after": 3600]]])
+        await eventually("the wait") { clock.recorded.count == 2 }
+        XCTAssertEqual(clock.recorded.last.map { $0 >= .seconds(3599) }, true)
+        let held = await second.sentLog.count
+        XCTAssertEqual(held, 3, "each room's page held back, not sent")
+        XCTAssertEqual([session.isCatchingUp("general"), session.isCatchingUp("130")], [true, true])
+        XCTAssertNotNil(session.wait(.history))
+        XCTAssertFalse(session.paneLoadingInput("general").othersCatchingUp, "a room waiting is not shown catching up")
+
+        clock.release()
+        let general = await frame(second, 3)
+        XCTAssertEqual(general, #"{"id":"c10","method":"history","params":{"after":"107","limit":200,"room_id":"general"}}"#)
+        await second.deliver(["id": "c10", "result": ["messages": [message("108", "g")], "first_log_id": "108", "last_log_id": "108",
+                                                      "more": false, "latest_log_id": "108", "history_log_id": "101"]])
+        let other = await frame(second, 4)
+        XCTAssertEqual(other, #"{"id":"c11","method":"history","params":{"after":"131","limit":200,"room_id":"130"}}"#)
+        await second.deliver(["id": "c11", "result": ["messages": [message("131", "late", room: "130")], "first_log_id": "131", "last_log_id": "131",
+                                                      "more": false, "latest_log_id": "131", "history_log_id": "130"]])
+        await eventually("caught up") { !session.isCatchingUp("130") }
+        XCTAssertFalse(session.isCatchingUp("general"))
+    }
+
     func testOwnReadCursorOnlyMovesForwardAndOthersAreIgnored() async throws {
         session.start()
         let socket = await transport(0)

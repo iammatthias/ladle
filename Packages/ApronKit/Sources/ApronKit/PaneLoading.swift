@@ -151,7 +151,7 @@ extension ServerSession {
 
     func paneLoadingInput(_ roomID: String) -> PaneLoading.Input {
         PaneLoading.Input(reconnecting: reconnectingQuietly, paneCatchingUp: isCatchingUp(roomID),
-                          othersCatchingUp: histories.keys.contains { $0 != roomID && isCatchingUp($0) },
+                          othersCatchingUp: wait(.history) == nil && histories.keys.contains { $0 != roomID && isCatchingUp($0) },
                           loadingOlder: histories[roomID]?.loading == .older,
                           isThread: store.room(roomID)?.parentRoomID != nil)
     }

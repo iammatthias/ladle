@@ -196,7 +196,13 @@ clone), which is only a worked example.
       the checkpoint (then nothing is asked). Two or more behind catch up together (#200,
       `JoinedCatchUp`, `catchUpTogether`): one `history` without `room_id` from the oldest
       checkpoint, at most five pages, falling back to room by room on `unsupported` (remembered
-      per session), an error or the cap. A second `open` while the first page loads waits for
+      per session), an error or the cap. A catch-up page refused with `retry_after` (past the
+      short waits, or held back by a wait) is not a failure (the wire README's "Refused for a
+      wait", #211): the room keeps its pages and stays behind, so live records show without
+      moving its checkpoint, and once the wait is over (`goOn`, on `Environment.sleep`) the rooms
+      still behind page on from their checkpoints on the same connection. Ladle never rebuilds a
+      room, and catches up only at sign-in and after a wait, not on a room frame whose head
+      passes the checkpoint. A second `open` while the first page loads waits for
       it. What a room holds is `RoomHistory.coverage`, a `Coverage` (`Coverage.swift`): the
       `LogSpan`s of its log loaded, ascending and disjoint in one flat array, touching spans
       merged, the holes between them read off the neighbours (`holes(in:)`). `olderBefore` is the

@@ -1043,8 +1043,7 @@ public final class ServerSession {
 
     /// After a sign-in, pages each opened room forward from its checkpoint until `more` is false.
     private func catchUp(on connection: Connection) async {
-        let rooms = histories.keys.sorted(by: codePointLess)
-        let ordered = rooms.filter(onScreen.contains) + rooms.filter { !onScreen.contains($0) }
+        let ordered = openedRooms
         // The joined listing says how far each room's log goes: one no further than its checkpoint
         // has nothing new and is not asked about (#200).
         var behind: [String: LogID] = [:]
@@ -1060,19 +1059,61 @@ public final class ServerSession {
            await catchUpTogether(plan, on: connection) {
             for roomID in plan.rooms { histories[roomID]?.isLive = true }
         }
+        var wait: Duration?
         for roomID in ordered {
-            if histories[roomID]?.isLive != true, histories[roomID]?.checkpoint != nil {
-                // Each page moves the newest span's upper edge to its last record, so a drop
-                // between pages leaves the checkpoint where the records end, not at the head.
-                while let checkpoint = histories[roomID]?.checkpoint, let after = checkpoint.successor {
-                    let request = PageRequest(after: after, limit: 200)
-                    guard let page = try? await history(request.params(room: roomID), on: connection) else { break }
-                    histories[roomID]?.receive(page, for: request)
-                    guard page.more, histories[roomID]?.checkpoint != checkpoint else { break }
-                }
-                histories[roomID]?.isLive = true
-            }
+            if isBehind(roomID), let refused = await pageForward(roomID, on: connection) { wait = max(wait ?? refused, refused) }
             await listThreads(of: roomID, on: connection)
+        }
+        if let wait { goOn(after: wait, on: connection) }
+    }
+
+    /// The rooms opened, those on screen first: the order they catch up in.
+    private var openedRooms: [String] {
+        let rooms = histories.keys.sorted(by: codePointLess)
+        return rooms.filter(onScreen.contains) + rooms.filter { !onScreen.contains($0) }
+    }
+
+    /// A room opened before whose catch-up has not reached the head on this connection.
+    private func isBehind(_ roomID: String) -> Bool {
+        histories[roomID]?.isLive == false && histories[roomID]?.checkpoint != nil
+    }
+
+    /// Pages a room forward from its checkpoint until `more` is false, then marks it live. Each
+    /// page moves the newest span's upper edge to its last record, so a drop between pages leaves
+    /// the checkpoint where the records end, not at the head. A page refused for a wait
+    /// (`retry_after`, §1.1) is not a failure (the wire fixtures' "Refused for a wait"): the pages
+    /// applied stand, the room stays behind so live records do not move its checkpoint past what
+    /// is missing, and the wait comes back for the room to go on from there once it is over.
+    private func pageForward(_ roomID: String, on connection: Connection) async -> Duration? {
+        while let checkpoint = histories[roomID]?.checkpoint, let after = checkpoint.successor {
+            let request = PageRequest(after: after, limit: 200)
+            let page: HistoryPage
+            do {
+                page = try await history(request.params(room: roomID), on: connection)
+            } catch let error as RPCError where error.retryAfter != nil {
+                return error.retryAfter
+            } catch {
+                break
+            }
+            histories[roomID]?.receive(page, for: request)
+            guard page.more, histories[roomID]?.checkpoint != checkpoint else { break }
+        }
+        histories[roomID]?.isLive = true
+        return nil
+    }
+
+    /// Once a wait that stopped catch-up is over, the rooms still behind go on from their
+    /// checkpoints on the same connection, as apron-web's `endLimit`, and wait again if refused.
+    private func goOn(after wait: Duration, on connection: Connection) {
+        let sleep = environment.sleep
+        Task { [weak self] in
+            guard (try? await sleep(wait)) != nil, let self else { return }
+            var again: Duration?
+            for roomID in self.openedRooms where self.connection === connection && self.status == .signedIn {
+                guard self.isBehind(roomID), let refused = await self.pageForward(roomID, on: connection) else { continue }
+                again = max(again ?? refused, refused)
+            }
+            if let again, self.connection === connection { self.goOn(after: again, on: connection) }
         }
     }
 
@@ -1098,8 +1139,8 @@ public final class ServerSession {
     /// Pages the joined rooms' log as one from just after `plan.position` (§4.3), the first page
     /// fixing the head. Each page moves every planned room's checkpoint to its last record, so
     /// whatever ends this early (`unsupported`, an error, a wait, a log that starts past the
-    /// position, the page limit) leaves each room to go on by itself from there. True when the
-    /// rooms are complete up to the head.
+    /// position, the page limit) leaves each room to go on by itself from there, after a wait
+    /// once it is over (`goOn`). True when the rooms are complete up to the head.
     private func catchUpTogether(_ plan: JoinedCatchUp, on connection: Connection) async -> Bool {
         guard var after = plan.position.successor else { return false }
         var head: LogID?
