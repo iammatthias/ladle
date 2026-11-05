@@ -84,6 +84,8 @@ public final class ServerSession {
         public var readLiveText: LiveTextRead
         /// The streaming `PUT` of live text the composer types (`/live`, §4.8.5).
         public var writeLiveText: LiveTextWrite
+        /// How long a new connection may take to bring its `server` frame. Real time, not `sleep`.
+        public var opening: OpeningTimes
 
         public init(
             makeTransport: @escaping @Sendable (ServerRecord) -> any FrameTransport,
@@ -104,8 +106,10 @@ public final class ServerSession {
             threadsWait: Duration = .seconds(3),
             passkeyDomains: PasskeyDomains = .app,
             readLiveText: @escaping LiveTextRead = LiveTextFetch.live,
-            writeLiveText: @escaping LiveTextWrite = LiveTextWriter.live
+            writeLiveText: @escaping LiveTextWrite = LiveTextWriter.live,
+            opening: OpeningTimes = OpeningTimes()
         ) {
+            self.opening = opening
             self.readLiveText = readLiveText
             self.writeLiveText = writeLiveText
             self.passkeyDomains = passkeyDomains
@@ -425,8 +429,15 @@ public final class ServerSession {
             var minimumDelay = Duration.zero
             var stayedUp = false
             var upgradeFailure: UpgradeFailure?
+            let limit = environment.opening.wait(sinceQuietDrop: lastQuietDrop.map { ContinuousClock.now - $0 })
+            let opening = Task {
+                try await Task.sleep(for: limit)
+                await connection.dropQuiet()
+            }
+            defer { opening.cancel() }
             do {
                 server = try await connection.connect()
+                opening.cancel()
                 unavailableMessage = nil
                 self.connection = connection
                 connectionNumber += 1
@@ -451,6 +462,7 @@ public final class ServerSession {
                 upgradeFailure = .unreachable
             }
 
+            if await connection.wentQuiet { lastQuietDrop = .now }
             await connection.close()
             if self.connection === connection { self.connection = nil }
             pendingEmail = nil
@@ -502,6 +514,23 @@ public final class ServerSession {
             do { try await environment.sleep(delay) } catch { return }
         }
         runTask = nil
+    }
+
+    /// When a connection was last dropped for staying quiet, for `OpeningTimes.patient`.
+    @ObservationIgnored private var lastQuietDrop: ContinuousClock.Instant?
+
+    /// The network came back (apron-web #216): a connection still opening, or a wait between
+    /// attempts, gives way to a new connection at once, its backoff starting over. A session
+    /// signed in or signed out keeps its connection; a stopped one starts again.
+    public func networkReturned() {
+        guard !isDisconnected else { return }
+        let opening = status == .connecting && connection == nil
+        let waiting = if case .reconnecting = status { true } else { false }
+        guard runTask != nil, opening || waiting else { return start() }
+        runTask?.cancel()
+        runTask = nil
+        Task { [connection] in await connection?.close() }
+        start()
     }
 
     /// A connection that never reached the server's greeting, the only time the probe runs.

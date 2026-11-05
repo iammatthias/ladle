@@ -191,7 +191,8 @@ struct RootView: View {
         path = [.server(id)] + (room.map { [.room(id, $0)] } ?? [])
     }
 
-    /// Reconnects every session when the network comes back, rather than waiting out a backoff.
+    /// Reconnects every session when the network comes back, rather than waiting out a backoff
+    /// or a handshake sent into the network that went away (apron-web #216).
     private func watchNetwork() async {
         let monitor = NWPathMonitor()
         let paths = AsyncStream<NWPath.Status> { continuation in
@@ -203,8 +204,7 @@ struct RootView: View {
         for await status in paths {
             if status == .satisfied, previous == .unsatisfied {
                 for record in store.records {
-                    guard let session = store.session(for: record.id), !session.isDisconnected else { continue }
-                    session.start()
+                    store.session(for: record.id)?.networkReturned()
                 }
             }
             previous = status

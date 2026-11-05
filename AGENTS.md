@@ -165,7 +165,7 @@ clone), which is only a worked example.
       Move To the room's threads, or out of a thread to its room and that room's other threads.
     - Reconnect: pending requests fail with `Connection.Failure.closed` (no same-id resend on the new connection; a short wait's resend below goes only on the old one),
       then `backoff(attempt:jitter:)` = min(60 s, 1 s × 2^min(6, attempt − 1)) × [0.5, 1.5) (Cloudflare's docs/limits.md checklist),
-      never below a `retry_after`, a refused resume's included (an account's connection limit). Attempts restart after 30 s signed in. An id-less `denied`
+      never below a `retry_after`, a refused resume's included (an account's connection limit). Attempts restart after 30 s signed in. A connection gets `Environment.opening` (`OpeningTimes`, apron-web #216: 10 s, real time) to bring its `server` frame, else `Connection.dropQuiet` closes it as an upgrade that failed; for 3 minutes after a quiet drop (that, or the pinger's two silent intervals) the next gets 30 s. `networkReturned()` (the app's `NWPathMonitor`) replaces a connection still opening, or a backoff, with a new one at once, attempts starting over. An id-less `denied`
       or a refused upgrade other than 429 or 5xx stops reconnecting (`Status.stopped`).
     - `ConnectionState` (`ConnectionState.swift`): a status as UX spec 4.1 shows it, its
       symbol, words, detail, and whether it is a problem with Try Now; nil when signed in.

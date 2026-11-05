@@ -202,6 +202,16 @@ public actor Connection {
         return .seconds(seconds)
     }
 
+    /// Closed for staying quiet: no greeting in time, or nothing heard for two ping intervals.
+    public private(set) var wentQuiet = false
+
+    /// Closes a connection that stayed quiet, as if it had failed.
+    public func dropQuiet() async {
+        guard !isClosed else { return }
+        wentQuiet = true
+        await close()
+    }
+
     public func close() async {
         guard !isClosed else { return }
         await transport.close()
@@ -279,7 +289,7 @@ public actor Connection {
                 try? await Task.sleep(for: interval)
                 if Task.isCancelled { return }
                 if ContinuousClock.now - lastHeard > interval * 2 {
-                    await close()
+                    await dropQuiet()
                     return
                 }
                 try? notify("ping")

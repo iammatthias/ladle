@@ -89,6 +89,10 @@ final class ServerSessionTests: XCTestCase {
     var session: ServerSession!
 
     override func setUp() async throws {
+        session = ServerSession(record: record, tokens: tokens, positions: positions, environment: environment())
+    }
+
+    private func environment(opening: OpeningTimes = OpeningTimes()) -> ServerSession.Environment {
         let counter = Mutex(0)
         let transports = transports, clock = clock
         let environment = ServerSession.Environment(
@@ -102,9 +106,10 @@ final class ServerSessionTests: XCTestCase {
             fetchConnectionStatus: { [probes] url, origin in try probes.answer(url, origin) },
             readCursorInterval: .milliseconds(100),
             typing: TypingTimes(seconds: 15, refresh: .milliseconds(300), idle: .milliseconds(150), longest: .milliseconds(400)),
-            now: { clock.now }
+            now: { clock.now },
+            opening: opening
         )
-        session = ServerSession(record: record, tokens: tokens, positions: positions, environment: environment)
+        return environment
     }
 
     override func tearDown() async throws {
@@ -473,6 +478,63 @@ final class ServerSessionTests: XCTestCase {
         await fourth.deliver(["id": "c4", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
         await eventually("signed in again") { session.status == .signedIn }
         XCTAssertEqual(try tokens.token(for: record.id), "t1")
+    }
+
+    /// apron-web #216: 10 s for a connection to bring its greeting, 30 s for 3 minutes after one
+    /// was dropped for staying quiet.
+    func testAnOpeningWaitsTenSecondsAndThirtyForThreeMinutesAfterAQuietDrop() {
+        let times = OpeningTimes()
+        XCTAssertEqual([nil, .seconds(10), .seconds(179), .seconds(180), .seconds(600)].map(times.wait(sinceQuietDrop:)),
+                       [.seconds(10), .seconds(30), .seconds(30), .seconds(10), .seconds(10)])
+    }
+
+    func testAConnectionThatBringsNoGreetingInTimeIsDroppedAndTheNextGetsLonger() async throws {
+        await session.stop()
+        session = ServerSession(record: record, tokens: tokens, positions: positions,
+                                environment: environment(opening: OpeningTimes(wait: .milliseconds(50), patient: .seconds(30))))
+        let silent = FakeTransport(), slow = FakeTransport()
+        transports.queued.withLock { $0 = [silent, slow] }
+        session.start()
+        await eventually("dropped as if it had failed") { clock.recorded.count == 1 }
+        let closed = await silent.closed
+        XCTAssertTrue(closed)
+        XCTAssertEqual(session.status, .reconnecting(attempt: 1, delay: .seconds(1)))
+        XCTAssertEqual(probes.requests.withLock { $0.count }, 1, "probed as an upgrade that failed")
+        clock.release()
+        _ = await transport(1)
+        try await Task.sleep(for: .milliseconds(300))
+        let slowClosed = await slow.closed
+        XCTAssertFalse(slowClosed, "within 3 minutes of a quiet drop the next opening gets 30 s")
+        await slow.deliver(Self.greeting)
+        await eventually("signed out") { session.status == .signedOut }
+    }
+
+    func testTheNetworkBackDuringABackoffConnectsAtOnceAndStartsTheBackoffOver() async throws {
+        let first = FakeTransport(), second = FakeTransport(), third = FakeTransport()
+        for transport in [first, second, third] { await transport.dropFromServer() }
+        transports.queued.withLock { $0 = [first, second, third] }
+        session.start()
+        await eventually("first backoff") { clock.recorded.count == 1 }
+        clock.release()
+        await eventually("second backoff") { clock.recorded.count == 2 }
+        XCTAssertEqual(session.status, .reconnecting(attempt: 2, delay: .seconds(2)))
+        session.networkReturned()
+        _ = await transport(2)
+        await eventually("third backoff") { clock.recorded.count == 3 }
+        XCTAssertEqual(session.status, .reconnecting(attempt: 1, delay: .seconds(1)), "the backoff starts over")
+        XCTAssertEqual(transports.made.withLock { $0.count }, 3, "without waiting out the second backoff")
+    }
+
+    func testTheNetworkBackLeavesAConnectionThatIsUp() async throws {
+        let socket = FakeTransport()
+        await socket.deliver(Self.greeting)
+        transports.queued.withLock { $0 = [socket] }
+        session.start()
+        try await signInAsGuest(on: socket)
+        session.networkReturned()
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual([transports.made.withLock { $0.count }], [1])
+        XCTAssertEqual(session.status, .signedIn)
     }
 
     func testBackoffDoublesToASixtySecondCap() {
