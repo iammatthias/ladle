@@ -51,6 +51,8 @@ struct RoomListView: View {
     @State private var opened: OpenedThread?
     /// The room whose other threads all show, past the first three, after "N more…".
     @State private var allOthersFor: String?
+    /// The row the keyboard is on (Tab on iPad), where Option+↑ ↓ move it rather than step.
+    @FocusState private var focusedRow: String?
     @Environment(\.fixedNow) private var fixedNow
     @Environment(\.heldAwayWords) private var heldAwayWords
     @State private var problem: String?
@@ -169,7 +171,7 @@ struct RoomListView: View {
         }
         .environment(\.editMode, $reordering)
         .onAppear { if startsReordering { reordering = .active } }
-        .background { moveKeys }
+        .background { roomKeys }
         // Where iOS puts it: at the bottom on iPhone, in reach (UX.md 1.2).
         .searchable(text: $roomQuery, prompt: "Search Rooms")
         .sheet(item: $searchingHistory) { SearchView(session: session, initial: $0.query) }
@@ -316,24 +318,51 @@ struct RoomListView: View {
         }
     }
 
-    /// Option+↑ and Option+↓ move the open room (or the one holding the open thread) past the
-    /// next room its section shows, as the web's Alt+↑/↓ on a room.
-    private var moveKeys: some View {
-        ZStack {
-            Button("Move Room Up") { moveOpenRoom(by: -1) }.keyboardShortcut(.upArrow, modifiers: .option)
-            Button("Move Room Down") { moveOpenRoom(by: 1) }.keyboardShortcut(.downArrow, modifiers: .option)
+    /// Option+↑ ↓ (and with Shift, past threads) open the row above or below the open one as
+    /// drawn (apron-web #212); on a row the keyboard is on they move it (#151), as the table has it.
+    private var roomKeys: some View {
+        HiddenShortcuts(actions: Shortcuts.entries(in: .anywhere).flatMap(\.keys).map(\.action).filter {
+            if case .room = $0 { true } else { false }
+        }) { action in
+            guard case .room(let step, let pastThreads) = action else { return }
+            // On a focused row the same chord is the table's `.moveRoom`.
+            if let focusedRow, !pastThreads {
+                moveRoom(focusedRow, by: step)
+            } else if let next = RoomSteps.next(stepRows, open: selected, step: step, pastThreads: pastThreads) {
+                open(next)
+            }
         }
-        .opacity(0)
-        .accessibilityHidden(true)
     }
 
-    private func moveOpenRoom(by step: Int) {
-        guard let selected else { return }
-        let roomID = session.topLevelRoom(of: selected)
+    /// The rows Option+↑ ↓ step through, in the order drawn: each section's rooms shown, each
+    /// followed by the threads shown under it, then the room read before joining.
+    private var stepRows: [RoomSteps.Row] {
+        guard !isReordering, roomQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return [] }
+        let sections = [(session.publicRoomTree, roomsFolded), (session.privateRoomTree, privateFolded)]
+            .map { session.shownRooms($0.0, folded: $0.1, open: selected) } + [session.readingNode(open: selected).map { [$0] } ?? []]
+        return sections.flatMap { nodes in
+            nodes.flatMap { node in
+                let list = threadList(of: node)
+                return [RoomSteps.Row(node.roomID, isRoom: true)] + (list.joined + list.inactive + list.others).map { RoomSteps.Row($0, isRoom: false) }
+            }
+        }
+    }
+
+    private func moveRoom(_ rowID: String, by step: Int) {
+        let roomID = session.topLevelRoom(of: rowID)
         let isPrivate = session.isPrivateRoom(roomID)
         let shown = session.shownRooms(isPrivate ? session.privateRoomTree : session.publicRoomTree,
                                        folded: isPrivate ? privateFolded : roomsFolded, open: selected)
         withAnimation { _ = session.moveRoom(roomID, by: step, among: shown.map(\.roomID)) }
+    }
+
+    /// What the list shows under `node`: `threads(of:)` draws it and `stepRows` steps through it.
+    private func threadList(of node: RoomNode) -> ThreadList {
+        let others = OtherThreadsFold.open(in: node.roomID, of: session, saved: $othersOpen, reading: $readingOthersOpen)
+        return session.threadList(of: node, open: selected, othersFolded: !others.wrappedValue, allOthers: allOthersFor == node.roomID,
+                                  now: fixedNow ?? .now, inactiveFolded: !inactiveOpen,
+                                  openedQuiet: opened.flatMap { $0.id == selected ? $0.quiet : nil },
+                                  threadsFolded: session.threadsFolded(node.roomID))
     }
 
     /// A room's threads as the web's ThreadList: under the open room, its joined threads and
@@ -341,10 +370,7 @@ struct RoomListView: View {
     @ViewBuilder
     private func threads(of node: RoomNode) -> some View {
         let others = OtherThreadsFold.open(in: node.roomID, of: session, saved: $othersOpen, reading: $readingOthersOpen)
-        let list = session.threadList(of: node, open: selected, othersFolded: !others.wrappedValue, allOthers: allOthersFor == node.roomID,
-                                      now: fixedNow ?? .now, inactiveFolded: !inactiveOpen,
-                                      openedQuiet: opened.flatMap { $0.id == selected ? $0.quiet : nil },
-                                      threadsFolded: session.threadsFolded(node.roomID))
+        let list = threadList(of: node)
         ForEach(list.joined, id: \.self) { roomRow($0, isThread: true) }
         if list.inactiveCount > 0 {
             FoldHeading(label: "Inactive", count: list.inactiveCount, open: $inactiveOpen)
@@ -383,6 +409,7 @@ struct RoomListView: View {
                     trailingSpace: foldedOpen ? Tokens.Size.touchTarget : 0)
         }
         .buttonStyle(.plain)
+        .focused($focusedRow, equals: roomID)
         .accessibilityHint(picksFold ? (session.threadsFolded(roomID) ? "Shows all its threads" : "Folds its threads to those with news") : "")
         .overlay(alignment: .trailing) {
             if foldedOpen {
