@@ -11,6 +11,11 @@ struct SearchView: View {
     @State private var selection: TextSelection?
     @State private var found = SearchFound.none
     @State private var searching = false
+    /// Load More from Server (apron-web #220): a press under way, its failure, and how many have
+    /// loaded, which searches again.
+    @State private var loadingOlder = false
+    @State private var loadError: String?
+    @State private var loads = 0
     @FocusState private var focused: Bool
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -65,6 +70,23 @@ struct SearchView: View {
                     }
                 }
                 .listRowBackground(Palette.raised)
+                if let offer = session.searchLoadOffer(for: query, loading: loadingOlder, error: loadError) {
+                    Section {
+                        if !offer.done {
+                            Button { loadMore() } label: {
+                                HStack {
+                                    Text("Load More from Server").apText(.ui, .medium).foregroundStyle(Palette.accent)
+                                    Spacer()
+                                    if offer.busy { ProgressView() }
+                                }
+                            }
+                            .disabled(offer.busy)
+                        }
+                    } footer: {
+                        Text(offer.note).formFooter()
+                    }
+                    .listRowBackground(Palette.raised)
+                }
             }
             .scrollContentBackground(.hidden)
             .background(Palette.chrome)
@@ -82,7 +104,7 @@ struct SearchView: View {
                     }
                 }
             }
-            .task(id: query) {
+            .task(id: SearchRun(query: query, loads: loads)) {
                 searching = true
                 try? await Task.sleep(for: Self.delay)
                 guard !Task.isCancelled else { return }
@@ -127,11 +149,27 @@ struct SearchView: View {
         selection = TextSelection(insertionPoint: String.Index(utf16Offset: next.caret, in: next.query))
     }
 
+    private func loadMore() {
+        loadingOlder = true
+        loadError = nil
+        Task {
+            loadError = await session.loadMoreForSearch(query)
+            loadingOlder = false
+            loads += 1
+        }
+    }
+
     private func open(_ message: MessageSnapshot) {
         guard let url = ApronLink(server: session.record.url, room: message.roomID, message: message.messageID).webURL else { return }
         dismiss()
         openURL(url)
     }
+}
+
+/// What a search runs for: the query, again once more history has loaded.
+private struct SearchRun: Hashable {
+    var query: String
+    var loads: Int
 }
 
 /// A result: where, who and when over a line of its text with the words found marked.

@@ -30,7 +30,7 @@ enum Screen: String, CaseIterable {
     case muted, paused, notificationsPaused = "notifications-paused", limited, outbox
     case serversTwoAccounts = "servers-two-accounts", ipadTwoAccounts = "ipad-two-accounts", accountChooser = "account-chooser", accountChooserSignIn = "account-chooser-signin"
     case appearance, appearanceCustom = "appearance-custom", preferences, preferencesMedia = "preferences-media", history
-    case search, searchFiltered = "search-filtered", roomsSearch = "rooms-search"
+    case search, searchFiltered = "search-filtered", searchLoadMore = "search-load-more", roomsSearch = "rooms-search"
     case roomsUnseenReactions = "rooms-unseen-reactions", unseenReactionJump = "unseen-reaction-jump"
     case select, selectLog = "select-log"
     case archiveAsk = "archive-ask", archiveRooms = "archive-rooms", archiveTimeline = "archive-timeline"
@@ -600,6 +600,14 @@ enum Renderer {
         case .searchFiltered:
             // Started narrowed to the design room, as from its header, with "room:" suggesting rooms at the caret.
             AnyView(SearchView(session: home, initial: ServerSession.searchStart(in: PreviewFixtures.linkRoomID) + "icon room:", focusesField: false))
+        case .searchLoadMore:
+            // The changelog's "green" with older history still on the server, below the window
+            // and in the hole above it: Load More from Server (apron-web #220) under the results.
+            AnyView(Group {
+                if let changelog = hole.session(for: PreviewFixtures.holeID) {
+                    SearchView(session: changelog, initial: "room:#changelog green", focusesField: false)
+                }
+            })
         case .select:
             // The busy room's last three messages picked, the bar in the composer's place.
             AnyView(NavigationStack {

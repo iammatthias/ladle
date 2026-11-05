@@ -20,6 +20,15 @@ public struct SearchHit: Identifiable, Sendable {
     public var parts: [SnippetPart]
 }
 
+/// Load More from Server under a search's results (apron-web #220): what it says, and whether
+/// pressing it has anything left to load.
+public struct SearchLoadOffer: Equatable, Sendable {
+    public var note: String
+    /// Everything the server has in the rooms searched is loaded: the button goes.
+    public var done: Bool
+    public var busy: Bool
+}
+
 /// Search Local History, as apron-web's SearchDialog (#137, #166): every message this device holds
 /// of the server, kept or loaded (`kept`), as the query is typed.
 extension ServerSession {
@@ -88,5 +97,80 @@ extension ServerSession {
             let byTitle = lhs.0.title.localizedCompare(rhs.0.title)
             return byTitle == .orderedSame ? codePointLess(lhs.0.id, rhs.0.id) : byTitle == .orderedAscending
         }.map(\.0)
+    }
+
+    /// The most rooms one Load More from Server pages back in, the most recently active first.
+    static let searchLoadRooms = 10
+
+    /// The rooms a search looks through: those `room:` names (by id or title), with their
+    /// threads, among the rooms joined or opened; else every room and thread joined.
+    func searchedRooms(_ query: SearchQuery) -> [String] {
+        guard !query.rooms.isEmpty else { return joinedRoomIDs.sorted(by: codePointLess) }
+        let shown = store.roomIDs.filter { joinedRoomIDs.contains($0) || histories[$0] != nil }
+        let named = Set(shown.filter { query.rooms.contains(LocalSearch.folded($0)) || query.rooms.contains(LocalSearch.folded(title(of: $0))) })
+        return shown.filter { named.contains($0) || store.room($0)?.parentRoomID.map(named.contains) == true }.sorted(by: codePointLess)
+    }
+
+    /// Of those, the ones the server has older history for: never opened, with a hole between
+    /// loaded spans (Ladle's jumps leave them, the web's never), or with older pages; and not
+    /// loading one now.
+    func searchedRoomsWithOlder(_ query: SearchQuery) -> [String] {
+        searchedRooms(query).filter { roomID in
+            guard server?.has("history") == true else { return false }
+            guard let history = histories[roomID] else { return true }
+            return history.loading == nil && (!history.coverage.holes.isEmpty || canLoadOlder(roomID))
+        }
+    }
+
+    /// What Load More from Server says under a search for `text`; nil where it has nothing to
+    /// search (no words, no filter) or no room to page in. `error` is the last press's failure.
+    public func searchLoadOffer(for text: String, loading: Bool, error: String?) -> SearchLoadOffer? {
+        let query = LocalSearch.parse(text)
+        let searched = searchedRooms(query)
+        guard !query.isEmpty, !searched.isEmpty else { return nil }
+        let place = query.rooms.isEmpty ? "your rooms"
+            : title(of: searched.first { store.room($0)?.parentRoomID == nil } ?? searched[0])
+        let done = !loading && searchedRoomsWithOlder(query).isEmpty
+        let note = error ?? (done ? "Everything the server has in \(place) is loaded, and searched." : "Older messages in \(place) are on the server.")
+        return SearchLoadOffer(note: note, done: done, busy: loading)
+    }
+
+    /// Load More from Server: a page further back in each of the ten most recently active rooms
+    /// searched that have one, all at once: a room never opened loads its newest page, one with
+    /// a hole fills its newest hole down from above, so older goes on back from the newest. Returns
+    /// the words to show when every page failed, else nil; search again after it.
+    public func loadMoreForSearch(_ text: String) async -> String? {
+        let rooms = searchedRoomsWithOlder(LocalSearch.parse(text))
+            .sorted { lhs, rhs in
+                switch (store.latestLogID(of: lhs), store.latestLogID(of: rhs)) {
+                case let (l?, r?): l == r ? codePointLess(lhs, rhs) : l > r
+                case (.some, nil): true
+                case (nil, .some): false
+                case (nil, nil): codePointLess(lhs, rhs)
+                }
+            }
+            .prefix(Self.searchLoadRooms)
+        guard !rooms.isEmpty else { return nil }
+        let pages = rooms.map { roomID in
+            let opened = histories[roomID] != nil
+            return Task { () -> String? in
+                do {
+                    if !opened {
+                        try await open(roomID)
+                    } else if let hole = holes(in: roomID).last {
+                        try await fill(hole, in: roomID, .olderFromAbove)
+                    } else {
+                        try await loadOlder(roomID)
+                    }
+                    return nil
+                } catch {
+                    return errorText(error)
+                }
+            }
+        }
+        var failures: [String] = []
+        for page in pages { if let failure = await page.value { failures.append(failure) } }
+        guard failures.count == rooms.count, let first = failures.first else { return nil }
+        return "The server didn’t send them: \(first)"
     }
 }
