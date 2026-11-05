@@ -31,18 +31,13 @@ public enum RoomMentions {
         return typed
     }
 
-    /// Rooms whose id or title matches, exact first, then those starting with the query, then
-    /// those containing it, each by title then id, at most `limit`, as apron-web's `searchRooms`.
+    /// Rooms whose id or title matches, in any case and with or without accents
+    /// (`RoomFinder.tier`, as Go to a Room or Thread matches them): exact first, then those it
+    /// starts, then a word in their title, then any holding it, each by title then id, at most
+    /// `limit`, as apron-web's `searchRooms`.
     public static func search(_ rooms: [RoomSuggestion], _ query: String) -> [RoomSuggestion] {
-        let needle = query.trimmingCharacters(in: .whitespaces).lowercased()
-        func rank(_ room: RoomSuggestion) -> Int? {
-            let id = room.id.lowercased(), title = room.title.lowercased()
-            if needle.isEmpty || id == needle || title == needle { return 0 }
-            if id.hasPrefix(needle) || title.hasPrefix(needle) { return 1 }
-            if id.contains(needle) || title.contains(needle) { return 2 }
-            return nil
-        }
-        let ranked = rooms.compactMap { room in rank(room).map { (room, $0) } }
+        let wanted = RoomFinder.wanted(query)
+        let ranked = rooms.compactMap { room in RoomFinder.tier(id: room.id, title: room.title, wanted).map { (room, $0) } }
         return ranked.sorted { lhs, rhs in
             if lhs.1 != rhs.1 { return lhs.1 < rhs.1 }
             let byTitle = lhs.0.title.localizedCompare(rhs.0.title)

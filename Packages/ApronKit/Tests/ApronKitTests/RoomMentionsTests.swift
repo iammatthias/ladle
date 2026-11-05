@@ -73,7 +73,8 @@ final class RoomMentionsTests: XCTestCase {
     func testTheSessionOffersEveryRoomItHolds() async throws {
         let store = await PreviewFixtures.makeStore()
         let home = try XCTUnwrap(store.session(for: PreviewFixtures.homeID))
-        XCTAssertEqual(RoomMentions.search(home.roomSuggestions, "s").map(\.title), ["2024 offsite", "Benchmarks", "design", "Docs", "Icon sketches", "Icons v1", "Load test", "ops"], "each holds an s: by title, 8 at most")
+        XCTAssertEqual(RoomMentions.search(home.roomSuggestions, "s").map(\.title), ["Icon sketches", "2024 offsite", "Benchmarks", "design", "Docs", "Icons v1", "Load test", "ops"],
+                       "a word starting with s first (#220), then each holding one, by title, 8 at most")
         XCTAssertEqual(home.referencedTitle("general"), "general")
         XCTAssertNil(home.referencedTitle("doesnotexist"))
     }

@@ -81,17 +81,11 @@ extension ServerSession {
     }
 
     /// The rooms and threads whose title or id holds `text`, in any case and with or without
-    /// accents: those it names exactly, then those starting with it, then the rest, each by title.
+    /// accents, ranked by `RoomFinder.tier`, each tier by title.
     public func rooms(named text: String) -> [RoomSuggestion] {
-        let wanted = LocalSearch.folded(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        let wanted = RoomFinder.wanted(text)
         guard !wanted.isEmpty else { return [] }
-        let ranked = roomSuggestions.compactMap { room -> (RoomSuggestion, Int)? in
-            let keys = [LocalSearch.folded(room.title), LocalSearch.folded(room.id)]
-            if keys.contains(wanted) { return (room, 0) }
-            if keys.contains(where: { $0.hasPrefix(wanted) }) { return (room, 1) }
-            if keys.contains(where: { $0.contains(wanted) }) { return (room, 2) }
-            return nil
-        }
+        let ranked = roomSuggestions.compactMap { room in RoomFinder.tier(id: room.id, title: room.title, wanted).map { (room, $0) } }
         return ranked.sorted { lhs, rhs in
             if lhs.1 != rhs.1 { return lhs.1 < rhs.1 }
             let byTitle = lhs.0.title.localizedCompare(rhs.0.title)
