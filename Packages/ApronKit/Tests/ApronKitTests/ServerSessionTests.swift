@@ -525,6 +525,28 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(transports.made.withLock { $0.count }, 3, "without waiting out the second backoff")
     }
 
+    func testTheNetworkBackReplacesAHandshakeAtOnceAndTheOldOneTouchesNothingAfter() async throws {
+        await session.stop()
+        session = ServerSession(record: record, tokens: tokens, positions: positions,
+                                environment: environment(opening: OpeningTimes(wait: .milliseconds(100), patient: .milliseconds(100))))
+        let stuck = FakeTransport(), next = FakeTransport()
+        transports.queued.withLock { $0 = [stuck, next] }
+        session.start()
+        _ = await transport(0)
+        XCTAssertEqual(session.status, .connecting)
+        session.networkReturned()
+        await eventually("the handshake closed at once") { await stuck.closed }
+        _ = await transport(1)
+        await next.deliver(Self.greeting)
+        try await signInAsGuest(on: next)
+        try await openGeneral(on: next)
+        try await Task.sleep(for: .milliseconds(300))
+        XCTAssertFalse(session.isCatchingUp("general"), "the replaced run left the rooms live")
+        XCTAssertEqual(session.status, .signedIn)
+        XCTAssertEqual(transports.made.withLock { $0.count }, 2)
+        XCTAssertEqual(clock.recorded, [], "the replaced run waits out no backoff")
+    }
+
     func testTheNetworkBackLeavesAConnectionThatIsUp() async throws {
         let socket = FakeTransport()
         await socket.deliver(Self.greeting)

@@ -387,6 +387,9 @@ public final class ServerSession {
         closeLiveTyping()
         runTask?.cancel()
         runTask = nil
+        let opening = openingConnection
+        openingConnection = nil
+        await opening?.close()
         await connection?.close()
         connection = nil
         unavailableMessage = nil
@@ -435,9 +438,16 @@ public final class ServerSession {
                 await connection.dropQuiet()
             }
             defer { opening.cancel() }
+            openingConnection = connection
+            var greeted = false
             do {
-                server = try await connection.connect()
+                let greeting = try await connection.connect()
                 opening.cancel()
+                if openingConnection === connection { openingConnection = nil }
+                // Replaced while it opened (`networkReturned`, `stop`): another run owns the session now.
+                try Task.checkCancellation()
+                greeted = true
+                server = greeting
                 unavailableMessage = nil
                 self.connection = connection
                 connectionNumber += 1
@@ -462,6 +472,11 @@ public final class ServerSession {
                 upgradeFailure = .unreachable
             }
 
+            if openingConnection === connection { openingConnection = nil }
+            if !greeted, Task.isCancelled {
+                await connection.close()
+                return
+            }
             if await connection.wentQuiet { lastQuietDrop = .now }
             await connection.close()
             if self.connection === connection { self.connection = nil }
@@ -516,6 +531,10 @@ public final class ServerSession {
         runTask = nil
     }
 
+    /// The connection `run` is opening, before its greeting: a run cancelled meanwhile is parked
+    /// in `connect()` until that socket ends, so whoever cancels it closes this too.
+    @ObservationIgnored private var openingConnection: Connection?
+
     /// When a connection was last dropped for staying quiet, for `OpeningTimes.patient`.
     @ObservationIgnored private var lastQuietDrop: ContinuousClock.Instant?
 
@@ -529,7 +548,9 @@ public final class ServerSession {
         guard runTask != nil, opening || waiting else { return start() }
         runTask?.cancel()
         runTask = nil
-        Task { [connection] in await connection?.close() }
+        let replaced = openingConnection
+        openingConnection = nil
+        Task { await replaced?.close() }
         start()
     }
 
