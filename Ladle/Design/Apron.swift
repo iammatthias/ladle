@@ -22,6 +22,8 @@ enum Palette {
     static var timeline: Color { C.bg100.color() }
     static var raised: Color { C.bg200.color() }
     static var hover: Color { C.bg300.color() }
+    /// A message the keyboard is on (#219): the web's `--hover-soft`.
+    static var hoverSoft: Color { C.hoverSoft.color() }
     static var selected: Color { C.selected.color(increasedContrast: C.hover) }
 
     static var line: Color { C.line.color(increasedContrast: C.lineStrong) }

@@ -31,6 +31,7 @@ enum Screen: String, CaseIterable {
     case serversTwoAccounts = "servers-two-accounts", ipadTwoAccounts = "ipad-two-accounts", accountChooser = "account-chooser", accountChooserSignIn = "account-chooser-signin"
     case appearance, appearanceCustom = "appearance-custom", preferences, preferencesMedia = "preferences-media", history
     case search, searchFiltered = "search-filtered", searchLoadMore = "search-load-more", roomsSearch = "rooms-search"
+    case goTo = "go-to", goToScoped = "go-to-scoped", keyboardShortcuts = "keyboard-shortcuts", timelineKeyed = "timeline-keyed", ipadKeyed = "ipad-keyed"
     case roomsUnseenReactions = "rooms-unseen-reactions", unseenReactionJump = "unseen-reaction-jump"
     case select, selectLog = "select-log"
     case archiveAsk = "archive-ask", archiveRooms = "archive-rooms", archiveTimeline = "archive-timeline"
@@ -73,7 +74,7 @@ enum Screen: String, CaseIterable {
     /// Shots with sites blocked and trusted in Preferences > Media.
     var hasSiteLists: Bool { self == .mediaGateBlocked || self == .preferencesMedia }
 
-    var isPad: Bool { self == .ipad || self == .ipadTyping || self == .ipadCatchingUp || self == .ipadTwoAccounts }
+    var isPad: Bool { self == .ipad || self == .ipadTyping || self == .ipadCatchingUp || self == .ipadTwoAccounts || self == .ipadKeyed }
 
     /// What the reconnect shots hold the timeline at.
     var heldLoading: PaneLoading.Shown? {
@@ -608,6 +609,20 @@ enum Renderer {
                     SearchView(session: changelog, initial: "room:#changelog green", focusesField: false)
                 }
             })
+        case .goTo, .goToScoped:
+            // Go to a Room or Thread (⌘K) for "de", joined first; then narrowed to #general's threads.
+            AnyView(FindSheet(session: home, roomID: PreviewFixtures.busyRoomID, mode: .rooms, open: { _ in },
+                              startingText: screen == .goTo ? "de" : "room:#\(PreviewFixtures.busyRoomID) ", focusesField: false))
+        case .keyboardShortcuts:
+            AnyView(KeyboardShortcutsSheet())
+        case .timelineKeyed:
+            // The keyboard on the busy room's newest message (#219): its soft fill and ink bar.
+            AnyView(NavigationStack { TimelineView(session: home, roomID: PreviewFixtures.busyRoomID, reminders: store.reminders, hidden: store.hiddenDescriptions, drafts: Drafts()) }
+                .environment(\.shotPins, ShotPins(scrollTo: newestStop(home, PreviewFixtures.busyRoomID), keyed: newestStop(home, PreviewFixtures.busyRoomID))))
+        case .ipadKeyed:
+            AnyView(SplitLayout(store: store, serverID: .constant(PreviewFixtures.homeID.uuidString),
+                                roomID: .constant(PreviewFixtures.busyRoomID), place: .constant(nil), connecting: .constant(nil))
+                .environment(\.shotPins, ShotPins(scrollTo: newestStop(home, PreviewFixtures.busyRoomID), keyed: newestStop(home, PreviewFixtures.busyRoomID))))
         case .select:
             // The busy room's last three messages picked, the bar in the composer's place.
             AnyView(NavigationStack {
@@ -757,6 +772,11 @@ enum Renderer {
     }
 
     /// The busy room's last three messages picked, as select mode holds them.
+    /// The stop ↑ from the empty composer lands on: the newest message.
+    static func newestStop(_ session: ServerSession, _ roomID: String) -> String? {
+        TimelineKeys.stops(session.timelineItems(roomID, lineBefore: nil)).last
+    }
+
     static func lastThree(_ home: ServerSession) -> MessageSelection? {
         let ids = home.timeline(PreviewFixtures.busyRoomID).suffix(3).map(\.messageID)
         guard var selection = ids.first.map({ MessageSelection(roomID: PreviewFixtures.busyRoomID, first: $0) }) else { return nil }

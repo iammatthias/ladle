@@ -17,6 +17,8 @@ struct MessageRow: View {
     /// still pending. The same row from Send until the room leaves the screen.
     var pending: ServerSession.PendingMessage? = nil
     var highlighted = false
+    /// The keyboard is on it (#219): a soft fill and an ink bar at its start, a mention keeping its tint.
+    var keyed = false
     var pulsing = false
     var mentionJoin: MentionJoin = []
     var reminderDue: Date?
@@ -85,7 +87,7 @@ struct MessageRow: View {
         .padding(.vertical, Tokens.Space.s1)
         .padding(.horizontal, Tokens.Space.s2)
         .opacity(pending?.state == .sending ? Tokens.Opacity.dim : 1)
-        .background(highlighted ? Palette.hover : row.mentionsYou ? Palette.accentSoft : .clear, in: ground)
+        .background(highlighted ? Palette.hover : row.mentionsYou ? Palette.accentSoft : keyed ? Palette.hoverSoft : .clear, in: ground)
         .overlay {
             if reminderDue != nil {
                 RoundedRectangle(cornerRadius: Tokens.Radius.md).strokeBorder(Palette.accent, lineWidth: 1.5).accessibilityHidden(true)
@@ -97,8 +99,8 @@ struct MessageRow: View {
             }
         }
         .overlay(alignment: .leading) {
-            if row.mentionsYou {
-                bar.fill(Palette.accent).frame(width: 3)
+            if row.mentionsYou || keyed {
+                bar.fill(keyed ? Palette.inkMuted : Palette.accent).frame(width: 3)
                     .padding(.top, mentionJoin.contains(.above) ? 0 : Tokens.Space.s1)
                     .padding(.bottom, mentionJoin.contains(.below) ? 0 : Tokens.Space.s1)
                     .accessibilityHidden(true)

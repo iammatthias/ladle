@@ -14,6 +14,8 @@ struct ShotPins: Hashable {
     var gapWaits = false
     /// The attachment tile, by name, held open for renaming.
     var renaming: String?
+    /// The timeline row drawn as the keyboard's (#219), by item id: a still has no hardware keyboard.
+    var keyed: String?
 }
 
 extension EnvironmentValues {

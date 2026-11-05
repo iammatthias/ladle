@@ -42,6 +42,10 @@ struct ComposerView: View {
     var live = false
     /// Takes the live message back, keeping the draft; nil where the server can't delete it.
     var onStopLive: (() -> Void)?
+    /// ↑ in the empty field (#218): the keyboard goes up to the messages.
+    var onToMessages: (() -> Void)?
+    /// Each change puts the keyboard back in the field: Escape or ↓ from the messages.
+    var focusRequest = 0
     @FocusState private var focused: Bool
     @State private var pickingPhotos = false
     @State private var photoItems: [PhotosPickerItem] = []
@@ -172,6 +176,7 @@ struct ComposerView: View {
             Task { await session.linkPreviews.prefetch(text) }
         }
         .onChange(of: draft.field.mode, initial: true) { if draft.field.mode != .new { focused = true } }
+        .onChange(of: focusRequest) { focused = true }
         .photosPicker(isPresented: $pickingPhotos, selection: $photoItems, maxSelectionCount: 10,
                       matching: .any(of: (offer.images ? [.images] : []) + (offer.videos ? [.videos] : [])), preferredItemEncoding: .compatible)
         .onChange(of: photoItems) {
@@ -294,7 +299,13 @@ struct ComposerView: View {
                 case .tab: .tab
                 default: .escape
                 }
-                return use(key) ? .handled : .ignored
+                if use(key) { return .handled }
+                if let onToMessages, let chord = Shortcuts.Chord(press), Shortcuts.action(for: chord, in: .composer) == .toMessages,
+                   draft.field.text.isEmpty, draft.files.isEmpty {
+                    onToMessages()
+                    return .handled
+                }
+                return .ignored
             }
         if textLimit.showsCounter {
             Text(textLimit.remaining.formatted())
@@ -322,7 +333,7 @@ struct ComposerView: View {
                 .buttonStyle(PrimaryButtonStyle())
                 .disabled(!canSend)
                 .accessibilityLabel(isCommand ? "Run command" : "Send message")
-                .keyboardShortcut(.return, modifiers: .command)
+                .shortcut(.send)
         }
     }
 

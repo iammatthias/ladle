@@ -33,7 +33,6 @@ struct TimelineView: View {
     /// The ends of the long waits put away, which show again on the next Send.
     @State private var dismissedWaits: Set<Date> = []
     @State private var showingMembers = false
-    @State private var searchingHistory = false
     /// The room's threads, on iPhone, and what picking in it asked for once it has gone.
     @State private var browsingThreads = false
     @State private var afterThreads: (() -> Void)?
@@ -76,6 +75,19 @@ struct TimelineView: View {
     @State private var dayShown = false
     @State private var pulse = MentionPulse()
     @State private var pulsing: Set<LogID> = []
+    /// The row the keyboard is on (#218): a message, a thread's card or a gap row, by item id.
+    @FocusState private var keyed: String?
+    /// The row the keys move to next: scrolled into view, then focused, as a lazy row exists
+    /// only once it is in view.
+    @State private var keyTarget: String?
+    /// Each change gives the keyboard back to the composer.
+    @State private var composerFocus = 0
+    /// Where a Shift+↑ ↓ run of picks began (#219).
+    @State private var selectAnchor: LogID?
+    @State private var showingShortcuts = false
+    /// Go to a Room or Thread (⌘K), or Search Local History (⌘F), in one sheet (#220).
+    @State private var finding: FindSheet.Mode?
+    @State private var afterFind: String?
     @Environment(\.fixedNow) private var fixedNow
     @Environment(\.shotPins) private var shotPins
     @Environment(\.horizontalSizeClass) private var sizeClass
@@ -226,6 +238,15 @@ struct TimelineView: View {
                 proxy.scrollTo(landingTarget, anchor: UnitPoint(x: 0.5, y: 0.06))
                 self.landingTarget = nil
             }
+            .onChange(of: keyTarget) {
+                guard let keyTarget else { return }
+                proxy.scrollTo(keyTarget)
+                Task { @MainActor in
+                    await Task.yield()
+                    keyed = keyTarget
+                    self.keyTarget = nil
+                }
+            }
             .onChange(of: jumpTarget) {
                 guard let jumpTarget else { return }
                 // A message you just sent keeps its queued row's id while the room is on screen.
@@ -293,7 +314,8 @@ struct TimelineView: View {
                         waits
                         ComposerView(session: session, roomID: roomID, draft: draft, staging: drafts.staging, onSend: send,
                                      onHeld: { dismissedWaits = [] }, onProblem: { problem = $0 },
-                                     live: composingLive, onStopLive: session.server?.has("edit") == true ? { session.stopLiveTyping() } : nil)
+                                     live: composingLive, onStopLive: session.server?.has("edit") == true ? { session.stopLiveTyping() } : nil,
+                                     onToMessages: { step(.previous, from: nil) }, focusRequest: composerFocus)
                     }
                 }
                 .background(Palette.timeline)
@@ -324,8 +346,17 @@ struct TimelineView: View {
         // A private room's header takes the plum wash, as the web's.
         .toolbarBackground(session.isPrivate(roomID) ? Palette.privateWash(0.6) : Palette.timeline, for: .navigationBar)
         .toolbarBackgroundVisibility(session.isPrivate(roomID) ? .visible : .automatic, for: .navigationBar)
-        .sheet(isPresented: $searchingHistory) {
-            SearchView(session: session, initial: ServerSession.searchStart(in: roomID))
+        .sheet(isPresented: $showingShortcuts) { KeyboardShortcutsSheet() }
+        .sheet(item: $finding, onDismiss: {
+            if let afterFind { openRoom(afterFind) }
+            afterFind = nil
+        }) { mode in
+            FindSheet(session: session, roomID: roomID, mode: mode) { afterFind = $0 }
+        }
+        .background {
+            HiddenShortcuts(actions: [.showShortcuts, .goTo]) { action in
+                if action == .goTo { finding = .rooms } else { showingShortcuts = true }
+            }
         }
         .sheet(isPresented: $browsingThreads, onDismiss: {
             afterThreads?()
@@ -649,10 +680,10 @@ struct TimelineView: View {
                 .accessibilityHint(mute.isWithRoom ? "Unmutes the room" : "Unmutes it")
             }
             // Beside the title, as apron-web #166 put it there, and ⌘F, as its Ctrl or ⌘F.
-            Button("Search Local History", systemImage: "magnifyingglass") { searchingHistory = true }
-                .keyboardShortcut("f", modifiers: .command)
+            Button("Search Local History", systemImage: "magnifyingglass") { finding = .messages }
+                .shortcut(.searchHistory)
             Button("Members", systemImage: "person.2") { showingMembers.toggle() }
-                .keyboardShortcut("m", modifiers: [.command, .shift])
+                .shortcut(.members)
             if session.status == .signedIn, session.server?.has("rooms") == true || session.mayMute {
                 Menu("Room", systemImage: "ellipsis") {
                     let noun = session.store.room(roomID)?.parentRoomID == nil ? "Room" : "Thread"
@@ -669,6 +700,10 @@ struct TimelineView: View {
                     MuteActions(session: session, roomID: roomID, perform: perform)
                     if session.mayEdit(roomID) {
                         Button("Edit \(noun)", systemImage: "pencil") { editingRoom = true }
+                    }
+                    // Where a hardware keyboard is likely, as the web leaves it off a touch screen.
+                    if sizeClass != .compact {
+                        Button("Keyboard Shortcuts", systemImage: "keyboard") { showingShortcuts = true }
                     }
                     if session.server?.has("rooms") == true, session.joinedRoomIDs.contains(roomID) {
                         Button("Leave Room", systemImage: "rectangle.portrait.and.arrow.right", role: .destructive) { leaving = true }
@@ -785,6 +820,7 @@ struct TimelineView: View {
                 }
                 MessageRow(session: session, message: message, continues: continues, pending: pending,
                            highlighted: highlighted == message.messageID || picking?.contains(message.messageID) == true,
+                           keyed: keyed == item.id || shotPins.keyed == item.id,
                            pulsing: pulsing.contains(message.messageID),
                            mentionJoin: join,
                            reminderDue: reminding.reminder(on: message)?.due,
@@ -809,14 +845,9 @@ struct TimelineView: View {
             .contentShape(Rectangle())
             .onTapGesture { if picking != nil, stored, session.maySelect(message, in: roomID) { toggle(message.messageID) } }
             .focusable(interactions: .activate)
-            .onKeyPress(keys: ["x"]) { press in
-                guard stored, press.modifiers.isDisjoint(with: [.command, .control, .option]), !movingSelection,
-                      session.maySelect(message, in: roomID) else { return .ignored }
-                if picking == nil { editing = nil }
-                picking = KeyboardCommands.pressX(on: message.messageID, selection: picking, roomID: roomID,
-                                                   order: session.timeline(roomID).map(\.messageID))
-                return .handled
-            }
+            .focused($keyed, equals: item.id)
+            .focusEffectDisabled()
+            .onKeyPress(phases: [.down, .repeat]) { press in messageKey(press, on: item) }
             .onKeyPress(keys: [.space, .return]) { _ in
                 guard picking != nil, stored, session.maySelect(message, in: roomID) else { return .ignored }
                 toggle(message.messageID)
@@ -838,6 +869,8 @@ struct TimelineView: View {
         case .thread(let threadID):
             Button { openRoom(threadID) } label: { ThreadCard(session: session, threadID: threadID) }
                 .buttonStyle(.plain)
+                .focused($keyed, equals: item.id)
+                .onKeyPress(phases: [.down, .repeat]) { press in messageKey(press, on: item) }
                 .padding(.leading, Tokens.Space.s4 + Tokens.AvatarSize.md + Tokens.Space.s3)
                 .padding(.trailing, Tokens.Space.s4)
                 .padding(.top, Tokens.Space.s2)
@@ -850,6 +883,9 @@ struct TimelineView: View {
         case .gap(let hole):
             let loading: Fill? = if case .hole(hole, let side) = session.histories[roomID]?.loading { side } else { nil }
             GapRow(loading: loading) { side in fill(hole, side) }
+                .focusable(interactions: .activate)
+                .focused($keyed, equals: item.id)
+                .onKeyPress(phases: [.down, .repeat]) { press in messageKey(press, on: item) }
                 .padding(.horizontal, Tokens.Space.s4)
                 .padding(.top, Tokens.Space.s4)
         }
@@ -957,6 +993,79 @@ struct TimelineView: View {
         if menu.editable {
             Button("Delete", systemImage: "trash", role: .destructive) { deleting = message }
         }
+    }
+
+    // MARK: Keys
+
+    /// A key on a row the keyboard is on, as the table (`Shortcuts`, scope `.message`) has it:
+    /// apron-web's `timelineKey` and Message `keydown` (#212, #218, #219).
+    private func messageKey(_ press: KeyPress, on item: TimelineItem) -> KeyPress.Result {
+        guard let chord = Shortcuts.Chord(press), let action = Shortcuts.action(for: chord, in: .message) else { return .ignored }
+        let message = item.storedMessage
+        switch action {
+        case .showShortcuts:
+            showingShortcuts = true
+        case .message(let move):
+            step(move, from: item.id)
+        case .backToComposer:
+            if picking != nil { picking = nil } else if session.mayWrite { composerFocus += 1 } else { keyed = nil }
+        case .reply:
+            guard let message, picking == nil, editing?.field.editing?.messageID != message.messageID,
+                  MessageMenu(message, in: session).mayWrite else { return .ignored }
+            editing = nil
+            drafts[draftKey].field.mode = .reply(message.messageID)
+        case .edit:
+            guard let message, picking == nil, MessageMenu(message, in: session).editable else { return .ignored }
+            editing = ComposerDraft(field: DraftField(editing: message, in: session))
+        case .select:
+            guard let message, !movingSelection, session.maySelect(message, in: roomID) else { return .ignored }
+            if picking == nil { editing = nil }
+            picking = KeyboardCommands.pressX(on: message.messageID, selection: picking, roomID: roomID,
+                                               order: session.timeline(roomID).map(\.messageID))
+        case .extendSelection(let up):
+            guard let message, !movingSelection else { return .ignored }
+            extendSelection(from: message, up: up)
+        default:
+            return .ignored
+        }
+        return .handled
+    }
+
+    /// ↑ ↓, Home End, Page Up Page Down from a row (or from the composer, `from` nil): the next
+    /// stop as drawn; past the oldest, older messages load and ↑ goes on into them; past the
+    /// newest, the composer.
+    private func step(_ move: MessageStep, from: String?) {
+        let stops = TimelineKeys.stops(items)
+        let perPage = max(1, stops.filter(rowsInView.contains).count - 1)
+        switch TimelineKeys.step(move, from: from, in: stops, perPage: perPage) {
+        case .row(let id):
+            keyTarget = id
+        case .composer:
+            if session.mayWrite, picking == nil { composerFocus += 1 }
+        case .older:
+            guard session.canLoadOlder(roomID), let from else { return }
+            Task {
+                do { try await session.loadOlder(roomID) } catch { return }
+                if case .row(let id) = TimelineKeys.step(.previous, from: from, in: TimelineKeys.stops(items)), keyed == from { keyTarget = id }
+            }
+        }
+    }
+
+    /// Shift+↑ ↓ on a message: select mode with it, or on with it, picking from where the run
+    /// began to the message the keyboard moves to, as `MessageSelection.extend`.
+    private func extendSelection(from message: MessageSnapshot, up: Bool) {
+        let order = session.timeline(roomID).map(\.messageID)
+        let selectable = session.timeline(roomID).filter { session.maySelect($0, in: roomID) }.map(\.messageID)
+        guard session.maySelect(message, in: roomID),
+              let next = TimelineKeys.extending(from: message.messageID, up: up, among: selectable) else { return }
+        var selection = picking ?? MessageSelection(roomID: roomID, first: message.messageID)
+        if picking == nil || selectAnchor.map({ !selection.contains($0) }) ?? true {
+            editing = nil
+            selectAnchor = message.messageID
+        }
+        selection.extend(from: selectAnchor ?? message.messageID, to: next, order: order)
+        picking = selection
+        keyTarget = items.first { $0.storedMessage?.messageID == next }?.id ?? next.text
     }
 
     // MARK: Select mode
@@ -1255,7 +1364,7 @@ struct ReactionJumpPill: View {
             .touchTarget()
         }
         .buttonStyle(.plain)
-        .keyboardShortcut("r", modifiers: [.command, .shift])
+        .shortcut(.newReactions)
         .accessibilityLabel(UnseenReactions.spoken(count))
         .accessibilityHint("Shows the oldest message with new reactions")
     }
