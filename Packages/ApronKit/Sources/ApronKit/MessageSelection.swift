@@ -52,6 +52,19 @@ public struct MessageSelection: Hashable, Sendable {
         return !ids.isEmpty
     }
 
+    /// Shift+↑ or Shift+↓ (apron-web #219's `extend`): the picked messages become those along
+    /// `order` from `anchor`, where the run of keys began, to `id`, both included, so stepping
+    /// back the other way gives them up again.
+    public mutating func extend(from anchor: LogID, to id: LogID, order: [LogID]) {
+        if let start = order.firstIndex(of: anchor), let end = order.firstIndex(of: id) {
+            ids = Array(order[min(start, end) ... max(start, end)])
+        } else {
+            ids = anchor == id ? [id] : [anchor, id]
+        }
+        last = id
+        denied = nil
+    }
+
     /// Select Between: every message along `order` from the earliest picked to the latest
     /// (apron-web's `spanOf`).
     public mutating func fillBetween(order: [LogID]) {
