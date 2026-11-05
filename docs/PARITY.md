@@ -2,7 +2,7 @@
 
 This is the backlog of record for parity with apron-web. The rule is that every apron-web feature exists in Ladle. The iOS form may differ. Ladle may do more. Nothing is left out.
 
-The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`: upstream `main` through #211, plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. The design tokens are at 9e38a22. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
+The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`: upstream `main` through #220, plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. The design tokens are at 9e38a22. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
 
 Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections 3.10 to 3.12 describe the profile card, You and the server pane as built.
 
