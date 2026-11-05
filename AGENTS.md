@@ -201,8 +201,10 @@ clone), which is only a worked example.
       wait", #211): the room keeps its pages and stays behind, so live records show without
       moving its checkpoint, and once the wait is over (`goOn`, on `Environment.sleep`) the rooms
       still behind page on from their checkpoints on the same connection. Ladle never rebuilds a
-      room, and catches up only at sign-in and after a wait, not on a room frame whose head
-      passes the checkpoint. A second `open` while the first page loads waits for
+      room, and catches up only at sign-in, after a wait, and on joining a room or thread read
+      before (apron-web #215: `joinedAfterReading`, paged forward from its checkpoint on the
+      `room_update` that joins it, before its membership record moves the checkpoint), not on a
+      room frame whose head passes the checkpoint. A second `open` while the first page loads waits for
       it. What a room holds is `RoomHistory.coverage`, a `Coverage` (`Coverage.swift`): the
       `LogSpan`s of its log loaded, ascending and disjoint in one flat array, touching spans
       merged, the holes between them read off the neighbours (`holes(in:)`). `olderBefore` is the

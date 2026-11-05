@@ -19,8 +19,8 @@ final class RoomsIntegrationTests: XCTestCase {
         return server
     }
 
-    private func connected(_ server: Aprond) async throws -> ServerSession {
-        let environment = ServerSession.Environment(makeTransport: { WebSocketTransport(url: $0.url, origin: $0.origin) })
+    private func connected(_ server: Aprond, pageSize: Int = 50) async throws -> ServerSession {
+        let environment = ServerSession.Environment(makeTransport: { WebSocketTransport(url: $0.url, origin: $0.origin) }, pageSize: pageSize)
         let session = ServerSession(record: ServerRecord(url: server.url), tokens: InMemoryTokenStore(), environment: environment)
         sessions.append(session)
         session.start()
@@ -180,6 +180,31 @@ final class RoomsIntegrationTests: XCTestCase {
 
         try await bob.join(roomID)
         try await waitFor("joined") { bob.joinedRoomIDs.contains(roomID) }
+    }
+
+    /// apron-web #215: joining a room read without joining keeps what was read, older pages too,
+    /// and shows what was posted between the read and the join.
+    func testJoiningARoomReadWithoutJoiningKeepsWhatWasReadAndGetsWhatCameSince() async throws {
+        let server = try await started()
+        let admin = try await admin(server)
+        let created = try await admin.createRoom(title: "Pantry")
+        let roomID = try XCTUnwrap(created)
+        try await admin.open(roomID)
+        for text in ["Flour", "Rice", "Beans", "Oats"] { _ = try await admin.send(text, in: roomID) }
+
+        let bob = try await connected(server, pageSize: 2)
+        try await bob.signIn(.guest(name: nil))
+        try await bob.open(roomID)
+        try await waitFor("newest page") { bob.timeline(roomID).map(\.plainText) == ["Beans", "Oats"] }
+        try await bob.loadOlder(roomID)
+        try await waitFor("older page") { bob.timeline(roomID).map(\.plainText) == ["Flour", "Rice", "Beans", "Oats"] }
+        _ = try await admin.send("Lentils", in: roomID)
+
+        try await bob.join(roomID)
+        try await waitFor("what came since") { bob.timeline(roomID).map(\.plainText) == ["Flour", "Rice", "Beans", "Oats", "Lentils"] }
+        XCTAssertTrue(bob.joinedRoomIDs.contains(roomID))
+        _ = try await admin.send("Salt", in: roomID)
+        try await waitFor("live after joining") { bob.timeline(roomID).last?.plainText == "Salt" }
     }
 
     /// apron-web #198: a room read before joining lists its threads under it, all of them with no

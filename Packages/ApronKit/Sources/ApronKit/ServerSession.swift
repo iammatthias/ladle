@@ -167,6 +167,8 @@ public final class ServerSession {
     public private(set) var histories: [String: RoomHistory] = [:]
     /// Each room's first page while it loads, so a second `open` waits for it.
     @ObservationIgnored private var openings: [String: Task<Void, Error>] = [:]
+    /// Rooms a `room_update` just joined that were read before, to page on from where they were read.
+    @ObservationIgnored private var joinedAfterReading: Set<String> = []
     /// The rooms whose first page and thread listing are loading, which the timeline holds back.
     public private(set) var held: Set<String> = []
     /// Threads this device started, by the message each was started from (`startThread`).
@@ -779,7 +781,13 @@ public final class ServerSession {
             notices.append(notice)
         case "room_update":
             for room in params?["joined"]?.arrayValue ?? [] {
-                if let roomID = room["room_id"]?.stringValue { joinedRoomIDs.insert(roomID) }
+                guard let roomID = room["room_id"]?.stringValue, joinedRoomIDs.insert(roomID).inserted else { continue }
+                // Read before joining (apron-web #215): nothing came live meanwhile, so it keeps
+                // what was read and pages on from there before live records move its checkpoint.
+                if status == .signedIn, histories[roomID]?.checkpoint != nil, histories[roomID]?.isLive == true {
+                    histories[roomID]?.isLive = false
+                    joinedAfterReading.insert(roomID)
+                }
             }
             for room in params?["left"]?.arrayValue ?? [] {
                 if let roomID = room["room_id"]?.stringValue { joinedRoomIDs.remove(roomID) }
@@ -830,6 +838,19 @@ public final class ServerSession {
         if notification.method == "room_update" { noteArrivals() }
         advanceLiveCheckpoints(records)
         for message in records.messages where message.logID == message.messageID { endTyping(message.from.userID, in: message.roomID) }
+        catchUpJoinedAfterReading()
+    }
+
+    /// Pages each room joined after reading it forward from where it was read, on this connection.
+    private func catchUpJoinedAfterReading() {
+        guard !joinedAfterReading.isEmpty, let connection else { return }
+        let rooms = joinedAfterReading.sorted(by: codePointLess)
+        joinedAfterReading = []
+        Task {
+            for roomID in rooms where isBehind(roomID) {
+                if let wait = await pageForward(roomID, on: connection) { goOn(after: wait, on: connection) }
+            }
+        }
     }
 
     /// Installs records, then raises the retention floors their rooms state, which drops the

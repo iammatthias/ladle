@@ -1253,6 +1253,54 @@ final class ServerSessionTests: XCTestCase {
                        "not asked across rooms again")
     }
 
+    /// apron-web #215: a room read without joining, older pages too, keeps all of it on Join and
+    /// pages forward only from where it was read, so what came in between shows.
+    func testJoiningARoomReadWithoutJoiningKeepsWhatWasReadAndCatchesUpOnlyOnWhatCameSince() async throws {
+        let socket = FakeTransport()
+        await socket.deliver(Self.greeting)
+        transports.queued.withLock { $0 = [socket] }
+        session.start()
+        try await signInAsGuest(on: socket)
+        let open = Task { try await session.open("design") }
+        let first = await frame(socket, 2)
+        XCTAssertEqual(first, #"{"id":"c3","method":"history","params":{"limit":3,"room_id":"design"}}"#)
+        await socket.deliver(["id": "c3", "result": [
+            "messages": [message("42", "42", room: "design"), message("44", "44", room: "design")],
+            "first_log_id": "42", "last_log_id": "44", "more": true, "latest_log_id": "44", "history_log_id": "30",
+        ]])
+        _ = await frame(socket, 3)
+        await socket.deliver(["id": "c4", "result": ["not_joined": []]])
+        try await open.value
+        let older = Task { try await session.loadOlder("design") }
+        let back = await frame(socket, 4)
+        XCTAssertEqual(back, #"{"id":"c5","method":"history","params":{"before":"41","limit":3,"room_id":"design"}}"#)
+        await socket.deliver(["id": "c5", "result": [
+            "messages": [message("35", "35", room: "design"), message("40", "40", room: "design")],
+            "first_log_id": "35", "last_log_id": "41", "more": true, "latest_log_id": "44", "history_log_id": "30",
+        ]])
+        try await older.value
+        XCTAssertEqual(session.timeline("design").map(\.messageID.text), ["35", "40", "42", "44"])
+
+        let join = Task { try await session.join("design") }
+        _ = await frame(socket, 5)
+        let membership: JSONValue = ["log_id": "46", "room_id": "design", "members": [["user": ["user_id": "ada"], "joined": true]]]
+        await socket.deliver(["method": "room_update", "params": [
+            "joined": [["room_id": "design", "log_id": "30", "title": "Design", "latest_log_id": "46", "history_log_id": "30"]],
+            "memberships": [membership],
+        ]])
+        await socket.deliver(["id": "c6", "result": [:]])
+        try await join.value
+        let since = await frame(socket, 6)
+        XCTAssertEqual(since, #"{"id":"c7","method":"history","params":{"after":"45","limit":200,"room_id":"design"}}"#)
+        await socket.deliver(["id": "c7", "result": [
+            "messages": [message("45", "45", room: "design")], "memberships": [membership],
+            "first_log_id": "45", "last_log_id": "46", "more": false, "latest_log_id": "46", "history_log_id": "30",
+        ]])
+        await eventually("caught up") { session.timeline("design").count == 5 }
+        XCTAssertEqual(session.timeline("design").map(\.messageID.text), ["35", "40", "42", "44", "45"])
+        XCTAssertEqual([session.joinedRoomIDs.contains("design"), session.canLoadOlder("design"), session.isCatchingUp("design")], [true, true, false])
+    }
+
     /// history-recovery-failure.json's rate-limited variant, through a reconnect's catch-up: a page
     /// refused with `retry_after` keeps what the pages before it recovered, and the room goes on
     /// from there once the wait is over, not from the start.
