@@ -56,6 +56,9 @@ struct GoToView: View {
     /// The highlighted result, by id, so it stays on its room while results change.
     @State private var highlighted: String?
     @FocusState private var focused: Bool
+    /// Search the Server: under way, then what it came to.
+    @State private var listing = false
+    @State private var listed: String?
     @Environment(\.dismiss) private var dismiss
     @Environment(\.fixedNow) private var fixedNow
     var focusesField = true
@@ -112,6 +115,15 @@ struct GoToView: View {
                             Text(joined ? "Joined" : "Not joined").formHeader()
                         }
                     }
+                }
+                if session.status == .signedIn, session.server?.has("rooms") == true {
+                    Section {
+                        Button(listing ? "Searching the Server…" : "Search the Server") { searchServer() }
+                            .disabled(listing)
+                    } footer: {
+                        Text(listed ?? "Lists the rooms to join afresh. A server lists only its most recently active ones, so others aren’t found.").formFooter()
+                    }
+                    .listRowBackground(Palette.raised)
                 }
             }
             .scrollContentBackground(.hidden)
@@ -228,6 +240,21 @@ struct GoToView: View {
         let next = LocalSearch.withFilterValue(query, at: filter, value: value)
         query = next.query
         selection = TextSelection(insertionPoint: String.Index(utf16Offset: next.caret, in: next.query))
+    }
+
+    /// The rooms to join, listed afresh (`room_list`, `not_joined`): the listing installs their
+    /// records, which `knownRooms` then holds.
+    private func searchServer() {
+        listing = true
+        Task {
+            do {
+                let ids = try await session.listUnjoinedRooms()
+                listed = ids.count == 1 ? "The server listed 1 room to join." : "The server listed \(ids.count) rooms to join."
+            } catch {
+                listed = errorText(error)
+            }
+            listing = false
+        }
     }
 
     private func pick(_ id: String) {

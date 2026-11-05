@@ -477,8 +477,8 @@ clone), which is only a worked example.
     `MessageText` marks `@&role` outside code and links as `RoleMentionKey` reading `@role`
     before it marks users; `plain` reads it `@role` too. Mention-of-you stays `body.mentions` only.
   - `RoomMentions`: the composer's `#` list, as apron-web's `room-autocomplete.ts`: `query(in:)`
-    is the `#` word being typed (`[A-Za-z0-9_.-]`, at least one), `search` ranks exact, prefix,
-    then contains on id and title, 8 at most, over `ServerSession.roomSuggestions` (every room
+    is the `#` word being typed (`[A-Za-z0-9_.-]`, at least one), `search` ranks by
+    `RoomFinder.tier` (exact, prefix, a word in the title, then contains, on id and title), 8 at most, over `ServerSession.roomSuggestions` (every room
     and thread with a record), and `insert` puts `#room_id ` in the draft, which is what is sent.
   - Typing (`ServerSession+Typing.swift`, §4.6), as apron-web's `sendTyping` and
     `handleActivity`: `composerChanged(in:)` sends `activity {typing: 15}` with capability
