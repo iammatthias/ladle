@@ -1284,6 +1284,7 @@ public final class ServerSession {
             guard page.more, histories[roomID]?.checkpoint != checkpoint else { break }
         }
         histories[roomID]?.isLive = true
+        histories[roomID]?.catchUpFailed = false
         return nil
     }
 
