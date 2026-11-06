@@ -2,7 +2,7 @@
 
 This is the backlog of record for parity with apron-web. The rule is that every apron-web feature exists in Ladle. The iOS form may differ. Ladle may do more. Nothing is left out.
 
-The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`: upstream `main` through #220, plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. The design tokens are at 9e38a22. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
+The apron-web side is the fork at `forks/apron-web`, branch `homelab-3`: upstream `main` through #224, plus three fork features: hidden deleted messages, `og:video` cards, and the sign-in QR code. The design tokens are at 9e38a22. The Ladle side is `main` at the time of writing. The media gate and block markdown landed in 6273e57 and deac4e3.
 
 Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections 3.10 to 3.12 describe the profile card, You and the server pane as built.
 
@@ -570,6 +570,8 @@ Each "has" was checked against Ladle's code, not its docs. `docs/UX.md` sections
 | Feature | apron-web | Status | Ladle | Note |
 |---|---|---|---|---|
 | Installable PWA with a service worker | #8 | N/A-iOS | | Ladle is the native app. |
+| A leaner precache | #223 | N/A-iOS | | The service worker's cache. |
+| markdown-it's entity table and Unicode ranges from the browser; emoji data without code points | #221 | N/A-iOS | | The web's bundle size. Ladle parses Markdown with Foundation and generates its emoji table (`tools/design/emoji.py`). |
 | A push opens in an app already open whose address only changes | #204 | N/A-iOS | `App/ReminderNotifications.swift` (`AppDelegate`) | The service worker's fragment hand-off has no iOS counterpart: a tapped notification reaches the running app through UserNotifications' delegate. |
 | Faster startup: less drawn and loaded before the first messages | #201 | N/A-iOS | | The web's code splitting, IndexedDB reads and deferred panels. Ladle's own startup shows placeholders (#173) and reads kept history off the main actor. |
 | Explicit states and their failure cases, the rest of #209 | #209 | has | `Kit/ServerSession.swift` (`run`, `adoptSignIn`, `request`), `Kit/ServerSession+History.swift`, `Kit/SessionStore.swift` | Checked against Ladle, beside the rows #209 added elsewhere. Every connection end already goes through one cleanup in `run` (typing cleared, rooms not live, pending requests failed by `Connection.close`); another account's sign-in resets at `adoptSignIn`, and Disconnect keeps rooms readable (section 1). A recovery behind an unanswered `auth`, or one whose sign-in failed, cannot happen: catch-up starts only after the `auth` result and `request` refuses until signed in. Requests during a passkey sheet: the sheet is modal, background senders use `notify`, and a timeout starts at send, so there is no wait to hold. Kept history is one process's whole-file writes, and a write racing a delete removes its file (`keptGeneration`). Unread is each session's own, so nothing carries from one server to another. Terminals and code highlighting are native and load nothing. Cards and member lists are sheets or views per room, so a late reply lands only in its own; toasts already take turns (`RequestFeedback`). The web's `Task`, `onDemand`, `AnchoredPopover`, `longPress` and `messageThem` are refactors. |
