@@ -95,7 +95,9 @@ clone), which is only a worked example.
   - `Records` and `ReplayStore`: the four record stores (room records by `room_id`, message
     snapshots by `message_id`, reaction sets by `(message_id, user_id)`, memberships by
     `(room_id, user_id)`) under the replay rule, member-list seeding as of a position, re-homing
-    on moves, and the README's logical projection. `ext` stays a `JSONValue`. Each room's `message_id`s are kept in numeric order on insert
+    on moves, and the README's logical projection. `ext` stays a `JSONValue`; a message's `body`
+    or `ext` that is not an object, and a room's `title` or `description` that is not a string
+    or `ext` that is not an object, decode as absent (apron-web #223). Each room's `message_id`s are kept in numeric order on insert
     (`homes`, binary insertion), so `messages(in:)` never sorts: a timeline body reads a room
     about nine times per arriving message, and sorting 20,000 ids cost 6 ms a read
     (`TimelineBenchmark`). It also logs every
@@ -141,7 +143,10 @@ clone), which is only a worked example.
       token, which is saved in place of the invite. A sign-in sends
       `auth` with `agent` and pipelines `room_list {filter: joined, members: true}` behind it.
       A token in any result replaces the saved one; a `.token` sign-in without one keeps the
-      presented token; a guest result without one clears it. The email code goes on the
+      presented token; a guest result without one clears it. A guest sign-in that times out or
+      fails with an internal error closes its connection, which may still take it later, so the
+      next sign-in has its own (apron-web #223). A replacing `server` frame that adds `history`
+      opens the rooms on screen. The email code goes on the
       connection that proposed (§4.11.2); `pendingEmail` is cleared on every disconnect.
     - A `user` `you` whose `user_id` differs from this account's is a rename (§3.3.3: `you`
       replaces the connection's identity), as is a `new` with an `old` naming it. The saved
@@ -168,7 +173,9 @@ clone), which is only a worked example.
       never below a `retry_after`, a refused resume's included (an account's connection limit). Attempts restart after 30 s signed in. A connection gets `Environment.opening` (`OpeningTimes`, apron-web #216: 10 s, real time) to bring its `server` frame, else `Connection.dropQuiet` closes it as an upgrade that failed; for 3 minutes after a quiet drop (that, or the pinger's two silent intervals) the next gets 30 s. `networkReturned()` (the app's `NWPathMonitor`) replaces a connection still opening, or a backoff, with a new one at once, attempts starting over. An id-less `denied`
       or a refused upgrade other than 429 or 5xx stops reconnecting (`Status.stopped`).
     - `ConnectionState` (`ConnectionState.swift`): a status as UX spec 4.1 shows it, its
-      symbol, words, detail, and whether it is a problem with Try Now; nil when signed in.
+      symbol, words, detail, and whether it is a problem with Try Now; nil when signed in. Its
+      "Retrying in 12 s" counts down to `ServerSession.reconnectAt` (apron-web #223), the
+      banners redrawing it once a second.
     - Reconnect feedback (`PaneLoading.swift`), as apron-web's page and `SettleFlag`: `SettleFlag`
       (on after 400 ms, then at least 600 ms, and 300 ms after its source ends) is a value over
       passed-in times; `PaneLoading` turns `Input` (`reconnectingQuietly`, `isCatchingUp` for the

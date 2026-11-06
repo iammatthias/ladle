@@ -137,6 +137,8 @@ public final class ServerSession {
     }
 
     public private(set) var record: ServerRecord
+    /// When the wait before the next reconnect ends, while `status` is `reconnecting`.
+    public private(set) var reconnectAt: Date?
     public private(set) var status: Status = .offline {
         didSet { if status == .signedIn { problemDismissed = false } }
     }
@@ -527,6 +529,7 @@ public final class ServerSession {
 
             attempt = stayedUp ? 1 : attempt + 1
             let delay = max(Self.backoff(attempt: attempt, jitter: environment.jitter()), minimumDelay)
+            reconnectAt = environment.now().addingTimeInterval(Double(delay.components.seconds) + Double(delay.components.attoseconds) / 1e18)
             status = .reconnecting(attempt: attempt, delay: delay)
             do { try await environment.sleep(delay) } catch { return }
         }
@@ -645,6 +648,11 @@ public final class ServerSession {
         } catch {
             status = before
             if method.proposal != nil { proposals.forget(state) }
+            // A guest sign-in unanswered, or failing on the server's side, may still take hold on
+            // that connection later: it is given up, and the next sign-in has its own (apron-web #223).
+            if case .guest = method, error as? Connection.Failure == .timedOut || (error as? RPCError)?.code == RPCError.Code.internalError {
+                await connection.close()
+            }
             throw error
         }
         guard let identity = UserObject(result["you"]) else {
@@ -727,13 +735,46 @@ public final class ServerSession {
         // A connection starts attended (§4.5): an idle app says so at once.
         syncIdle()
         onSignedIn?()
-        if let rooms, let listing = try? await rooms.value { applyRoomList(listing) }
+        var listed = rooms == nil
+        if let rooms {
+            do {
+                applyRoomList(try await rooms.value)
+                listed = true
+            } catch {
+                relistJoined(after: Self.relistWait(error, after: nil), on: connection)
+            }
+        }
         roomsListed = true
-        await catchUp(on: connection)
+        await catchUp(on: connection, listed: listed)
         Task { await drainOutbox() }
     }
 
     private static let roomListParams: JSONValue = ["filter": "joined", "members": true]
+
+    /// A joined listing that failed for the moment is asked again on its connection, 5 s later,
+    /// then twice as long each time, at most a minute, never under a refusal's `retry_after`, as
+    /// apron-web's (#223). A definitive refusal is not asked again.
+    private func relistJoined(after wait: Duration?, on connection: Connection) {
+        guard let wait else { return }
+        let sleep = environment.sleep
+        Task { [weak self] in
+            guard (try? await sleep(wait)) != nil, let self, self.connection === connection, self.status == .signedIn else { return }
+            do {
+                self.applyRoomList(try await self.ask("room_list", Self.roomListParams, on: connection))
+            } catch {
+                self.relistJoined(after: Self.relistWait(error, after: wait), on: connection)
+            }
+        }
+    }
+
+    /// How long until a failed joined listing is asked again, or nil when it is not.
+    private static func relistWait(_ error: Error, after last: Duration?) -> Duration? {
+        let rpc = error as? RPCError
+        if let code = rpc?.code, [RPCError.Code.denied, RPCError.Code.invalidParams, RPCError.Code.unsupported].contains(code) { return nil }
+        if let failure = error as? Connection.Failure, failure != .timedOut { return nil }
+        let next = last.map { min($0 * 2, .seconds(60)) } ?? .seconds(5)
+        return max(next, rpc?.retryAfter ?? .zero)
+    }
 
     /// The signed-in account changed its `user_id` (§3.3.3: `you` replaces the connection's
     /// identity; logged records keep the old one, which clients may treat as the new). The saved
@@ -814,7 +855,14 @@ public final class ServerSession {
         let params = notification.params
         switch notification.method {
         case "server":
-            if let info = ServerInfo(params: params) { server = info }
+            guard let info = ServerInfo(params: params) else { break }
+            // A replacing frame that adds `history` loads the rooms on screen, as if it had been
+            // there at sign-in (apron-web #223).
+            let gainsHistory = server?.has("history") == false && info.has("history")
+            server = info
+            if gainsHistory, status == .signedIn {
+                for roomID in onScreen.sorted(by: codePointLess) { Task { try? await open(roomID) } }
+            }
         case "message":
             guard case .notice(var notice) = MessageFrame(params: params) else { break }
             if let help = CommandHelp(notice: notice) {
@@ -1151,14 +1199,15 @@ public final class ServerSession {
     }
 
     /// After a sign-in, pages each opened room forward from its checkpoint until `more` is false.
-    private func catchUp(on connection: Connection) async {
+    private func catchUp(on connection: Connection, listed: Bool) async {
         let ordered = openedRooms
         // The joined listing says how far each room's log goes: one no further than its checkpoint
-        // has nothing new and is not asked about (#200).
+        // has nothing new and is not asked about (#200). Without this sign-in's listing, the heads
+        // known are an earlier connection's, and every room is asked.
         var behind: [String: LogID] = [:]
         for roomID in ordered {
             guard let checkpoint = histories[roomID]?.checkpoint else { continue }
-            if let head = store.latestLogID(of: roomID), head <= checkpoint {
+            if listed, let head = store.latestLogID(of: roomID), head <= checkpoint {
                 histories[roomID]?.isLive = true
             } else {
                 behind[roomID] = checkpoint

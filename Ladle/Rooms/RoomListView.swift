@@ -528,13 +528,16 @@ struct RoomListView: View {
             })
         default:
             // A short drop's way back says so only in your own dot, as on the web.
-            guard !session.reconnectingQuietly, let state = ConnectionState(session.status) else { return nil }
+            guard !session.reconnectingQuietly, let state = ConnectionState(session.status, until: session.reconnectAt) else { return nil }
             if state.isProblem {
                 guard !session.problemDismissed else { return nil }
-                return AnyView(ActionBanner(symbol: state.symbol, title: state.title(session.record), detail: state.detail) {
-                    if state.canRetry { Button(session.isDisconnected ? "Connect" : "Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
-                    Button("Dismiss", systemImage: "xmark") { session.problemDismissed = true }
-                        .labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
+                // A second at a time, as the wait before reconnecting counts down (apron-web #223).
+                return AnyView(SwiftUI.TimelineView(.periodic(from: .now, by: 1)) { context in
+                    ActionBanner(symbol: state.symbol, title: state.title(session.record, now: context.date), detail: state.detail) {
+                        if state.canRetry { Button(session.isDisconnected ? "Connect" : "Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
+                        Button("Dismiss", systemImage: "xmark") { session.problemDismissed = true }
+                            .labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
+                    }
                 })
             }
             return AnyView(Label(state.title(session.record), systemImage: state.symbol)

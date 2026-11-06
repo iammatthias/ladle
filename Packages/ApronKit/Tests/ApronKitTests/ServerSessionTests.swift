@@ -855,6 +855,87 @@ final class ServerSessionTests: XCTestCase {
     }
 
     /// Opens general with 104–106 as the newest page, `more` true, history from `floor`.
+    /// apron-web #223's 'history added by a replacing server frame': the room on screen loads.
+    func testHistoryAddedByAReplacingServerFrameLoadsTheRoomOnScreen() async throws {
+        let socket = queueTransport(capabilities: ["rooms"])
+        session.start()
+        try await signInAsGuest(on: socket)
+        session.show("general", true)
+        try await session.open("general")
+        XCTAssertNil(session.histories["general"], "nothing to load without history")
+        await socket.deliver(["method": "server", "params": ["apron": 10, "auth": ["guest"], "capabilities": ["rooms", "history"]]])
+        let asked = await frame(socket, 2)
+        XCTAssertEqual(asked, #"{"id":"c3","method":"history","params":{"limit":3,"room_id":"general"}}"#)
+        await socket.deliver(["method": "server", "params": ["apron": 10, "auth": ["guest"], "capabilities": ["rooms", "history"]]])
+        await socket.deliver(["id": "c3", "result": ["messages": [message("100", "a")], "first_log_id": "100", "last_log_id": "100",
+                                                     "more": false, "latest_log_id": "100", "history_log_id": "100"]])
+        await eventually("loaded") { session.timeline("general").count == 1 }
+    }
+
+    /// apron-web #223's 'gives up a connection whose sign-in failed on the server’s side': the next
+    /// guest sign-in goes on a connection of its own.
+    func testAGuestSignInThatFailsOnTheServersSideGivesUpItsConnection() async throws {
+        session.start()
+        let socket = await transport(0)
+        await eventually("signed out") { session.status == .signedOut }
+        let signIn = Task { try await session.signIn(.guest(name: nil)) }
+        _ = await frames(socket, count: 2)
+        await socket.deliver(["id": "c1", "error": ["code": -32603, "message": "Internal error"]])
+        do {
+            _ = try await signIn.value
+            XCTFail("the failure comes back")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.code, RPCError.Code.internalError)
+        }
+        await eventually("given up") { await socket.closed }
+    }
+
+    /// apron-web #223's 'lists the joined rooms again after a listing that failed for the moment,
+    /// waiting longer each time'.
+    func testAJoinedListingThatFailsForTheMomentIsAskedAgainWaitingLongerEachTime() async throws {
+        session.start()
+        let socket = await transport(0)
+        await eventually("signed out") { session.status == .signedOut }
+        let signIn = Task { try await session.signIn(.guest(name: nil)) }
+        _ = await frames(socket, count: 2)
+        await socket.deliver(["id": "c1", "result": ["you": ["user_id": "ada", "name": "Ada"], "token": "t1"]])
+        await socket.deliver(["id": "c2", "error": ["code": -32603, "message": "Internal error"]])
+        _ = try await signIn.value
+        await eventually("the first wait") { clock.recorded == [.seconds(5)] }
+        XCTAssertEqual(session.joinedRoomIDs, [])
+        clock.release()
+        let again = await frame(socket, 2)
+        XCTAssertEqual(again, #"{"id":"c3","method":"room_list","params":{"filter":"joined","members":true}}"#)
+        await socket.deliver(["id": "c3", "error": ["code": -32603, "message": "Internal error"]])
+        await eventually("a longer wait") { clock.recorded == [.seconds(5), .seconds(10)] }
+        clock.release()
+        let third = await frame(socket, 3)
+        XCTAssertEqual(third, #"{"id":"c4","method":"room_list","params":{"filter":"joined","members":true}}"#)
+        await socket.deliver(["id": "c4", "result": ["joined": [["room_id": "general", "log_id": "100", "title": "General"]]]])
+        await eventually("listed") { session.joinedRoomIDs == ["general"] }
+        XCTAssertEqual(clock.recorded.count, 2, "asked no more once listed")
+    }
+
+    /// A catch-up behind a joined listing that failed can't trust the heads the last one said: each
+    /// room opened before pages on from its checkpoint.
+    func testACatchUpBehindAFailedJoinedListingAsksEveryRoomOpened() async throws {
+        let firstSocket = FakeTransport()
+        await firstSocket.deliver(Self.greeting)
+        transports.queued.withLock { $0 = [firstSocket] }
+        session.start()
+        try await signInAsGuest(on: firstSocket)
+        try await openGeneral(on: firstSocket)
+        await firstSocket.dropFromServer()
+        await eventually("backoff") { clock.recorded.count == 1 }
+        clock.release()
+        let second = await transport(1)
+        _ = await frames(second, count: 2)
+        await second.deliver(["id": "c5", "result": ["you": ["user_id": "ada", "name": "Ada"]]])
+        await second.deliver(["id": "c6", "error": ["code": -32603, "message": "Internal error"]])
+        let caughtUp = await frame(second, 2)
+        XCTAssertEqual(caughtUp, #"{"id":"c7","method":"history","params":{"after":"107","limit":200,"room_id":"general"}}"#)
+    }
+
     /// Search's scoped room (apron-web #224): its threads you haven't joined, counted as the server
     /// listed them, the listing `open` just made answering without asking again.
     func testARoomsThreadsAreListedOnceForEveryoneWhoAsksAtOnce() async throws {

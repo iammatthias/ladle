@@ -198,7 +198,7 @@ extension MessageFrame {
         }
         if params["message_id"] == nil {
             self = .notice(Notice(roomID: OpaqueID.validated(params["room_id"]), from: from,
-                                  body: params["body"].flatMap { $0.objectValue == nil ? nil : $0 }))
+                                  body: params["body"]?.ifObject))
             return
         }
         guard let messageID = LogID(params["message_id"]), let logID = LogID(params["log_id"]),
@@ -208,8 +208,9 @@ extension MessageFrame {
             return
         }
         var snapshot = MessageSnapshot(messageID: messageID, logID: logID, roomID: roomID, from: from)
-        snapshot.body = params["body"]
-        snapshot.ext = params["ext"]
+        // A field of the wrong type is read as absent.
+        snapshot.body = params["body"]?.ifObject
+        snapshot.ext = params["ext"]?.ifObject
         snapshot.prevRoomID = OpaqueID.validated(params["prev_room_id"])
         if let deleted = params["deleted"] { snapshot.deleted = deleted.boolValue }
         var embedded: [MessageSnapshot] = []
@@ -231,9 +232,10 @@ extension RoomRecord {
         record.logID = LogID(value["log_id"])
         record.parentRoomID = OpaqueID.validated(value["parent_room_id"])
         record.isPrivate = value["private"]?.boolValue
-        record.title = value["title"]
-        record.description = value["description"]
-        record.ext = value["ext"]
+        // A field of the wrong type is read as absent.
+        record.title = value["title"]?.ifString
+        record.description = value["description"]?.ifString
+        record.ext = value["ext"]?.ifObject
         var delivery = RoomDelivery()
         delivery.latestLogID = LogID(value["latest_log_id"])
         delivery.members = value["members"]?.arrayValue?.compactMap { UserObject($0) }
@@ -270,4 +272,11 @@ extension Membership {
             return Membership(logID: logID, roomID: roomID, user: user, joined: joined)
         }
     }
+}
+
+private extension JSONValue {
+    /// Itself when it is an object or a string, else absent: a field of the wrong type. (`.none`,
+    /// since a bare `nil` here would read as JSON's `null`.)
+    var ifObject: JSONValue? { objectValue == nil ? .none : self }
+    var ifString: JSONValue? { stringValue == nil ? .none : self }
 }

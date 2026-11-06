@@ -10,6 +10,15 @@ final class ConnectionStateTests: XCTestCase {
         return [state.symbol, state.title(record), state.detail ?? "-", state.isProblem ? "problem" : "ok", state.canRetry ? "retry" : "no retry"].joined(separator: " | ")
     }
 
+    /// apron-web #223: the banner counts the wait down.
+    func testAReconnectsWaitCountsDown() throws {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let state = try XCTUnwrap(ConnectionState(.reconnecting(attempt: 5, delay: .seconds(30)), until: start.addingTimeInterval(30)))
+        XCTAssertEqual(state.title(record, now: start), "Can't reach chat.example. Retrying in 30 s")
+        XCTAssertEqual(state.title(record, now: start.addingTimeInterval(17.5)), "Can't reach chat.example. Retrying in 13 s")
+        XCTAssertEqual(state.title(record, now: start.addingTimeInterval(31)), "Can't reach chat.example. Retrying in 1 s")
+    }
+
     func testEachStatusInWords() {
         XCTAssertEqual(shown(.signedIn), "live")
         XCTAssertEqual(shown(.connecting), "arrow.triangle.2.circlepath | Connecting… | - | ok | no retry")

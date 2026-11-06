@@ -719,7 +719,7 @@ struct TimelineView: View {
     /// drop's way back shows as the floating pill instead (`PaneLoading`).
     @ViewBuilder
     private var banner: some View {
-        let state = session.reconnectingQuietly ? nil : ConnectionState(session.status)
+        let state = session.reconnectingQuietly ? nil : ConnectionState(session.status, until: session.reconnectAt)
         VStack(spacing: Tokens.Space.s2) {
             // The header's subtitle, as the web's RoomHeader, as a line under the bar so the centered
             // title never moves: on a phone who is typing, in denim; a thread's replies; or a room's
@@ -757,10 +757,13 @@ struct TimelineView: View {
             }
             if let state, state.isProblem {
                 if !session.problemDismissed {
-                    ActionBanner(symbol: state.symbol, title: state.title(session.record), detail: state.detail) {
-                        if state.canRetry { Button(session.isDisconnected ? "Connect" : "Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
-                        Button("Dismiss", systemImage: "xmark") { session.problemDismissed = true }
-                            .labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
+                    // A second at a time, as the wait before reconnecting counts down (apron-web #223).
+                    SwiftUI.TimelineView(.periodic(from: .now, by: 1)) { context in
+                        ActionBanner(symbol: state.symbol, title: state.title(session.record, now: context.date), detail: state.detail) {
+                            if state.canRetry { Button(session.isDisconnected ? "Connect" : "Try Now") { session.start() }.buttonStyle(GhostButtonStyle(tone: Palette.accent)) }
+                            Button("Dismiss", systemImage: "xmark") { session.problemDismissed = true }
+                                .labelStyle(.iconOnly).buttonStyle(GhostButtonStyle())
+                        }
                     }
                 }
             } else if let state {
