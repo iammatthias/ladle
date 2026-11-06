@@ -623,6 +623,16 @@ struct RoomRow: View {
     var now = Date()
     /// Room at the row's end for the open room's "…", drawn over it.
     var trailingSpace: CGFloat = 0
+    /// Drawn as a search's result (apron-web #224), the room as search knows it.
+    var found: Found?
+
+    /// A search's result: what matched in its name marked, and a thread's room, where the search
+    /// isn't that room's threads. It is neither indented nor stepped back.
+    struct Found {
+        var room: RoomFinder.KnownRoom
+        var parts: [SnippetPart]
+        var parent: String?
+    }
 
     /// Where a thread's text starts, right of the guide line.
     static let threadInset = Tokens.Space.s3 + Tokens.Space.s4 + Tokens.Space.s2
@@ -633,29 +643,34 @@ struct RoomRow: View {
         let reactions = session.unseenReactionCount(in: roomID)
         let joined = session.joinedRoomIDs.contains(roomID)
         let muted = session.mute(of: roomID) != nil
+        let nested = isThread && found == nil
+        let description = found.map(\.room.description) ?? session.roomDescription(roomID)
         // A muted room's news stays quiet: no bold name, a quiet count (the web's RoomItem).
         let strong = isSelected || (unread > 0 && !muted)
         // A private room's row leads with who it is with; the Private heading says it is private.
         let faced = !isThread && session.isPrivateRoom(roomID)
         // A joined thread with nothing new steps back: its title muted, its lines dimmed (#76).
-        let quiet = isThread && joined && !isSelected && unread == 0 && mentions == 0
+        let quiet = nested && joined && !isSelected && unread == 0 && mentions == 0
         HStack(alignment: isThread ? .top : .center, spacing: Tokens.Space.s2) {
             if faced { Faces(session: session, people: session.faces(of: roomID)) }
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: Tokens.Space.s1) {
-                    Text(session.title(of: roomID))
+                    Text(found.map { marked($0.parts) } ?? AttributedString(title))
                         .apText(.body, strong ? .semibold : (isThread && !quiet ? .medium : .regular))
                         .foregroundStyle(strong || (isThread && !quiet) ? Palette.ink : Palette.inkMuted)
                         .lineLimit(1)
-                    if session.isPrivate(roomID), !faced { Lock() }
+                    if found?.room.isPrivate ?? session.isPrivate(roomID), !faced { Lock() }
                 }
-                if !isThread, let topic = session.roomDescription(roomID) {
+                if !isThread, let topic = description {
                     EmojiText(text: descriptionText(topic, session.emojiCatalog), catalog: session.emojiCatalog, role: .sm)
                         .apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
                 }
                 if isThread {
                     Group {
-                    if let description = session.roomDescription(roomID) {
+                    if let parent = found?.parent {
+                        Text("in \(parent)").apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
+                    }
+                    if let description {
                         line(icon: "text.alignleft") {
                             EmojiText(text: descriptionText(description, session.emojiCatalog), catalog: session.emojiCatalog, role: .sm)
                         }
@@ -678,7 +693,7 @@ struct RoomRow: View {
                 UnreadCount(count: mentions, mentions: true, quiet: muted)
             } else if unread > 0 {
                 UnreadCount(count: unread, quiet: muted)
-            } else if !joined, isThread, let active = session.lastActive(of: roomID) {
+            } else if !joined, isThread, let active = lastActive {
                 // When it was last active, as the web's Other Threads rows say it.
                 Text(LastActive.words(active, now: now)).apText(.sm).monospacedDigit().foregroundStyle(Palette.inkMuted)
             } else if !joined {
@@ -687,12 +702,12 @@ struct RoomRow: View {
         }
         .padding(.vertical, isThread ? Tokens.Space.s1_5 : Tokens.Space.s2)
         .padding(.trailing, Tokens.Space.s3 + trailingSpace)
-        .padding(.leading, isThread ? Self.threadInset : Tokens.Space.s3)
+        .padding(.leading, nested ? Self.threadInset : Tokens.Space.s3)
         .frame(minHeight: Tokens.Size.touchTarget)
         .background(isSelected ? Palette.selected : .clear, in: RoundedRectangle(cornerRadius: Tokens.Radius.md))
         .overlay(alignment: .leading) {
             ZStack(alignment: .leading) {
-                if isThread { Rectangle().fill(Palette.line).frame(width: 1).padding(.leading, 21 - 1) }
+                if nested { Rectangle().fill(Palette.line).frame(width: 1).padding(.leading, 21 - 1) }
                 if isSelected {
                     Capsule().fill(Palette.accent).frame(width: 3)
                         .padding(.vertical, Tokens.Space.s1_5)
@@ -704,7 +719,27 @@ struct RoomRow: View {
         .contentShape(Rectangle())
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText(unread: unread, mentions: mentions, reactions: reactions, joined: joined, muted: muted))
-        .task(id: session.server?.emojiCatalogURL) { await session.loadEmojiCatalog(for: session.roomDescription(roomID)) }
+        .task(id: session.server?.emojiCatalogURL) { await session.loadEmojiCatalog(for: description) }
+    }
+
+    private var title: String { found?.room.title ?? session.title(of: roomID) }
+
+    /// A result's latest activity as search knows it, which covers a room known only from a kept record.
+    private var lastActive: Date? {
+        guard let found else { return session.lastActive(of: roomID) }
+        return found.room.activeID.map { Date(timeIntervalSince1970: (Double($0.text) ?? 0) / 1000) }
+    }
+
+    /// The name with each run that matched marked, as the web's `<mark>`.
+    private func marked(_ parts: [SnippetPart]) -> AttributedString {
+        parts.reduce(into: AttributedString()) { text, part in
+            var run = AttributedString(part.text)
+            if part.match {
+                run.inlinePresentationIntent = .stronglyEmphasized
+                run.backgroundColor = Palette.accentSoft
+            }
+            text += run
+        }
     }
 
     private func line(icon: String, @ViewBuilder _ text: () -> some View) -> some View {
@@ -717,20 +752,20 @@ struct RoomRow: View {
     }
 
     private func accessibilityText(unread: Int, mentions: Int, reactions: Int, joined: Bool, muted: Bool) -> String {
-        var parts = [session.title(of: roomID)]
+        var parts = [title]
         if isThread {
-            parts.append("thread in \(session.store.room(roomID)?.parentRoomID.map(session.title(of:)) ?? "a room")")
+            parts.append("thread in \((found?.room.parentRoomID ?? session.store.room(roomID)?.parentRoomID).map(session.title(of:)) ?? "a room")")
         }
-        if session.isPrivate(roomID) { parts.append("private") }
+        if found?.room.isPrivate ?? session.isPrivate(roomID) { parts.append("private") }
         if muted { parts.append("muted") }
         if mentions > 0 { parts.append("\(mentions) \(mentions == 1 ? "mention" : "mentions") of you") }
         if unread > 0 { parts.append("\(unread) new") }
         if reactions > 0 { parts.append(UnseenReactions.spoken(reactions)) }
         if !joined { parts.append("not joined") }
-        if !joined, isThread, let active = session.lastActive(of: roomID) {
+        if !joined, isThread, let active = lastActive {
             parts.append("last active \(active.formatted(.relative(presentation: .named)))")
         }
-        if isThread, let description = session.roomDescription(roomID) { parts.append(EmojiKeys.spoken(description, catalog: session.emojiCatalog)) }
+        if isThread, let description = found.map(\.room.description) ?? session.roomDescription(roomID) { parts.append(EmojiKeys.spoken(description, catalog: session.emojiCatalog)) }
         return parts.joined(separator: ", ")
     }
 }

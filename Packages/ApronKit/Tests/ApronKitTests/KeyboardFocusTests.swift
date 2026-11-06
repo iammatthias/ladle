@@ -9,8 +9,8 @@ final class KeyboardFocusTests: XCTestCase {
     }
 
     func testTheTableWritesKeysAsAnIPadKeyboardMarksThem() {
-        XCTAssertEqual(keys("Search local history"), [["⌘", "F"]])
-        XCTAssertEqual(keys("Go to a room or thread"), [["⌘", "K"]])
+        XCTAssertEqual(keys("Search messages"), [["⌘", "F"]])
+        XCTAssertEqual(keys("Search rooms and threads"), [["⌘", "K"]])
         XCTAssertEqual(keys("Move a room up or down"), [["⌥", "↑"], ["⌥", "↓"]])
         XCTAssertEqual(keys("Previous or next room, past threads"), [["⌥", "⇧", "↑"], ["⌥", "⇧", "↓"]])
         XCTAssertEqual(keys("New line"), [["⇧", "Return"]])

@@ -1,9 +1,9 @@
 import ApronKit
 import SwiftUI
 
-/// apron-web's search dialog with its two modes (#220): Go to a Room or Thread (⌘K) and Search
-/// Local History (⌘F), switched at the sheet's foot, in reach, or with either key inside it. (Above
-/// the field, as the web has it, it would sit over each mode's own navigation bar.)
+/// apron-web's search dialog, Search Local History, with its two modes (#220, #224): rooms and
+/// threads (⌘K) and messages (⌘F), switched at the sheet's foot, in reach, or with either key
+/// inside it. (Above the field, as the web has it, it would sit over each mode's own navigation bar.)
 struct FindSheet: View {
     enum Mode: String, Identifiable, CaseIterable {
         case rooms = "Rooms and Threads", messages = "Messages"
@@ -43,11 +43,13 @@ struct FindSheet: View {
     }
 }
 
-/// Go to a Room or Thread (#220): the rooms and threads this device knows of by name
-/// (`RoomFinder`), joined ones under Joined, the rest under Not joined. `room:` narrows it to a
-/// room's threads, as → at the end of the field does on a highlighted room; Backspace there takes
-/// the filter away. ↑ ↓ move the highlight and Return opens it: a joined room as a mention does,
-/// any other to read without joining, as its link does (`openRoom`).
+/// Search's rooms and threads (#220, #224): those this device knows of by name (`RoomFinder`),
+/// joined ones under Joined, the rest under Not joined, each drawn as the rooms list draws it.
+/// `room:` narrows it to a room's threads, as → at the end of the field does on a highlighted
+/// room, and lists that room's threads you haven't joined from the server (`listThreads`), the
+/// line after the results saying how many; Backspace there takes the filter away. ↑ ↓ move the
+/// highlight and Return opens it: a joined room as a mention does, any other to read without
+/// joining, as its link does (`openRoom`).
 struct GoToView: View {
     let session: ServerSession
     let open: (String) -> Void
@@ -56,10 +58,10 @@ struct GoToView: View {
     /// The highlighted result, by id, so it stays on its room while results change.
     @State private var highlighted: String?
     @FocusState private var focused: Bool
-    /// Search the Server: under way, then what it came to.
-    @State private var listing = false
-    @State private var listed: String?
+    /// Each scoped room's listing of its threads, by `room_id`: once while the sheet is open.
+    @State private var listings: [String: RoomFinder.ThreadsListing] = [:]
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.openPreferences) private var openPreferences
     @Environment(\.fixedNow) private var fixedNow
     var focusesField = true
 
@@ -107,7 +109,7 @@ struct GoToView: View {
                     if !rows.isEmpty {
                         Section {
                             ForEach(rows, id: \.room.id) { found in
-                                Button { pick(found.room.id) } label: { row(found.room, on: found.room.id == current?.id) }
+                                Button { pick(found.room.id) } label: { row(found.room, scoped: results.scope.count == 1, on: found.room.id == current?.id) }
                                     .buttonStyle(.plain)
                                     .listRowBackground(found.room.id == current?.id ? Palette.hover : Palette.raised)
                             }
@@ -116,24 +118,37 @@ struct GoToView: View {
                         }
                     }
                 }
-                if session.status == .signedIn, session.server?.has("rooms") == true {
+                if let scoped = listedRoom(results), let listing = listings[scoped.id] {
                     Section {
-                        Button(listing ? "Searching the Server…" : "Search the Server") { searchServer() }
-                            .disabled(listing)
+                        if listing.failed {
+                            Button("Try Again") { list(scoped.id) }
+                        }
                     } footer: {
-                        Text(listed ?? "Lists the rooms to join afresh. A server lists only its most recently active ones, so others aren’t found.").formFooter()
+                        Text(listing.note(title: scoped.title)).formFooter()
                     }
                     .listRowBackground(Palette.raised)
                 }
             }
             .scrollContentBackground(.hidden)
             .background(Palette.chrome)
-            .navigationTitle("Go to a Room or Thread")
+            .navigationTitle("Search Local History")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") { dismiss() }.keyboardShortcut(.cancelAction)
                 }
+                if let kept = session.searchKept {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(kept) {
+                            dismiss()
+                            openPreferences(.history)
+                        }
+                        .accessibilityLabel("\(kept) of history kept, in Preferences")
+                    }
+                }
+            }
+            .task(id: listedRoom(results)?.id) {
+                if let id = listedRoom(results)?.id, listings[id] == nil { list(id) }
             }
             .onAppear { if focusesField { focused = true } }
         }
@@ -149,47 +164,32 @@ struct GoToView: View {
             : "\(count)\(scope)\(shown). Rooms and threads this device knows of."
     }
 
-    private func row(_ room: RoomFinder.KnownRoom, on: Bool) -> some View {
-        HStack(spacing: Tokens.Space.s3) {
-            Image(systemName: room.isThread ? "arrow.turn.down.right" : "number")
-                .foregroundStyle(Palette.inkMuted)
-                .frame(width: 20)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: Tokens.Space.s1) {
-                    Text(marked(room.title)).apText(.ui).foregroundStyle(Palette.ink).lineLimit(1)
-                    if room.isPrivate { Lock(tint: Palette.private) }
-                }
-                if let detail = room.parentRoomID.map(session.title(of:)) ?? room.description.flatMap({ $0.split(separator: "\n").first.map(String.init) }) {
-                    Text(detail).apText(.sm).foregroundStyle(Palette.inkMuted).lineLimit(1)
-                }
-            }
-            Spacer(minLength: Tokens.Space.s2)
-            if let active = session.lastActive(of: room.id) {
-                Text(LastActive.words(active, now: fixedNow ?? .now)).apText(.sm).monospacedDigit().foregroundStyle(Palette.inkMuted)
-            }
-            if !room.joined {
-                Text("Not joined").apText(.xs, .medium).foregroundStyle(Palette.inkMuted)
-            } else if session.mentionCount(in: room.id) > 0 {
-                UnreadCount(count: session.mentionCount(in: room.id), mentions: true)
-            } else if session.unreadCount(in: room.id) > 0 {
-                UnreadCount(count: session.unreadCount(in: room.id))
-            }
-        }
-        .frame(minHeight: Tokens.Size.touchTarget)
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(on ? .isSelected : [])
+    /// A result as the rooms list draws it, with what matched marked and a thread's room under its
+    /// title where the search isn't that room's threads.
+    private func row(_ room: RoomFinder.KnownRoom, scoped: Bool, on: Bool) -> some View {
+        let parent = scoped ? nil : room.parentRoomID.map(session.title(of:))
+        let found = RoomRow.Found(room: room, parts: LocalSearch.snippet(room.title, found: RoomFinder.wanted(parsed.text), width: 200), parent: parent)
+        return RoomRow(session: session, roomID: room.id, isThread: room.isThread, isSelected: false, now: fixedNow ?? .now, found: found)
+            .accessibilityAddTraits(on ? .isSelected : [])
     }
 
-    /// The title with what was typed marked, as the web's `<mark>`.
-    private func marked(_ title: String) -> AttributedString {
-        var text = AttributedString(title)
-        let typed = parsed.text.trimmingCharacters(in: .whitespaces)
-        if !typed.isEmpty, let range = text.range(of: typed, options: [.caseInsensitive, .diacriticInsensitive]) {
-            text[range].inlinePresentationIntent = .stronglyEmphasized
-            text[range].backgroundColor = Palette.accentSoft
+    /// The room `room:` names, whose threads you haven't joined the server lists: one, where the
+    /// server lists rooms and you are signed in.
+    private func listedRoom(_ results: RoomFinder.Results) -> RoomFinder.KnownRoom? {
+        guard results.scope.count == 1, session.status == .signedIn, session.server?.has("rooms") == true else { return nil }
+        return results.scope.first
+    }
+
+    /// Lists a room's threads you haven't joined, once, or again when Try Again asks after it failed.
+    private func list(_ roomID: String) {
+        listings[roomID] = .listing
+        Task {
+            do {
+                listings[roomID] = .listed(try await session.listThreads(of: roomID))
+            } catch {
+                listings[roomID] = .failed(errorText(error))
+            }
         }
-        return text
     }
 
     /// ↑ ↓ through the results, → on a room at the end of the field to its threads, Backspace at
@@ -240,21 +240,6 @@ struct GoToView: View {
         let next = LocalSearch.withFilterValue(query, at: filter, value: value)
         query = next.query
         selection = TextSelection(insertionPoint: String.Index(utf16Offset: next.caret, in: next.query))
-    }
-
-    /// The rooms to join, listed afresh (`room_list`, `not_joined`): the listing installs their
-    /// records, which `knownRooms` then holds.
-    private func searchServer() {
-        listing = true
-        Task {
-            do {
-                let ids = try await session.listUnjoinedRooms()
-                listed = ids.count == 1 ? "The server listed 1 room to join." : "The server listed \(ids.count) rooms to join."
-            } catch {
-                listed = errorText(error)
-            }
-            listing = false
-        }
     }
 
     private func pick(_ id: String) {

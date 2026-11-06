@@ -92,7 +92,7 @@ public enum Shortcuts {
         case message
         /// On a room's row in the rooms list.
         case roomRow
-        /// In Go to a Room or Thread's field.
+        /// In search's field, finding rooms and threads.
         case goTo
     }
 
@@ -131,8 +131,8 @@ public enum Shortcuts {
         entry("Show keyboard shortcuts", nil, .general, .anywhere, [(Chord(.character("/"), .command), .showShortcuts)]),
         entry("Show keyboard shortcuts", "On a message", .general, .message, listed: false, [(Chord(.character("?")), .showShortcuts),
                                                                                              (Chord(.character("?"), .shift), .showShortcuts)]),
-        entry("Go to a room or thread", nil, .general, .anywhere, [(Chord(.character("k"), .command), .goTo)]),
-        entry("Search local history", nil, .general, .anywhere, [(Chord(.character("f"), .command), .searchHistory)]),
+        entry("Search rooms and threads", nil, .general, .anywhere, [(Chord(.character("k"), .command), .goTo)]),
+        entry("Search messages", nil, .general, .anywhere, [(Chord(.character("f"), .command), .searchHistory)]),
         entry("Show or hide members", nil, .general, .anywhere, [(Chord(.character("m"), [.command, .shift]), .members)]),
         entry("Go to new reactions", nil, .general, .anywhere, [(Chord(.character("r"), [.command, .shift]), .newReactions)]),
         // ComposerView's field (`onKeyPress`) and its Send and Cancel buttons.
@@ -160,7 +160,7 @@ public enum Shortcuts {
         entry("Move a room up or down", "On a room in the list", .rooms, .roomRow,
               [(Chord(.up, .option), .moveRoom(step: -1)), (Chord(.down, .option), .moveRoom(step: 1))]),
         // GoToView's field.
-        entry("Search a room’s threads", "On a room, in Go to a room or thread", .rooms, .goTo, [(Chord(.right), .threadsOfRoom)]),
+        entry("Search a room’s threads", "On a room found in search", .rooms, .goTo, [(Chord(.right), .threadsOfRoom)]),
     ]
 
     /// What `chord` does in `scope`, if anything.

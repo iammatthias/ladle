@@ -1,7 +1,7 @@
 import Foundation
 
 /// Finding rooms and threads by name, as apron-web's `room-match.ts` and `room-search.ts` (#220):
-/// Go to a Room or Thread, the composer's `#` list and Search Rooms share `tier`. What Go to
+/// Search's rooms and threads, the composer's `#` list and Search Rooms share `tier`. What it
 /// searches is what this device knows of (`known`): the rooms and threads the session holds a
 /// record of (joined ones, those read without joining, those the latest listings offered), then
 /// those whose records the device keeps. Joined ones come first, then how well each matches,
@@ -49,6 +49,27 @@ public enum RoomFinder {
         public var rooms: [Found]
         public var total: Int
         public var scope: [KnownRoom]
+    }
+
+    /// Where the listing of the threads of the room `room:` names is (apron-web #224's
+    /// `RoomFinder.foot`): under way, done with how many the server listed, or refused and why.
+    public enum ThreadsListing: Hashable, Sendable {
+        case listing
+        case listed(Int)
+        case failed(String)
+
+        /// The line after the results, for the room titled `title`.
+        public func note(title: String) -> String {
+            switch self {
+            case .listing: "Listing \(title)’s other threads…"
+            case .failed(let error): "\(title)’s other threads didn’t list: \(error)"
+            case .listed(0): "No threads you haven’t joined, as the server lists them."
+            case .listed(let count): "Threads you haven’t joined: the \(count == 1 ? "one" : String(count)) the server lists, its most recently active."
+            }
+        }
+
+        /// Try Again, after a listing failed.
+        public var failed: Bool { if case .failed = self { true } else { false } }
     }
 
     /// The most a search lists, as apron-web's `ROOM_SEARCH_LIMIT`.
@@ -130,7 +151,7 @@ public enum RoomFinder {
 }
 
 extension ServerSession {
-    /// The rooms and threads Go to a Room or Thread searches (`RoomFinder.known`).
+    /// The rooms and threads search finds by name (`RoomFinder.known`).
     public var knownRooms: [RoomFinder.KnownRoom] {
         let live = store.roomIDs.compactMap { id -> RoomFinder.KnownRoom? in
             guard let record = store.room(id) else { return nil }

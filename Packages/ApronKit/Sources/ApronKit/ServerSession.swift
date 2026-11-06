@@ -173,6 +173,8 @@ public final class ServerSession {
     @ObservationIgnored private var openings: [String: Task<Void, Error>] = [:]
     /// Rooms a `room_update` just joined that were read before, to page on from where they were read.
     @ObservationIgnored private var joinedAfterReading: Set<String> = []
+    /// Each room's latest listing of its threads, by `room_id` (`threadListing`).
+    @ObservationIgnored private var threadListings: [String: ThreadListing] = [:]
     /// The rooms whose first page and thread listing are loading, which the timeline holds back.
     public private(set) var held: Set<String> = []
     /// Threads this device started, by the message each was started from (`startThread`).
@@ -790,6 +792,7 @@ public final class ServerSession {
         commandsAskedAs = nil
         commandsNoticeAwaited = nil
         histories = [:]
+        threadListings = [:]
         readCursors = [:]
         readers = [:]
         readSent = [:]
@@ -1007,12 +1010,45 @@ public final class ServerSession {
     /// own logs (§4.3.1), so this listing is how a member of the room learns of threads started
     /// while they were away. A refused listing leaves the threads already known. A thread is not
     /// listed: both reference servers refuse nested threads, and they limit `room_list`.
+    /// A catch-up's listing goes on its own connection and is always asked afresh.
     private func listThreads(of roomID: String, on connection: Connection? = nil) async {
         guard server?.has("rooms") == true, store.room(roomID)?.parentRoomID == nil,
-              let connection = connection ?? self.connection else { return }
+              let on = connection ?? self.connection else { return }
+        _ = try? await threadListing(of: roomID, on: on, fresh: connection != nil).value
+    }
+
+    /// Lists the threads of `roomID` this user has not joined (§4.2.1), installs their records and
+    /// returns how many the server listed: search's scoped room (apron-web #224). A listing under
+    /// way or answered within `threadListingReuse` answers for it, as apron-web's `cachedListing`;
+    /// a failed one is asked again.
+    public func listThreads(of roomID: String) async throws -> Int {
+        try require("rooms")
+        guard let connection else { throw Failure.notConnected }
+        guard status == .signedIn else { throw Failure.notSignedIn }
+        return try await threadListing(of: roomID, on: connection).value
+    }
+
+    /// apron-web's `ROOM_LIST_REUSE_MS`.
+    static let threadListingReuse: TimeInterval = 10
+
+    private func threadListing(of roomID: String, on connection: Connection, fresh: Bool = false) -> Task<Int, Error> {
+        if !fresh, let recent = threadListings[roomID], environment.now().timeIntervalSince(recent.at) < Self.threadListingReuse {
+            return recent.task
+        }
+        let id = UUID()
         let params: JSONValue = ["parent_room_id": .string(roomID), "filter": "not_joined"]
-        guard let result = try? await ask("room_list", params, on: connection) else { return }
-        install(Records(roomListResult: result))
+        let task = Task {
+            do {
+                let result = try await ask("room_list", params, on: connection)
+                install(Records(roomListResult: result))
+                return result["not_joined"]?.arrayValue?.count ?? 0
+            } catch {
+                if threadListings[roomID]?.id == id { threadListings[roomID] = nil }
+                throw error
+            }
+        }
+        threadListings[roomID] = ThreadListing(id: id, at: environment.now(), task: task)
+        return task
     }
 
     /// `listThreads`, waited for at most `limit`.
@@ -1020,7 +1056,7 @@ public final class ServerSession {
         await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
             let first = FirstOf(done)
             Task {
-                await listThreads(of: roomID)
+                await listThreads(of: roomID, on: nil)
                 first.resume()
             }
             Task {
@@ -1991,6 +2027,12 @@ public enum Fill: Hashable, Sendable {
     /// Up from the span below: `after` the hole's lower edge and `before` its upper, so a page
     /// with nothing more within the bounds closes the hole.
     case newerFromBelow
+}
+
+private struct ThreadListing {
+    var id: UUID
+    var at: Date
+    var task: Task<Int, Error>
 }
 
 struct HistoryPage {

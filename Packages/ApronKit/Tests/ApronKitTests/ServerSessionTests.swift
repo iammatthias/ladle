@@ -855,6 +855,53 @@ final class ServerSessionTests: XCTestCase {
     }
 
     /// Opens general with 104–106 as the newest page, `more` true, history from `floor`.
+    /// Search's scoped room (apron-web #224): its threads you haven't joined, counted as the server
+    /// listed them, the listing `open` just made answering without asking again.
+    func testARoomsThreadsAreListedOnceForEveryoneWhoAsksAtOnce() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        let open = Task { try await session.open("general") }
+        _ = await frame(socket, 2)
+        await socket.deliver(["id": "c3", "result": ["messages": [], "more": false, "latest_log_id": "100", "history_log_id": "100"]])
+        _ = await frame(socket, 3)
+        let asked = Task { try await session.listThreads(of: "general") }
+        await socket.deliver(["id": "c4", "result": ["not_joined": [
+            ["room_id": "201", "log_id": "201", "parent_room_id": "general", "title": "Deploy"],
+            ["room_id": "202", "log_id": "202", "parent_room_id": "general", "title": "Icons"],
+        ]]])
+        try await open.value
+        let count = try await asked.value
+        XCTAssertEqual(count, 2)
+        let again = try await session.listThreads(of: "general")
+        XCTAssertEqual(again, 2)
+        let sent = await socket.sentLog.count
+        XCTAssertEqual(sent, 4, "one room_list for open and both asks")
+        XCTAssertEqual(session.store.room("202")?.title?.stringValue, "Icons")
+    }
+
+    func testAThreadListingThatFailsSaysWhyAndIsAskedAgain() async throws {
+        session.start()
+        let socket = await transport(0)
+        try await signInAsGuest(on: socket)
+        let first = Task { try await session.listThreads(of: "general") }
+        let asked = await frame(socket, 2)
+        XCTAssertEqual(asked, #"{"id":"c3","method":"room_list","params":{"filter":"not_joined","parent_room_id":"general"}}"#)
+        await socket.deliver(["id": "c3", "error": ["code": -32603, "message": "Internal error"]])
+        do {
+            _ = try await first.value
+            XCTFail("the refusal comes back")
+        } catch let error as RPCError {
+            XCTAssertEqual(error.message, "Internal error")
+        }
+        let second = Task { try await session.listThreads(of: "general") }
+        let retried = await frame(socket, 3)
+        XCTAssertEqual(retried, #"{"id":"c4","method":"room_list","params":{"filter":"not_joined","parent_room_id":"general"}}"#)
+        await socket.deliver(["id": "c4", "result": ["not_joined": []]])
+        let count = try await second.value
+        XCTAssertEqual(count, 0)
+    }
+
     private func openGeneral(on socket: FakeTransport, floor: String = "101") async throws {
         let open = Task { try await session.open("general") }
         _ = await frame(socket, 2)

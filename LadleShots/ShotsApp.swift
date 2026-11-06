@@ -610,9 +610,9 @@ enum Renderer {
                 }
             })
         case .goTo, .goToScoped:
-            // Go to a Room or Thread (⌘K) for "de", joined first; then narrowed to #general's threads.
+            // Search's rooms and threads (⌘K) for "de", joined first; then #general's threads for "hi", with the line on those not joined the server listed.
             AnyView(FindSheet(session: home, roomID: PreviewFixtures.busyRoomID, mode: .rooms, open: { _ in },
-                              startingText: screen == .goTo ? "de" : "room:#\(PreviewFixtures.busyRoomID) ", focusesField: false))
+                              startingText: screen == .goTo ? "de" : "room:#\(PreviewFixtures.busyRoomID) hi", focusesField: false))
         case .keyboardShortcuts:
             AnyView(KeyboardShortcutsSheet())
         case .timelineKeyed:

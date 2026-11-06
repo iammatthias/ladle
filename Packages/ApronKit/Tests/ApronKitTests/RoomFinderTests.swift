@@ -82,6 +82,19 @@ final class RoomFinderTests: XCTestCase {
         XCTAssertEqual(RoomFinder.rank(many, text: "incident").total, 5000)
     }
 
+    /// room-finder.svelte.test.ts's foot (#224).
+    func testTheLineAfterAScopedRoomsResultsSaysWhatTheServerListed() {
+        XCTAssertEqual(RoomFinder.ThreadsListing.listing.note(title: "General"), "Listing General’s other threads…")
+        XCTAssertEqual(RoomFinder.ThreadsListing.listed(2).note(title: "General"),
+                       "Threads you haven’t joined: the 2 the server lists, its most recently active.")
+        XCTAssertEqual(RoomFinder.ThreadsListing.listed(1).note(title: "General"),
+                       "Threads you haven’t joined: the one the server lists, its most recently active.")
+        XCTAssertEqual(RoomFinder.ThreadsListing.listed(0).note(title: "General"), "No threads you haven’t joined, as the server lists them.")
+        let failed = RoomFinder.ThreadsListing.failed("too many requests")
+        XCTAssertEqual(failed.note(title: "General"), "General’s other threads didn’t list: too many requests")
+        XCTAssertEqual([failed.failed, RoomFinder.ThreadsListing.listing.failed], [true, false])
+    }
+
     func testTheComposerListFindsAWordInATitle() {
         let rooms = [RoomSuggestion(id: "bots", title: "Release bots"), RoomSuggestion(id: "botany", title: "Botany")]
         XCTAssertEqual(RoomMentions.search(rooms, "bot").map(\.id), ["botany", "bots"])

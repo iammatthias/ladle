@@ -32,7 +32,7 @@ public enum RoomMentions {
     }
 
     /// Rooms whose id or title matches, in any case and with or without accents
-    /// (`RoomFinder.tier`, as Go to a Room or Thread matches them): exact first, then those it
+    /// (`RoomFinder.tier`, as search's rooms and threads match them): exact first, then those it
     /// starts, then a word in their title, then any holding it, each by title then id, at most
     /// `limit`, as apron-web's `searchRooms`.
     public static func search(_ rooms: [RoomSuggestion], _ query: String) -> [RoomSuggestion] {

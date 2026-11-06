@@ -85,7 +85,7 @@ struct TimelineView: View {
     /// Where a Shift+↑ ↓ run of picks began (#219).
     @State private var selectAnchor: LogID?
     @State private var showingShortcuts = false
-    /// Go to a Room or Thread (⌘K), or Search Local History (⌘F), in one sheet (#220).
+    /// Search Local History, on rooms and threads (⌘K) or messages (⌘F), in one sheet (#220, #224).
     @State private var finding: FindSheet.Mode?
     @State private var afterFind: String?
     @Environment(\.fixedNow) private var fixedNow
