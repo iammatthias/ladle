@@ -488,7 +488,10 @@ public final class ServerSession {
             pendingPage = nil
             pendingAddition = nil
             clearTyping()
-            for roomID in histories.keys { histories[roomID]?.isLive = false }
+            for roomID in histories.keys {
+                histories[roomID]?.isLive = false
+                histories[roomID]?.catchUpFailed = false
+            }
             if Task.isCancelled { return }
             if let upgradeFailure {
                 let report = await Connection.probe(url: record.url, origin: record.origin, fetch: environment.fetchConnectionStatus)
@@ -938,8 +941,25 @@ public final class ServerSession {
         }
         if notification.method == "room_update" { noteArrivals() }
         advanceLiveCheckpoints(records)
+        goOnAfterFailedCatchUps(records)
         for message in records.messages where message.logID == message.messageID { endTyping(message.from.userID, in: message.roomID) }
         catchUpJoinedAfterReading()
+    }
+
+    /// A room whose catch-up failed pages on from its checkpoint once a room record shows its
+    /// head past it (the wire fixtures' "History failure preserves live transitions"): a room
+    /// record, not a live message, so a server failing every page is not asked on each one.
+    private func goOnAfterFailedCatchUps(_ records: Records) {
+        guard let connection else { return }
+        for (room, _) in records.rooms {
+            let roomID = room.roomID
+            guard histories[roomID]?.catchUpFailed == true, let checkpoint = histories[roomID]?.checkpoint,
+                  let head = store.latestLogID(of: roomID), head > checkpoint else { continue }
+            histories[roomID]?.catchUpFailed = false
+            Task {
+                if let wait = await pageForward(roomID, on: connection) { goOn(after: wait, on: connection) }
+            }
+        }
     }
 
     /// Pages each room joined after reading it forward from where it was read, on this connection.
@@ -1241,7 +1261,9 @@ public final class ServerSession {
     /// the checkpoint where the records end, not at the head. A page refused for a wait
     /// (`retry_after`, §1.1) is not a failure (the wire fixtures' "Refused for a wait"): the pages
     /// applied stand, the room stays behind so live records do not move its checkpoint past what
-    /// is missing, and the wait comes back for the room to go on from there once it is over.
+    /// is missing, and the wait comes back for the room to go on from there once it is over. A
+    /// page that fails otherwise, refused or without the bounds to place it, leaves the room
+    /// behind as well (`catchUpFailed`), to go on at the next room record past its checkpoint.
     private func pageForward(_ roomID: String, on connection: Connection) async -> Duration? {
         while let checkpoint = histories[roomID]?.checkpoint, let after = checkpoint.successor {
             let request = PageRequest(after: after, limit: 200)
@@ -1251,7 +1273,12 @@ public final class ServerSession {
             } catch let error as RPCError where error.retryAfter != nil {
                 return error.retryAfter
             } catch {
-                break
+                histories[roomID]?.catchUpFailed = true
+                return nil
+            }
+            guard page.more || page.lastLogID != nil || page.latestLogID != nil else {
+                histories[roomID]?.catchUpFailed = true
+                return nil
             }
             histories[roomID]?.receive(page, for: request)
             guard page.more, histories[roomID]?.checkpoint != checkpoint else { break }
@@ -2012,6 +2039,9 @@ public struct RoomHistory: Hashable, Sendable {
     var olderNeedsSignIn = false
     /// Whether live records arrive gaplessly, so they may move the checkpoint.
     var isLive = false
+    /// Its catch-up's last page failed for another reason than a wait: it stays behind, not shown
+    /// catching up, until a room record shows its head past the checkpoint.
+    var catchUpFailed = false
 
     /// `before` of the next older page: the oldest span's lower edge − 1.
     public var olderBefore: LogID? { coverage.oldest?.lower.predecessor }

@@ -146,7 +146,7 @@ extension ServerSession {
     /// catch-up pages it forward from its checkpoint and marks it live once done.
     public func isCatchingUp(_ roomID: String) -> Bool {
         guard status == .signedIn, let history = histories[roomID] else { return false }
-        return history.checkpoint != nil && !history.isLive
+        return history.checkpoint != nil && !history.isLive && !history.catchUpFailed
     }
 
     func paneLoadingInput(_ roomID: String) -> PaneLoading.Input {

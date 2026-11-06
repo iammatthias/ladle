@@ -1549,6 +1549,68 @@ final class ServerSessionTests: XCTestCase {
         XCTAssertEqual(session.histories["general"]?.checkpoint, LogID("113"))
     }
 
+    /// history-recovery-failure.json's error-reply and invalid-page variants, through a reconnect's
+    /// catch-up: a page that fails for another reason than a wait keeps what the pages before it
+    /// recovered and leaves the room behind, so what comes live shows without moving its checkpoint
+    /// past the records never fetched; the next room record whose head passes the checkpoint pages
+    /// on from there. Ladle's coverage is exact up to the checkpoint, so it goes on rather than
+    /// rebuilding the room from its lower bound as the fixture's client does.
+    func testACatchUpPageAnsweredWithAnErrorLeavesTheRoomBehindUntilTheNextRoomRecordPassesItsCheckpoint() async throws {
+        try await catchUpPageFails(["error": ["code": -32603, "message": "Internal error"]])
+    }
+
+    func testACatchUpPageWithoutItsBoundsLeavesTheRoomBehindUntilTheNextRoomRecordPassesItsCheckpoint() async throws {
+        try await catchUpPageFails(["result": ["messages": []]])
+    }
+
+    private func catchUpPageFails(_ failure: JSONValue) async throws {
+        let second = try await reconnectWithTwoRoomsOpen(heads: ("112", "130"))
+        _ = await frame(second, 2)
+        await second.deliver(["id": "c9", "result": [
+            "messages": [message("107", "g"), message("108", "h"), message("109", "i")], "first_log_id": "107", "last_log_id": "109",
+            "more": true, "latest_log_id": "112", "history_log_id": "101",
+        ]])
+        let failed = await frame(second, 3)
+        XCTAssertEqual(failed, #"{"id":"c10","method":"history","params":{"after":"110","limit":200,"room_id":"general"}}"#)
+        var reply = failure.objectValue ?? [:]
+        reply["id"] = "c10"
+        await second.deliver(.object(reply))
+        _ = await frame(second, 4)
+        await second.deliver(["id": "c11", "result": ["not_joined": []]])
+        _ = await frame(second, 5)
+        await second.deliver(["id": "c12", "result": ["not_joined": []]])
+
+        await second.deliver(["method": "message", "params": message("113", "live")])
+        await eventually("live message") { session.timeline("general").count == 7 }
+        XCTAssertEqual(session.histories["general"]?.checkpoint, LogID("109"), "where the pages reached, not the live record")
+        XCTAssertFalse(session.isCatchingUp("general"), "not shown catching up while nothing is under way")
+        await second.deliver(["method": "message", "params": message("114", "live")])
+        await eventually("second live message") { session.timeline("general").count == 8 }
+        let quiet = await second.sentLog.count
+        XCTAssertEqual(quiet, 6, "a live message alone asks nothing")
+
+        await second.deliver(["method": "room_update", "params": ["updated": [
+            ["room_id": "general", "log_id": "100", "latest_log_id": "114", "history_log_id": "101"],
+        ]]])
+        let resumed = await frame(second, 6)
+        XCTAssertEqual(resumed, #"{"id":"c13","method":"history","params":{"after":"110","limit":200,"room_id":"general"}}"#,
+                       "on from the checkpoint")
+        await second.deliver(["id": "c13", "result": [
+            "messages": [message("110", "j"), message("111", "k"), message("112", "l"), message("113", "live"), message("114", "live")],
+            "first_log_id": "110", "last_log_id": "114", "more": false, "latest_log_id": "114", "history_log_id": "101",
+        ]])
+        await eventually("caught up") { session.histories["general"]?.checkpoint == LogID("114") }
+        XCTAssertEqual(session.timeline("general").map(\.messageID.text),
+                       ["104", "105", "106", "107", "108", "109", "110", "111", "112", "113", "114"])
+        await second.deliver(["method": "room_update", "params": ["updated": [
+            ["room_id": "general", "log_id": "100", "latest_log_id": "115", "history_log_id": "101"],
+        ]]])
+        await second.deliver(["method": "message", "params": message("115", "live")])
+        await eventually("live once caught up") { session.histories["general"]?.checkpoint == LogID("115") }
+        let after = await second.sentLog.count
+        XCTAssertEqual(after, 7, "a room caught up is not paged again on a room record")
+    }
+
     func testRoomsHeldBackByTheWaitGoOnOnceItIsOver() async throws {
         let second = try await reconnectWithTwoRoomsOpen(heads: ("108", "131"))
         let together = await frame(second, 2)

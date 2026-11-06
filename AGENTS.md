@@ -207,8 +207,15 @@ clone), which is only a worked example.
       short waits, or held back by a wait) is not a failure (the wire README's "Refused for a
       wait", #211): the room keeps its pages and stays behind, so live records show without
       moving its checkpoint, and once the wait is over (`goOn`, on `Environment.sleep`) the rooms
-      still behind page on from their checkpoints on the same connection. Ladle never rebuilds a
-      room, and catches up only at sign-in, after a wait, and on joining a room or thread read
+      still behind page on from their checkpoints on the same connection. A page that fails
+      otherwise (an error, or a result without the bounds to place it) leaves the room behind too,
+      not shown catching up (`catchUpFailed`), until a room record shows its head past the
+      checkpoint (the wire fixtures' "History failure preserves live transitions"); the coverage
+      is exact up to there, so it pages on from it where the fixture's client rebuilds. A sign-in
+      whose joined listing failed asks every room opened, since the heads known are an earlier
+      connection's, and asks the listing again 5 s later, doubling to a minute (`relistJoined`,
+      apron-web #223). Ladle never rebuilds a room, and catches up only at sign-in, after a wait,
+      after a failed page as above, and on joining a room or thread read
       before (apron-web #215: `joinedAfterReading`, paged forward from its checkpoint on the
       `room_update` that joins it, before its membership record moves the checkpoint), not on a
       room frame whose head passes the checkpoint. A second `open` while the first page loads waits for
